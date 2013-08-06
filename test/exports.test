@@ -3,7 +3,7 @@ require('../index.js');
 
 assert(atma != null);
 assert('mask' in atma);
-assert('Class' in atma);
+assert('Class' in atma);		
 assert('Compo' in atma);
 assert('jmask' in atma);
 assert('include' in atma);
