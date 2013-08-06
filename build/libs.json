@@ -1,0 +1,30 @@
+{
+	"routes": { 
+		"libs": "../../{0}/lib/{1}.js",
+		"compos": "../../compos/{0}/lib/{1}.js"
+	},
+	
+	"libraries": {
+		"libs": [
+			"class",
+			"include/include.node",
+			"mask/mask.node",
+			"ruta",
+			"ruqq/arr",
+			"ruqq/utils"
+		],
+		"compos": [
+			"layout"
+		]
+	},
+	
+	"pckg" : [
+		"class",
+		"include",
+		"mask",
+		"ruta",
+		"arr",
+		"utils",
+		"layout"
+	]
+}

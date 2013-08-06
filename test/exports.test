@@ -1,0 +1,33 @@
+
+require('../index.js');
+
+assert(atma != null);
+assert('mask' in atma);
+assert('Class' in atma);
+assert('Compo' in atma);
+assert('jmask' in atma);
+assert('include' in atma);
+assert('ruta' in atma);
+assert('mask' in global === false);
+
+
+var libs = require('../exports.js');
+
+assert(libs != null);
+assert('mask' in libs);
+assert('Class' in libs);
+assert('Compo' in libs);
+assert('jmask' in libs);
+assert('include' in libs);
+assert('ruta' in libs);
+assert('mask' in global === false);
+
+require('../globals.js');
+
+assert(libs != null);
+eq(typeof mask, 'object');
+eq(typeof Class, 'function');
+eq(typeof Compo, 'function');
+eq(typeof jmask, 'function');
+eq(typeof include, 'object');
+eq(typeof ruta, 'object');
