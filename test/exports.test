@@ -8,6 +8,9 @@ assert('Compo' in atma);
 assert('jmask' in atma);
 assert('include' in atma);
 assert('ruta' in atma);
+assert('net' in atma);
+assert('Uri' in atma.net);
+
 assert('mask' in global === false);
 
 

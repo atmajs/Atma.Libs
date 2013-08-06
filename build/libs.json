@@ -11,7 +11,8 @@
 			"mask/mask.node",
 			"ruta",
 			"ruqq/arr",
-			"ruqq/utils"
+			"ruqq/utils",
+			"ruqq/net/uri"
 		],
 		"compos": [
 			"layout"
@@ -24,6 +25,7 @@
 		"mask",
 		"ruta",
 		"arr",
+		"uri",
 		"utils",
 		"layout"
 	]
