@@ -1,5 +1,8 @@
 
-require('../index.js');
+delete global.mask;
+delete global.include;
+
+require('../index-dev.js');
 
 assert(atma != null);
 assert('mask' in atma);
@@ -10,11 +13,11 @@ assert('include' in atma);
 assert('ruta' in atma);
 assert('net' in atma);
 assert('Uri' in atma.net);
-
 assert('mask' in global === false);
 
 
-var libs = require('../exports.js');
+
+var libs = require('../exports-dev.js');
 
 assert(libs != null);
 assert('mask' in libs);
@@ -25,7 +28,7 @@ assert('include' in libs);
 assert('ruta' in libs);
 assert('mask' in global === false);
 
-require('../globals.js');
+require('../globals-dev.js');
 
 assert(libs != null);
 eq(typeof mask, 'object');
@@ -34,3 +37,5 @@ eq(typeof Compo, 'function');
 eq(typeof jmask, 'function');
 eq(typeof include, 'object');
 eq(typeof ruta, 'object');
+eq(typeof net, 'object');
+

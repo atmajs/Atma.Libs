@@ -1,7 +1,7 @@
 {
 	"name": "atma-libs",
 	"description": "Atma.js Library Package",
-	"version": "0.8.0",
+	"version": "0.8.4",
 	"homepage": "http://atmajs.com/",
 	"contributors":[
 	],
@@ -22,6 +22,6 @@
 	"scripts" : {},
 	"keywords": [],
 	"engines" : {
-        "node" : "~0.8.9"
+        "node" : ">0.8.9"
     }
 }
