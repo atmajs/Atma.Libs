@@ -27,6 +27,28 @@
 	var _Array_slice = Array.prototype.slice,
 		_Array_sort = Array.prototype.sort;
 	
+	// source ../src/util/is.js
+	function is_Function(x) {
+		return typeof x === 'function';
+	}
+	
+	function is_Object(x) {
+		return x != null &&  typeof x === 'object';
+	}
+	
+	function is_Array(x) {
+		return x != null
+			&& typeof x.length === 'number'
+			&& typeof x.slice === 'function';
+	}
+	
+	function is_String(x) {
+		return typeof x === 'string';
+	}
+	
+	function is_notEmptyString(x) {
+		return typeof x === 'string' && x !== '';
+	}
 	// source ../src/util/array.js
 	function arr_each(array, callback) {
 		
@@ -389,6 +411,7 @@
 		};
 	}
 	
+	
 	// source ../src/xhr/XHR.js
 	var XHR = {};
 	
@@ -635,15 +658,21 @@
 	// source ../src/business/Serializable.js
 	function Serializable(data) {
 		
-		if (data == null || typeof data !== 'object')
-			return;
-		
-		for (var key in data) {
-			if (data[key] == null)
-				continue;
+		if (this === Class || this == null || this === global) {
 			
-			this[key] = data[key];
+			var Ctor = function(data){
+				Serializable.call(this, data);
+			};
+			
+			Ctor.prototype._props = data;
+			
+			obj_extend(Ctor.prototype, Serializable.prototype);
+			
+			return Ctor;
 		}
+		
+		if (data != null)
+			this.deserialize(data);
 		
 	}
 	
@@ -656,12 +685,37 @@
 		
 		deserialize: function(json) {
 			
-			if (typeof json === 'string') 
+			if (is_String(json)) 
 				json = JSON.parse(json);
 			
+			var props = this._props,
+				key,
+				Mix;
 			
-			for (var key in json) 
+			for (key in json) {
+				
+				if (props != null) {
+					Mix = props[key];
+					
+					if (Mix != null) {
+						
+						if (is_Function(Mix)) {
+							this[key] = new Mix(json[key]);
+							continue;
+						}
+						
+						var deserialize = Mix.deserialize;
+						
+						if (is_Function(deserialize)) {
+							this[key] = deserialize(json[key]);
+							continue;
+						}
+						
+					}
+				}
+				
 				this[key] = json[key];
+			}
 			
 			return this;
 		}
@@ -1492,7 +1546,7 @@
 					return this;
 				}
 				
-				if (typeof object === 'string'){
+				if (is_String(object)){
 					try {
 						object = JSON.parse(object);
 					} catch(e) {
@@ -1535,7 +1589,6 @@
 		var Constructor = function(route){
 			
 			return new LocalStore(route);
-			
 		};
 		
 		Constructor.prototype = LocalStore.prototype;
@@ -1579,10 +1632,10 @@
 			
 			if (_extends == null) {
 				_extends = _store;
-			} else if (Array.isArray(_extends)) {
-				_extends.push(_store)
+			} else if (is_Array(_extends)) {
+				_extends.unshift(_store)
 			} else {
-				_extends = [_extends, _store];
+				_extends = [_store, _extends];
 			}
 			
 			delete data.Store;
@@ -2873,10 +2926,6 @@
 				if (!cfg.eval || forceEmbed) {
 					loadByEmbedding();
 					return;
-				}
-	
-				if (cfg.sync === true) {
-					currentResource = null;
 				}
 	
 	
@@ -15486,6 +15535,44 @@ function __eval(source, include) {
 			fn = null;
 			return obj[lazy];
 		});
+	};
+	
+	Object.clone = function(obj){
+		if (obj == null) 
+			return null;
+		
+		switch (typeof obj) {
+			case 'number':
+			case 'string':
+			case 'function':
+				return obj;
+		}
+		
+		if (obj instanceof Array) {
+			var array = [];
+			
+			for (var i = 0, x, imax = obj.length; i < imax; i++){
+				array[i] = Object.clone(obj[i]);
+			}
+			return array;
+		}
+		
+		var Ctor = obj.constructor;
+		if (typeof Ctor === 'function') {
+			if (Ctor === String || Ctor === Number || Ctor === RegExp || Ctor === Date) {
+				return new Ctor(obj);
+			}
+			
+			// do not suppor custom class initializations, as it could be dangerous?
+		}
+		
+		
+		var json = {};
+		for (var key in obj) {
+			json[key] = Object.clone(obj[key]);
+		}
+		return json;
+		
 	};
 
 	Object.observe = function(obj, property, callback) {
