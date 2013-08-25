@@ -49,6 +49,7 @@
 	function is_notEmptyString(x) {
 		return typeof x === 'string' && x !== '';
 	}
+	// end:source ../src/util/is.js
 	// source ../src/util/array.js
 	function arr_each(array, callback) {
 		
@@ -83,6 +84,7 @@
 			return array.length !== void 0 && typeof array.slice === 'function';
 		};
 	}
+	// end:source ../src/util/array.js
 	// source ../src/util/proto.js
 	
 	
@@ -263,6 +265,7 @@
 			}
 		}
 	}
+	// end:source ../src/util/proto.js
 	// source ../src/util/object.js
 	function obj_inherit(target /* source, ..*/ ) {
 		if (typeof target === 'function') {
@@ -375,6 +378,7 @@
 		}
 	};
 	
+	// end:source ../src/util/object.js
 	// source ../src/util/function.js
 	function fn_proxy(fn, cntx) {
 	
@@ -408,8 +412,9 @@
 			};
 			
 			return fn.apply(cntx, arguments);
-		};
+		}
 	}
+	// end:source ../src/util/function.js
 	
 	
 	// source ../src/xhr/XHR.js
@@ -442,6 +447,7 @@
 	});
 	
 	
+	// end:source ../src/xhr/XHR.js
 	// source ../src/xhr/promise.js
 	/*
 	 *  Copyright 2012-2013 (c) Pierre Duquesne <stackp@online.fr>
@@ -587,7 +593,7 @@
 	        function onTimeout() {
 	            xhr.abort();
 	            p.done(exports.promise.ETIMEOUT, "");
-	        };
+	        }
 	
 	        var timeout = exports.promise.ajaxTimeout;
 	        if (timeout) {
@@ -654,6 +660,7 @@
 	
 	
 	})(XHR);
+	// end:source ../src/xhr/promise.js
 	
 	// source ../src/business/Serializable.js
 	function Serializable(data) {
@@ -722,6 +729,7 @@
 	};
 	
 	
+	// end:source ../src/business/Serializable.js
 	// source ../src/business/Route.js
 	/**
 	 *	var route = new Route('/user/:id');
@@ -733,7 +741,7 @@
 		
 		function Route(route){
 			this.route = route_parse(route);
-		};
+		}
 		
 		Route.prototype = {
 			constructor: Route,
@@ -848,6 +856,7 @@
 		
 		return Route;
 	}());
+	// end:source ../src/business/Route.js
 	// source ../src/business/Deferred.js
 	var DeferredProto = {
 		_isAsync: true,
@@ -945,6 +954,7 @@
 			return this;
 		},
 	};
+	// end:source ../src/business/Deferred.js
 	// source ../src/business/EventEmitter.js
 	var EventEmitter = (function(){
 	 
@@ -993,7 +1003,7 @@
 					if (fn._once === true){
 						fns.splice(i,1);
 						i--;
-						length--;
+						imax--;
 					}
 				}
 			
@@ -1013,7 +1023,7 @@
 						arr.splice(i, 1);
 					
 					i--;
-					length--;
+					imax--;
 				}
 			
 	            return this;
@@ -1024,6 +1034,7 @@
 	    
 	}());
 	
+	// end:source ../src/business/EventEmitter.js
 	// source ../src/business/Validation.js
 	var Validation = (function(){
 		
@@ -1077,6 +1088,7 @@
 		};
 		
 	}());
+	// end:source ../src/business/Validation.js
 	
 	
 	// source ../src/collection/Collection.js
@@ -1351,6 +1363,7 @@
 			return ArrayProto;
 		}());
 		
+		// end:source ArrayProto.js
 		
 		function create(Constructor, mix) {
 			
@@ -1434,6 +1447,7 @@
 		
 		return Collection;
 	}());
+	// end:source ../src/collection/Collection.js
 	
 	// source ../src/store/Store.js
 	var StoreProto = {
@@ -1469,6 +1483,7 @@
 			}
 		}
 	};
+	// end:source ../src/store/Store.js
 	// source ../src/store/Remote.js
 	/**
 	 *	Alpha - Test - End
@@ -1527,6 +1542,7 @@
 		};
 		
 	}());
+	// end:source ../src/store/Remote.js
 	// source ../src/store/LocalStore.js
 	var LocalStore = (function(){
 		
@@ -1597,6 +1613,7 @@
 		return Constructor;
 	
 	}());
+	// end:source ../src/store/LocalStore.js
 	
 	
 	// source ../src/Class.js
@@ -1726,6 +1743,7 @@
 	
 		return _class;
 	};
+	// end:source ../src/Class.js
 	// source ../src/Class.Static.js
 	/**
 	 * Can be used in Constructor for binding class's functions to class's context
@@ -1753,6 +1771,7 @@
 	Class.EventEmitter = EventEmitter;
 	
 	Class.validate = Validation.validate;
+	// end:source ../src/Class.Static.js
 	
 	
 	// source ../src/fn/fn.js
@@ -1860,6 +1879,7 @@
 			
 			
 		
+		// end:source memoize.js
 		
 		Class.Fn = {
 			memoize: fn_memoize,
@@ -1867,6 +1887,7 @@
 		};
 		
 	}());
+	// end:source ../src/fn/fn.js
 	
 	exports.Class = Class;
 	
@@ -1897,35 +1918,8 @@
 }(this, function (global, exports, document) {
     'use strict';
 
-	// source ../src/1.scope-vars.js
-	
-	/**
-	 *	.cfg
-	 *		: path :=	root path. @default current working path, im browser window.location;
-	 *		: eval := in node.js this conf. is forced
-	 *		: lockedToFolder := makes current url as root path
-	 *			Example "/script/main.js" within this window.location "{domain}/apps/1.html"
-	 *			will become "{domain}/apps/script/main.js" instead of "{domain}/script/main.js"
-	 */
-	
-	var bin = {},
-		isWeb = !! (global.location && global.location.protocol && /^https?:/.test(global.location.protocol)),
-		reg_subFolder = /([^\/]+\/)?\.\.\//,
-		cfg = {
-			path: null,
-			loader: null,
-			version: null,
-			lockedToFolder: null,
-			sync: null,
-			eval: document == null
-		},
-		handler = {},
-		hasOwnProp = {}.hasOwnProperty,
-		__array_slice = Array.prototype.slice,
-		
-		XMLHttpRequest = global.XMLHttpRequest;
-	
-		 
+// end:source ../src/head.js
+	// import ../src/1.scope-vars.js 
 	// source ../src/2.Helper.js
 	var Helper = { /** TODO: improve url handling*/
 		
@@ -1946,6 +1940,7 @@
 			xhr.send();
 		};
 	
+	// end:source ../src/2.Helper.js
 	
 	// source ../src/utils/fn.js
 	function fn_proxy(fn, ctx) {
@@ -1959,6 +1954,7 @@
 	function fn_doNothing(fn) {
 		typeof fn === 'function' && fn();
 	}
+	// end:source ../src/utils/fn.js
 	// source ../src/utils/object.js
 	function obj_inherit(target /* source, ..*/ ) {
 		if (typeof target === 'function') {
@@ -1979,6 +1975,7 @@
 		}
 		return target;
 	}
+	// end:source ../src/utils/object.js
 	// source ../src/utils/array.js
 	function arr_invoke(arr, args, ctx) {
 	
@@ -2016,6 +2013,7 @@
 		key = arr[imax];
 		return obj[key] || (obj[key] = []);
 	}
+	// end:source ../src/utils/array.js
 	// source ../src/utils/path.js
 	function path_getDir(url) {
 		var index = url.lastIndexOf('/');
@@ -2102,6 +2100,7 @@
 		
 		return path.substring(path.lastIndexOf('.', query) + 1, query);
 	}
+	// end:source ../src/utils/path.js
 	
 	// source ../src/2.Routing.js
 	var RoutesLib = function() {
@@ -2295,496 +2294,10 @@
 	
 	
 	*/
-	// source ../src/3.Events.js
-	var Events = (function(document) {
-		if (document == null) {
-			return {
-				ready: fn_doNothing,
-				load: fn_doNothing
-			};
-		}
-		var readycollection = [];
-	
-		function onReady() {
-			Events.ready = fn_doNothing;
-	
-			if (readycollection == null) {
-				return;
-			}
-	
-			arr_invoke(readycollection);
-			readycollection = null;
-		}
-	
-		/** TODO: clean this */
-	
-		if ('onreadystatechange' in document) {
-			document.onreadystatechange = function() {
-				if (/complete|interactive/g.test(document.readyState) === false) {
-					return;
-				}
-				onReady();
-			};
-		} else if (document.addEventListener) {
-			document.addEventListener('DOMContentLoaded', onReady);
-		}else {
-			window.onload = onReady;
-		}
-	
-	
-		return {
-			ready: function(callback) {
-				readycollection.unshift(callback);
-			}
-		};
-	})(document);
-	 
-	// source ../src/4.IncludeDeferred.js
-	
-	/**
-	 * STATES:
-	 * 0: Resource Created
-	 * 1: Loading
-	 * 2: Loaded - Evaluating
-	 * 3: Evaluated - Childs Loading
-	 * 4: Childs Loaded - Completed
-	 */
-	
-	var IncludeDeferred = function() {
-		this.callbacks = [];
-		this.state = -1;
-	};
-	
-	IncludeDeferred.prototype = { /**	state observer */
-	
-		on: function(state, callback, sender) {
-			if (this === sender && this.state === -1) {
-				callback(this);
-				return this;
-			}
-			
-			// this === sender in case when script loads additional
-			// resources and there are already parents listeners
-			
-			var mutator = (this.state < 3 || this === sender)
-				? 'unshift'
-				: 'push';
-			
-			state <= this.state ? callback(this) : this.callbacks[mutator]({
-				state: state,
-				callback: callback
-			});
-			return this;
-		},
-		readystatechanged: function(state) {
-	
-			var i, length, x, currentInclude;
-	
-			if (state > this.state) {
-				this.state = state;
-			}
-	
-			if (this.state === 3) {
-				var includes = this.includes;
-	
-				if (includes != null && includes.length) {
-					for (i = 0; i < includes.length; i++) {
-						if (includes[i].resource.state !== 4) {
-							return;
-						}
-					}
-				}
-	
-				this.state = 4;
-			}
-	
-			i = 0;
-			length = this.callbacks.length;
-	
-			if (length === 0){
-				return;
-			}
-	
-			//do not set asset resource to global
-			if (this.type === 'js' && this.state === 4) {
-				currentInclude = global.include;
-				global.include = this;
-			}
-	
-			for (; i < length; i++) {
-				x = this.callbacks[i];
-				if (x == null || x.state > this.state) {
-					continue;
-				}
-	
-				this.callbacks.splice(i,1);
-				length--;
-				i--;
-	
-				/* if (!DEBUG)
-				try {
-				*/
-					x.callback(this);
-				/* if (!DEBUG)
-				} catch(error){
-					console.error(error.toString(), 'file:', this.url);
-				}
-				*/
-	
-				if (this.state < 4){
-					break;
-				}
-			}
-	
-			if (currentInclude != null){
-				global.include = currentInclude;
-			}
-		},
-	
-		/** assets loaded and DomContentLoaded */
-	
-		ready: function(callback) {
-			var that = this;
-			return this.on(4, function() {
-				Events.ready(function(){
-					that.resolve(callback);
-				});
-			}, this);
-		},
-	
-		/** assets loaded */
-		done: function(callback) {
-			var that = this;
-			return this.on(4, function(){
-				that.resolve(callback);
-			}, this);
-		},
-		resolve: function(callback) {
-			var includes = this.includes,
-				length = includes == null ? 0 : includes.length;
-	
-			if (length > 0 && this.response == null){
-				this.response = {};
-	
-				var resource, route;
-	
-				for(var i = 0, x; i < length; i++){
-					x = includes[i];
-					resource = x.resource;
-					route = x.route;
-	
-					if (typeof resource.exports === 'undefined'){
-						continue;
-					}
-	
-					var type = resource.type;
-					switch (type) {
-					case 'js':
-					case 'load':
-					case 'ajax':
-	
-						var alias = route.alias || Routes.parseAlias(route),
-							obj = type === 'js' ? this.response : (this.response[type] || (this.response[type] = {}));
-	
-						if (alias) {
-							obj[alias] = resource.exports;
-							break;
-						} else {
-							console.warn('Resource Alias is Not defined', resource);
-						}
-						break;
-					}
-	
-				}
-			}
-			callback(this.response);
-		}
-	};
-	 
-	// source ../src/5.Include.js
-	var Include = (function(IncludeDeferred) {
-	
-		function Include() {
-			IncludeDeferred.call(this);
-		}
-	
-		stub_release(Include.prototype);
-		
-		obj_inherit(Include, IncludeDeferred, {
-			setCurrent: function(data) {
-	
-				var resource = new Resource('js', {
-					path: data.id
-				}, data.namespace, null, null, data.id);
-	
-				if (resource.state !== 4) {
-					console.error("Current Resource should be loaded");
-				}
-	
-				/**@TODO - probably state shoulb be changed to 2 at this place */
-				resource.state = 3;
-				global.include = resource;
-	
-			},
-			
-			cfg: function(arg) {
-				switch (typeof arg) {
-				case 'object':
-					var key, value;
-					for (key in arg) {
-						value = arg[key];
-	
-						switch(key){
-							case 'loader':
-								for(var x in value){
-									CustomLoader.register(x, value[x]);
-								}
-								break;
-							case 'modules':
-								if (value === true){
-									enableModules();
-								}
-								break;
-							default:
-								cfg[key] = value;
-								break;
-						}
-	
-					}
-					break;
-				case 'string':
-					if (arguments.length === 1) {
-						return cfg[arg];
-					}
-					if (arguments.length === 2) {
-						cfg[arg] = arguments[1];
-					}
-					break;
-				case 'undefined':
-					return cfg;
-				}
-				return this;
-			},
-			routes: function(mix) {
-				if (mix == null) {
-					return Routes.getRoutes();
-				}
-				
-				if (arguments.length === 2) {
-					Routes.register(mix, arguments[1]);
-					return this;
-				}
-				
-				for (var key in mix) {
-					Routes.register(key, mix[key]);
-				}
-				return this;
-			},
-			promise: function(namespace) {
-				var arr = namespace.split('.'),
-					obj = global;
-				while (arr.length) {
-					var key = arr.shift();
-					obj = obj[key] || (obj[key] = {});
-				}
-				return obj;
-			},
-			register: function(_bin) {
-				for (var key in _bin) {
-					for (var i = 0; i < _bin[key].length; i++) {
-						var id = _bin[key][i].id,
-							url = _bin[key][i].url,
-							namespace = _bin[key][i].namespace,
-							resource = new Resource();
-	
-						resource.state = 4;
-						resource.namespace = namespace;
-						resource.type = key;
-	
-						if (url) {
-							if (url[0] === '/') {
-								url = url.substring(1);
-							}
-							resource.location = path_getDir(url);
-						}
-	
-						switch (key) {
-						case 'load':
-						case 'lazy':
-							var container = document.querySelector('#includejs-' + id.replace(/\W/g, ''));
-							if (container == null) {
-								console.error('"%s" Data was not embedded into html', id);
-								return;
-							}
-							resource.exports = container.innerHTML;
-							break;
-						}
-						
-						//
-						(bin[key] || (bin[key] = {}))[id] = resource;
-					}
-				}
-			},
-			/**
-			 *	Create new Resource Instance,
-			 *	as sometimes it is necessary to call include. on new empty context
-			 */
-			instance: function(url) {
-				var resource;
-				if (url == null) {
-					resource = new Include();
-					resource.state = 4;
-					
-					return resource;
-				}
-				
-				resource = new Resource();
-				resource.state = 4;
-				resource.location = path_getDir(url);
-				
-				return resource;
-			},
-	
-			getResource: function(url, type) {
-				var id = url;
-				
-				if (url.charCodeAt(0) !== 47) {
-					// /
-					id = '/' + id;
-				}
-	
-				if (type != null){
-					return bin[type][id];
-				}
-	
-				for (var key in bin) {
-					if (bin[key].hasOwnProperty(id)) {
-						return bin[key][id];
-					}
-				}
-				return null;
-			},
-			getResources: function(){
-				return bin;
-			},
-	
-			plugin: function(pckg, callback) {
-	
-				var urls = [],
-					length = 0,
-					j = 0,
-					i = 0,
-					onload = function(url, response) {
-						j++;
-	
-						embedPlugin(response);
-	
-						if (j === length - 1 && callback) {
-							callback();
-							callback = null;
-						}
-					};
-				Routes.each('', pckg, function(namespace, route) {
-					urls.push(route.path[0] === '/' ? route.path.substring(1) : route.path);
-				});
-	
-				length = urls.length;
-	
-				for (; i < length; i++) {
-					XHR(urls[i], onload);
-				}
-				return this;
-			},
-			
-			client: function(){
-				if (cfg.server === true) 
-					stub_freeze(this);
-				
-				return this;
-			},
-			
-			server: function(){
-				if (cfg.server !== true) 
-					stub_freeze(this);
-				
-				return this;
-			}
-		});
-		
-		
-		return Include;
-	
-		
-		// >> FUNCTIONS
-		
-		function embedPlugin(source) {
-			eval(source);
-		}
-		
-		function enableModules() {
-			if (typeof Object.defineProperty === 'undefined'){
-				console.warn('Browser do not support Object.defineProperty');
-				return;
-			}
-			Object.defineProperty(global, 'module', {
-				get: function() {
-					return global.include;
-				}
-			});
-	
-			Object.defineProperty(global, 'exports', {
-				get: function() {
-					var current = global.include;
-					return (current.exports || (current.exports = {}));
-				},
-				set: function(exports) {
-					global.include.exports = exports;
-				}
-			});
-		}
-		
-		function includePackage(resource, type, mix){
-			var pckg = mix.length === 1 ? mix[0] : __array_slice.call(mix);
-			
-			if (resource instanceof Resource) {
-				return resource.include(type, pckg);
-			}
-			return new Resource('js').include(type, pckg);
-		}
-		
-		function createIncluder(type) {
-			return function(){
-				return includePackage(this, type, arguments);
-			};
-		}
-		
-		function doNothing() {
-			return this;
-		}
-		
-		function stub_freeze(include) {
-			include.js =
-			include.css =
-			include.load =
-			include.ajax =
-			include.embed =
-			include.lazy =
-			include.inject =
-				doNothing;
-		}
-		
-		function stub_release(proto) {
-			var fns = ['js', 'css', 'load', 'ajax', 'embed', 'lazy'],
-				i = fns.length;
-			while (--i !== -1){
-				proto[fns[i]] = createIncluder(fns[i]);
-			}
-			
-			proto['inject'] = proto.js;
-		}
-		
-	}(IncludeDeferred));
-	 
+	// end:source ../src/2.Routing.js
+	// import ../src/3.Events.js 
+	// import ../src/4.IncludeDeferred.js 
+	// import ../src/5.Include.js 
 	// source ../src/6.ScriptStack.js
 	/** @TODO Refactor loadBy* {combine logic} */
 	
@@ -2996,6 +2509,7 @@
 		};
 	})();
 	
+	// end:source ../src/6.ScriptStack.js
 	// source ../src/7.CustomLoader.js
 	var CustomLoader = (function() {
 	
@@ -3013,6 +2527,7 @@
 		};
 		
 		
+		// end:source loader/json.js
 	
 		cfg.loader = {
 			json : JSONParser
@@ -3115,6 +2630,7 @@
 		};
 	}());
 	
+	// end:source ../src/7.CustomLoader.js
 	// source ../src/8.LazyModule.js
 	var LazyModule = {
 		create: function(xpath, code) {
@@ -3148,6 +2664,7 @@
 			});
 		}
 	};
+	// end:source ../src/8.LazyModule.js
 	// source ../src/9.Resource.js
 	var Resource = (function(Include, Routes, ScriptStack, CustomLoader) {
 	
@@ -3361,6 +2878,7 @@
 		}
 		
 	}(Include, Routes, ScriptStack, CustomLoader));
+	// end:source ../src/9.Resource.js
 	
 	// source ../src/10.export.js
 	
@@ -3372,6 +2890,7 @@
 		ScriptStack: ScriptStack,
 		registerLoader: CustomLoader.register
 	};
+	// end:source ../src/10.export.js
 	
 	// source ../src/11.node.js
 	(function() {
@@ -3516,7 +3035,7 @@
 			global.module = module;
 	
 			if (isGlobalCntx !== true) {
-				source = '(function(){ ' + source + ' }())';
+				source = '(function(){ ' + source + '\n}())';
 			}
 	
 			try {
@@ -3686,6 +3205,7 @@
 	
 	
 	}());
+	// end:source ../src/11.node.js
 
 }));
 
@@ -3710,6 +3230,7 @@ function __eval(source, include) {
 	*/
 	
 }
+// end:source ../src/global-vars.js
 
 // source ../../mask/src/umd-head.js
 (function (root, factory) {

@@ -10,6 +10,9 @@ include
 		Uglify = resp.Uglify;
 	
 	
+	if (typeof libs === 'string') 
+		libs = JSON.parse(libs);
+		
 	
 	include
 		.routes(libs.routes)

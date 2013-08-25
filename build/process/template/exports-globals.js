@@ -14,7 +14,7 @@ function obj_extend(target, source) {
 			continue;
 		}
 		
-		globals[key] = source[key];
+		target[key] = source[key];
 	}
 }
 

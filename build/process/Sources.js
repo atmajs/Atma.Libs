@@ -8,11 +8,9 @@ include
 	)
 	
 	
-	.js({ script: 'io/middleware/uglify::Uglify' })
-	
 	.done(function(resp){
 		
-		var Uglify = resp.Uglify;
+		var Uglify = io.File.middleware.uglify;
 		
 		include.exports = Class({
 			Extends: Class.Deferred,
