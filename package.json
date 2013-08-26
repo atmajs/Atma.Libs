@@ -1,27 +1,25 @@
 {
-	"name": "atma-libs",
-	"description": "Atma.js Library Package",
-	"version": "0.8.45",
-	"homepage": "http://atmajs.com/",
-	"contributors":[
-	],
-	"author": "Alex Kit <source.kit@gmail.com>",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/atmajs/Atma.Libs.git"
-	},
-	"bugs": {
-		"url": "https://github.com/atmajs/Atma.Libs/issues"
-	},
-	"licenses": [
-		"MIT"
-	],
-	
-	"dependencies": {},
-	"devDependencies": {},
-	"scripts" : {},
-	"keywords": [],
-	"engines" : {
-        "node" : ">0.8.9"
+    "name": "atma-libs",
+    "description": "Atma.js Library Package",
+    "version": "0.8.50",
+    "homepage": "http://atmajs.com/",
+    "contributors": [],
+    "author": "Alex Kit <source.kit@gmail.com>",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/atmajs/Atma.Libs.git"
+    },
+    "bugs": {
+        "url": "https://github.com/atmajs/Atma.Libs/issues"
+    },
+    "licenses": [
+        "MIT"
+    ],
+    "dependencies": {},
+    "devDependencies": {},
+    "scripts": {},
+    "keywords": [],
+    "engines": {
+        "node": ">0.8.9"
     }
 }
