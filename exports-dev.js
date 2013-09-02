@@ -1943,6 +1943,9 @@
 		},
 		handler = {},
 		hasOwnProp = {}.hasOwnProperty,
+		emptyResponse = {
+			load: {}
+		},
 		__array_slice = Array.prototype.slice,
 		
 		XMLHttpRequest = global.XMLHttpRequest;
@@ -2255,7 +2258,6 @@
 				var key;
 	
 				if (includeData == null) {
-					console.error('Include Item has no Data', type, namespace);
 					return;
 				}
 	
@@ -2527,7 +2529,7 @@
 	
 				}
 			}
-			callback(this.response);
+			callback(this.response || emptyResponse);
 		}
 	};
 	
@@ -2549,7 +2551,7 @@
 				}, data.namespace, null, null, data.id);
 	
 				if (resource.state !== 4) {
-					console.error("Current Resource should be loaded");
+					console.error("<include> Resource should be loaded", data);
 				}
 	
 				/**@TODO - probably state shoulb be changed to 2 at this place */
@@ -2645,7 +2647,7 @@
 							var container = document.querySelector('#includejs-' + id.replace(/\W/g, ''));
 							if (container == null) {
 								console.error('"%s" Data was not embedded into html', id);
-								return;
+								break;
 							}
 							resource.exports = container.innerHTML;
 							break;
@@ -3411,320 +3413,376 @@
 	};
 	// end:source ../src/10.export.js
 	
-	// source ../src/11.node.js
-	(function() {
-	
+	// source ../src/node/node.js
+	(function(){
+		
 		cfg.server = true;
-	
-		var fs = require('fs'),
-			vm = require('vm'),
+	    
+	    var vm = require('vm'),
 			Module = (global.module || module).constructor,
 			globalPath,
 			includePath;
-	
-	
-		XMLHttpRequest = function() {};
-		XMLHttpRequest.prototype = {
-			constructor: XMLHttpRequest,
-			open: function(method, url) {
-				this.url = url;
-			},
-			send: function() {
-	
-				if (this.url.indexOf('file://') !== -1) {
-					this.url = getFile(this.url);
-				}
-	
-				var that = this;
-				
-				file_read(this.url, function(err, data) {
-					if (err) {
-						console.error('>>', err.code, err.path);
-						data = '';
-					}
-					that.readyState = 4;
-					that.responseText = data;
-					that.onreadystatechange();
-					
-					if (err == null && cfg.autoreload) {
-						file_watch(that.url, bin_removeDelegate(that.url));
-					}
-				});
-			
-			}
-		};
+	    
+		// source utils/file.js
 		
-		function file_read(url, callback) {
-			if (cfg.sync) {
-				try {
-					var content = fs.readFileSync(url, 'utf8');
-					
-					callback(null, content);
-				} catch(error) {
-					console.error('File Read - ', error);
-				}
+		var file_read,
+		    file_watch;
+		    
+		(function(){
+		    var _fs = require('fs'),
+				_watchers = {};
 				
-				return;
-			}
-			fs.readFile(url, 'utf8', callback);
-		}
-		
-		var file_watch = (function(){
-			var _watchers = {};
-			
-			function _unbind(path) {
-				if (_watchers[path] == null)
-					return;
-				
-				_watchers[path].close();
-				_watchers[path] = null;
-			}
-			
-			return function(path, callback){
-				_unbind(path);
-				_watchers[path] = fs.watch(path, callback);
-			};
-		}());
-		
-		
-		function bin_removeDelegate(url) {
-			// use timeout as sys-file-change event is called twice
-			var timeout;
-			return function(){
-				if (timeout) 
-					clearTimeout(timeout);
-				
-				timeout = setTimeout(function(){
-					bin_remove(url);
-				}, 150);
-			};
-		}
-		function bin_remove(mix) {
-			if (mix == null) 
-				return;
-			
-			var type,
-				id,
-				index,
-				res;
-				
-			var isUrl = typeof mix === 'string',
-				url = isUrl ? mix : null;
-			
-			
-			for (type in bin) {
-				
-				for (id in bin[type]) {
-					
-					if (isUrl === false) {
-						if (bin[type][id] === mix) {
-							delete bin[type][id];
-							return;
-						}
-						continue;
-					}
-					
-					index = id.indexOf(url);
-					if (index !== -1 && index === id.length - url.length) {
-						
-						res = bin[type][id];
-				
-						delete bin[type][id];
-						
-						if (type === 'load') {
-							bin_remove(res.parent);
-						}
-						
-						return;
-					}
-				}
-				
-			}
-			console.warn('[bin_remove] Resource is not in cache', url);
-		}
-	
-		__eval = function(source, include, isGlobalCntx) {
-			module.exports = {};
-			
-			global.include = include;
-			global.require = require;
-			global.exports = module.exports;
-			global.__filename = getFile(include.url);
-			global.__dirname = getDir(global.__filename);
-			global.module = module;
-	
-			if (isGlobalCntx !== true) {
-				source = '(function(){ ' + source + '\n}())';
-			}
-	
-			try {
-				vm.runInThisContext(source, global.__filename);
-			} catch(e) {
-				console.error('Module Evaluation Error', include.url);
-				console.error(e.stack);
-			}
-			
-			
-			
-			if (include.exports == null) {
-				var exports = module.exports;
-				
-				if (typeof exports !== 'object' || Object.keys(exports).length) {
-					include.exports = module.exports;
-				}
-			}
-	
-		};
-	
-	
-		function getFile(url) {
-			
-			url = url
-				.replace('file://', '')
-				.replace(/\\/g, '/')
-				.replace(/\?[^\n]+$/, '');
-			
-			if (/^\/\w+:\/[^\/]/i.test(url)){
-				// win32 drive
-				return url.substring(1);
-			}
-			
-			return url;
-		}
-	
-		function getDir(url) {
-			return url.substring(0, url.lastIndexOf('/'));
-		}
-		
-		obj_inherit(Resource, {
-			
-			path_getFile: function(){
-				return getFile(this.url);
-			},
-			
-			path_getDir: function(){
-				return getDir(getFile(this.url));
-			},
-		
-			inject: function() {
-				
-				var pckg = arguments.length === 1
-					? arguments[0]
-					: __array_slice.call(arguments);
-				
-				var current = this;
-				
-				current.state = current.state >= 3 ? 3 : 2;
-				
-				var bundle = current.create();
-				
-				bundle.url = this.url;
-				bundle.location = this.location;
-				bundle.load(pckg).done(function(resp){
-		
-					var sources = resp.load,
-						key,
-						resource;
-					
+		    file_read = function(url, callback){
+		        if (cfg.sync) {
 					try {
-						for(var i = 0; i< bundle.includes.length; i++){
-							//@TODO - refactor
-							
-							var resource = bundle.includes[i].resource,
-								source = resource.exports;
-		
-							
-							resource.exports = null;
-							resource.type = 'js';
-							resource.includes = null;
-							resource.state = 3;
-							
-							
-							for (var key in bin.load) {
-								if (bin.load[key] === resource) {
-									delete bin.load[key];
-									break;
-								}
-							}
-							
-		
-							__eval(source, resource, true);
-		
-							
-							resource.readystatechanged(3);
-		
-						}
-					} catch (e) {
-						console.error('Injected Script Error\n', e, key);
-					}
-		
-					
-					bundle.on(4, function(){
+						var content = _fs.readFileSync(url, 'utf8');
 						
-						current
-							.includes
-							.splice
-							.apply(current.includes, [bundle, 1].concat(bundle.includes));
-		
-						current.readystatechanged(3);
-					});
-				});
-		
-				return current;
-			},
-		
-			instance: function(currentUrl) {
-				if (typeof currentUrl === 'string') {
-		
-					var old = module,
-						next = new Module(currentUrl, old);
-		
-					next.filename = getFile(currentUrl);
-					next.paths = Module._nodeModulePaths(getDir(next.filename));
-		
-		
-					if (!globalPath) {
-						var delimiter = process.platform === 'win32' ? ';' : ':',
-							PATH = process.env.PATH || process.env.path;
-		
-						if (!PATH){
-							console.error('PATH not defined in env', process.env);
-						}
-		
-						var parts = PATH.split(delimiter),
-							globalPath = ruqq.arr.first(parts, function(x){
-								return /([\\\/]npm[\\\/])|([\\\/]npm$)/gi.test(x);
-							});
-		
-						if (globalPath){
-							globalPath = globalPath.replace(/\\/g, '/');
-							globalPath += (globalPath[globalPath.length - 1] !== '/' ? '/' : '') + 'node_modules';
-			
-							includePath = io.env.applicationDir.toLocalDir() + 'node_modules';
-						}else {
-							console.error('Could not resolve global NPM Directory from system path');
-							console.log('searched with pattern /npm in', PATH, delimiter);
-						}
+						callback(null, content);
+					} catch(error) {
+						console.error('File Read - ', error);
 					}
-		
-		
-					next.paths.unshift(includePath);
-					next.paths.unshift(globalPath);
-		
-					module = next;
-					require = next.require.bind(next);
+					
+					return;
 				}
+				_fs.readFile(url, 'utf8', callback);
+		    };
+		    
+		    file_watch =  function(path, callback){
+		        _unbind(path);
+		        _watchers[path] = _fs.watch(path, callback);
+		    };
+		    
+		    
+		    function _unbind(path) {
+		        if (_watchers[path] == null)
+		            return;
+		        
+		        _watchers[path].close();
+		        _watchers[path] = null;
+		    }
+		    
+		}());
+			
+			
+		// end:source utils/file.js
+		// source utils/path.js
 		
-				var res = new Resource();
-				res.state = 4;
-				return res;
-			}
+		function path_getFile(url) {
+		    
+		    url = url
+		        .replace('file://', '')
+		        .replace(/\\/g, '/')
+		        .replace(/\?[^\n]+$/, '');
+		    
+		    if (/^\/\w+:\/[^\/]/i.test(url)){
+		        // win32 drive
+		        return url.substring(1);
+		    }
+		    
+		    return url;
+		}
+		
+		function path_getDir(url) {
+		    return url.substring(0, url.lastIndexOf('/'));
+		}
+		// end:source utils/path.js
+		// source utils/bin.js
+		function bin_removeDelegate(url) {
+		    // use timeout as sys-file-change event is called twice
+		    var timeout;
+		    return function() {
+		        if (timeout)
+		            clearTimeout(timeout);
+		
+		        timeout = setTimeout(function() {
+		            var res = bin_load(bin_remove(url));
+		            
+		            if (res && typeof cfg.autoreload === 'object') {
+		                cfg.autoreload.fileChanged(url);
+		            }
+		        }, 150);
+		    };
+		}
+		
+		function bin_remove(mix) {
+		    if (mix == null)
+		        return;
+		
+		    var type,
+		        id,
+		        index,
+		        res;
+		
+		    var isUrl = typeof mix === 'string',
+		        url = isUrl ? mix : mix.url;
+		
+		
+		    for (type in bin) {
+		
+		        for (id in bin[type]) {
+		            res = bin[type][id];
+		
+		            if (isUrl === false) {
+		                if (res === mix) {
+		                    delete bin[type][id];
+		                    return res;
+		                }
+		                continue;
+		            }
+		
+		            index = id.indexOf(url);
+		            if (index !== -1 && index === id.length - url.length) {
+		
+		                delete bin[type][id];
+		
+		                if (type === 'load') {
+		                    bin_remove(res.parent);
+		                }
+		
+		                return res;
+		            }
+		        }
+		
+		    }
+		    console.warn('<include:res:remove> Resource is not in cache', url);
+		}
+		
+		function bin_load(resource) {
+		    if (resource == null)
+		        return;
+		
+		    resource.content = null;
+		    resource.exports = null;
+		
+		    return resource
+		        .parent
+		        .create(
+		        resource.type,
+		        resource.route,
+		        resource.namespace,
+		        resource.xpath);
+		
+		}
+		
+		function bin_tryReload(path, callback) {
+		    var res = bin_remove(path);
+		    
+		    if (res == null) {
+		        callback && callback();
+		        return;
+		    }
+		    
+		    return bin_load(res).done(callback);
+		}
+		// end:source utils/bin.js
+		
+		
+	    // source xhr.js
+	    
+	    XMLHttpRequest = function() {};
+	    XMLHttpRequest.prototype = {
+	        constructor: XMLHttpRequest,
+	        open: function(method, url) {
+	            this.url = url;
+	        },
+	        send: function() {
+	    
+	            if (this.url.indexOf('file://') !== -1) {
+	                this.url = path_getFile(this.url);
+	            }
+	    
+	            var that = this;
+	            
+	            file_read(this.url, function(err, data) {
+	                if (err) {
+	                    console.error('>>', err.code, err.path);
+	                    data = '';
+	                }
+	                that.readyState = 4;
+	                that.responseText = data;
+	                that.onreadystatechange();
+	                
+	                if (err == null && cfg.autoreload) {
+	                    file_watch(that.url, bin_removeDelegate(that.url));
+	                }
+	            });
+	        
+	        }
+	    };
+	    // end:source xhr.js
+		// source eval.js
+		
+		__eval = function(source, include, isGlobalCntx) {
+		    module.exports = {};
+		    
+		    global.include = include;
+		    global.require = require;
+		    global.exports = module.exports;
+		    global.__filename = path_getFile(include.url);
+		    global.__dirname = path_getDir(global.__filename);
+		    global.module = module;
+		
+		    if (isGlobalCntx !== true) {
+		        source = '(function(){ ' + source + '\n}())';
+		    }
+		
+		    try {
+		        vm.runInThisContext(source, global.__filename);
+		    } catch(e) {
+		        console.error('Module Evaluation Error', include.url);
+		        console.error(e.stack);
+		    }
+		    
+		    
+		    
+		    if (include.exports == null) {
+		        var exports = module.exports;
+		        
+		        if (typeof exports !== 'object' || Object.keys(exports).length) {
+		            include.exports = module.exports;
+		        }
+		    }
+		
+		};
+		
+		// end:source eval.js
+		
+		
+		// source export-resource.js
+		obj_inherit(Resource, {
+		    bin_remove: bin_remove,
+		    bin_tryReload: bin_tryReload,
+		    path_getFile: function() {
+		        return path_getFile(this.url);
+		    },
+		
+		    path_getDir: function() {
+		        return path_getDir(path_getFile(this.url));
+		    },
+		
+		    inject: function() {
+		
+		        var pckg = arguments.length === 1 ? arguments[0] : __array_slice.call(arguments);
+		
+		        var current = this;
+		
+		        current.state = current.state >= 3 ? 3 : 2;
+		
+		        var bundle = current.create();
+		
+		        bundle.url = this.url;
+		        bundle.location = this.location;
+		        bundle.load(pckg)
+		            .done(function(resp) {
+		
+		            var sources = resp.load,
+		                key,
+		                resource;
+		
+		            try {
+		                for (var i = 0; i < bundle.includes.length; i++) {
+		                    //@TODO - refactor
+		
+		                    var resource = bundle.includes[i].resource,
+		                        source = resource.exports;
+		
+		
+		                    resource.exports = null;
+		                    resource.type = 'js';
+		                    resource.includes = null;
+		                    resource.state = 3;
+		
+		
+		                    for (var key in bin.load) {
+		                        if (bin.load[key] === resource) {
+		                            delete bin.load[key];
+		                            break;
+		                        }
+		                    }
+		
+		
+		                    __eval(source, resource, true);
+		
+		
+		                    resource.readystatechanged(3);
+		
+		                }
+		            } catch (e) {
+		                console.error('Injected Script Error\n', e, key);
+		            }
+		
+		
+		            bundle.on(4, function() {
+		
+		                current
+		                    .includes
+		                    .splice
+		                    .apply(current.includes, [bundle, 1].concat(bundle.includes));
+		
+		                current.readystatechanged(3);
+		            });
+		        });
+		
+		        return current;
+		    },
+		
+		    instance: function(currentUrl) {
+		        if (typeof currentUrl === 'string') {
+		
+		            var old = module,
+		                next = new Module(currentUrl, old);
+		
+		            next.filename = path_getFile(currentUrl);
+		            next.paths = Module._nodeModulePaths(path_getDir(next.filename));
+		
+		
+		            if (!globalPath) {
+		                var delimiter = process.platform === 'win32' ? ';' : ':',
+		                    PATH = process.env.PATH || process.env.path;
+		
+		                if (!PATH) {
+		                    console.error('PATH not defined in env', process.env);
+		                }
+		
+		                var parts = PATH.split(delimiter),
+		                    globalPath = ruqq.arr.first(parts, function(x) {
+		                        return /([\\\/]npm[\\\/])|([\\\/]npm$)/gi.test(x);
+		                    });
+		
+		                if (globalPath) {
+		                    globalPath = globalPath.replace(/\\/g, '/');
+		                    globalPath += (globalPath[globalPath.length - 1] !== '/' ? '/' : '') + 'node_modules';
+		
+		                    includePath = io.env.applicationDir.toLocalDir() + 'node_modules';
+		                } else {
+		                    console.error('Could not resolve global NPM Directory from system path');
+		                    console.log('searched with pattern /npm in', PATH, delimiter);
+		                }
+		            }
+		
+		
+		            next.paths.unshift(includePath);
+		            next.paths.unshift(globalPath);
+		
+		            module = next;
+		            require = next.require.bind(next);
+		        }
+		
+		        var res = new Resource();
+		        res.state = 4;
+		        return res;
+		    }
 		});
-	
-	
-	
+		// end:source export-resource.js
+		// source export-include.js
+		obj_inherit(Include, {
+		    bin_tryReload: bin_tryReload,
+		    bin_remove: bin_remove
+		});
+		// end:source export-include.js
+	    
 	}());
-	// end:source ../src/11.node.js
+	// end:source ../src/node/node.js
 
 }));
 
@@ -3758,8 +3816,9 @@ function __eval(source, include) {
     var _global, _exports, _document;
 
     
-	if (typeof exports !== 'undefined' && (root === exports || root == null)){
+	if (typeof exports !== 'undefined' && (root == null || root === exports || root === global)){
 		// raw nodejs module
+        root = exports;
     	_global = global;
     }
 	
@@ -3810,6 +3869,7 @@ function __eval(source, include) {
 }(this, function (global, exports, document) {
     'use strict';
 
+// end:source ../../mask/src/umd-head.js
 
 
 
@@ -3833,6 +3893,7 @@ function __eval(source, include) {
 			allowCache: true
 		};
 	
+	// end:source ../../mask/src/scope-vars.js
 	// source ../../mask/src/util/util.js
 	function util_extend(target, source) {
 	
@@ -3952,6 +4013,7 @@ function __eval(source, include) {
 		return array == null ? string : array;
 	}
 	
+	// end:source ../../mask/src/util/util.js
 	// source ../../mask/src/util/template.js
 	function Template(template) {
 		this.template = template;
@@ -4024,6 +4086,7 @@ function __eval(source, include) {
 	
 	};
 	
+	// end:source ../../mask/src/util/template.js
 	// source ../../mask/src/util/string.js
 	function str_trim(str) {
 	
@@ -4053,6 +4116,7 @@ function __eval(source, include) {
 			? str
 			: str.substring(i, j + 1);
 	}
+	// end:source ../../mask/src/util/string.js
 	// source ../../mask/src/util/condition.js
 	/**
 	 *	ConditionUtil
@@ -4374,6 +4438,7 @@ function __eval(source, include) {
 		};
 	}());
 	
+	// end:source ../../mask/src/util/condition.js
 	
 	// source ../src/util/is.js
 	function is_Function(x) {
@@ -4389,6 +4454,7 @@ function __eval(source, include) {
 			&& typeof x.length === 'number'
 			&& typeof x.slice === 'function';
 	}
+	// end:source ../src/util/is.js
 	// source ../src/util/object.js
 	function obj_inherit(target /* source, ..*/ ) {
 		if (typeof target === 'function') {
@@ -4453,6 +4519,7 @@ function __eval(source, include) {
 	
 		return value;
 	}
+	// end:source ../src/util/object.js
 	// source ../src/util/function.js
 	
 	function fn_isFunction(fn) {
@@ -4462,6 +4529,7 @@ function __eval(source, include) {
 	function fn_empty() {
 		return false;
 	}
+	// end:source ../src/util/function.js
 	
 	
 	
@@ -4548,6 +4616,7 @@ function __eval(source, include) {
 		precedence[op_LogicalAnd] = 6;
 		precedence[op_LogicalOr] = 6;
 		
+		// end:source 1.scope-vars.js
 		// source 2.ast.js
 		function Ast_Body(parent) {
 			this.parent = parent;
@@ -4711,6 +4780,7 @@ function __eval(source, include) {
 		
 		}
 		
+		// end:source 2.ast.js
 		// source 3.util.js
 		function _throw(message, token) {
 			console.error('Expression parser:', message, token, template.substring(index));
@@ -4786,6 +4856,7 @@ function __eval(source, include) {
 			return value;
 		}
 		
+		// end:source 3.util.js
 		// source 4.parser.helper.js
 		function parser_skipWhitespace() {
 			var c;
@@ -4995,6 +5066,7 @@ function __eval(source, include) {
 			_throw('Unexpected / Unsupported directive');
 			return null;
 		}
+		// end:source 4.parser.helper.js
 		// source 5.parser.js
 		function expression_parse(expr) {
 		
@@ -5223,6 +5295,7 @@ function __eval(source, include) {
 		
 			return ast;
 		}
+		// end:source 5.parser.js
 		// source 6.eval.js
 		function expression_evaluate(mix, model, cntx, controller) {
 		
@@ -5354,6 +5427,7 @@ function __eval(source, include) {
 			return result;
 		}
 		
+		// end:source 6.eval.js
 		// source 7.vars.helper.js
 		var refs_extractVars = (function() {
 		
@@ -5553,6 +5627,7 @@ function __eval(source, include) {
 		
 		}());
 		
+		// end:source 7.vars.helper.js
 	
 	
 		return {
@@ -5580,6 +5655,7 @@ function __eval(source, include) {
 	
 	}());
 	
+	// end:source ../../mask/src/expression/exports.js
 	// source ../../mask/src/custom.js
 	var custom_Utils = {
 		condition: ConditionUtil.condition,
@@ -5629,6 +5705,7 @@ function __eval(source, include) {
 		// use on server to define reserved tags and its meta info
 		custom_Tags_defs = {};
 	
+	// end:source ../../mask/src/custom.js
 	// source ../../mask/src/dom/dom.js
 	
 	var Dom = {
@@ -5704,6 +5781,7 @@ function __eval(source, include) {
 		modelRef: null
 	};
 	
+	// end:source ../../mask/src/dom/dom.js
 	// source ../../mask/src/parse/parser.js
 	var Parser = (function(Node, TextNode, Fragment, Component) {
 	
@@ -6212,6 +6290,7 @@ function __eval(source, include) {
 		};
 	}(Node, TextNode, Fragment, Component));
 	
+	// end:source ../../mask/src/parse/parser.js
 	
 	
 	// source ../src/cache/cache.js
@@ -6230,6 +6309,7 @@ function __eval(source, include) {
 				return html;
 			};
 		}
+		// end:source utils.js
 		// source CompoCacheCollection.js
 		
 		function CompoCacheCollection(controller) {
@@ -6304,6 +6384,7 @@ function __eval(source, include) {
 				return key;
 			}
 		};
+		// end:source CompoCacheCollection.js
 		
 		return {
 			get controllerID (){
@@ -6360,6 +6441,7 @@ function __eval(source, include) {
 			}
 		};
 	}());
+	// end:source ../src/cache/cache.js
 	
 	/** NODEJS BUILDER **/
 	// source ../src/builder.js
@@ -6427,6 +6509,7 @@ function __eval(source, include) {
 			return ModelBuilder;
 			
 		}());
+		// end:source model.js
 		// source stringify.js
 		
 		
@@ -6506,6 +6589,7 @@ function __eval(source, include) {
 		
 		}
 		
+		// end:source stringify.js
 		// source html-dom/lib.js
 		
 		
@@ -6538,6 +6622,7 @@ function __eval(source, include) {
 		function node_insertBefore(node, anchor) {
 			return anchor.parentNode.insertBefore(node, anchor);
 		}
+		// end:source util/node.js
 		// source util/traverse.js
 		
 		function trav_getDoc(el, _deep) {
@@ -6577,6 +6662,7 @@ function __eval(source, include) {
 			
 			return el;
 		}
+		// end:source util/traverse.js
 		// source jq/util/selector.js
 		
 		var sel_key_UP = 'parentNode',
@@ -6797,6 +6883,7 @@ function __eval(source, include) {
 			return matched;
 		}
 		
+		// end:source jq/util/selector.js
 		
 		// source Node.js
 		function html_Node() {}
@@ -6985,6 +7072,7 @@ function __eval(source, include) {
 			};
 		
 		}());
+		// end:source Node.js
 		// source Doctype.js
 		
 		function html_DOCTYPE(doctype){
@@ -7001,6 +7089,7 @@ function __eval(source, include) {
 		};
 		
 		
+		// end:source Doctype.js
 		// source DocumentFragment.js
 		
 		function html_DocumentFragment() {}
@@ -7023,6 +7112,7 @@ function __eval(source, include) {
 		});
 		
 		
+		// end:source DocumentFragment.js
 		// source Element.js
 		
 		function html_Element(name) {
@@ -7074,6 +7164,7 @@ function __eval(source, include) {
 						+ _class;
 				}
 			};
+			// end:source jq/classList.js
 			
 			html_Element.prototype = obj_inherit(html_Element, html_Node, {
 				
@@ -7183,6 +7274,7 @@ function __eval(source, include) {
 			});
 		
 		}());
+		// end:source Element.js
 		// source TextNode.js
 		function html_TextNode(text) {
 			this.textContent = text;
@@ -7226,6 +7318,7 @@ function __eval(source, include) {
 		
 		
 		}());
+		// end:source TextNode.js
 		// source Component.js
 		function html_Component(node, model, ctx, container, controller) {
 			
@@ -7234,9 +7327,8 @@ function __eval(source, include) {
 				key,
 				cacheInfo;
 			
-			var Ctor = node.controller,
-				compoName = node.compoName || node.tagName;
-				
+			var compoName = node.compoName || node.tagName,
+				Ctor = custom_Tags[compoName];
 			
 			if (Ctor != null) 
 				cacheInfo = is_Function(Ctor)
@@ -7252,9 +7344,6 @@ function __eval(source, include) {
 				if (compo.__cached) {
 					compo.render = fn_empty;
 				}
-				
-				debugger;
-				
 				return;
 			}
 			
@@ -7485,7 +7574,7 @@ function __eval(source, include) {
 			if (controller.tagName == null) {
 				var attrHandlers = controller.handlers && controller.handlers.attr,
 					attrFn;
-				for (key in controller.attr) {
+				for (var key in controller.attr) {
 					
 					attrFn = null;
 					
@@ -7518,6 +7607,7 @@ function __eval(source, include) {
 			}
 		}
 		
+		// end:source Component.js
 		// source Comment.js
 		function html_Comment(textContent) {
 			this.textContent = textContent || '';
@@ -7546,6 +7636,7 @@ function __eval(source, include) {
 			
 			}
 		};
+		// end:source Comment.js
 		
 		// source document.js
 		
@@ -7569,7 +7660,9 @@ function __eval(source, include) {
 			}
 		};
 		
+		// end:source document.js
 		
+		// end:source html-dom/lib.js
 		// source handler/document.js
 		(function() {
 		
@@ -7652,6 +7745,7 @@ function __eval(source, include) {
 		
 		}());
 		
+		// end:source handler/document.js
 		
 		
 		
@@ -7795,6 +7889,7 @@ function __eval(source, include) {
 				
 				container = tag;
 				
+				// end:source ../../mask/src/build/type.node.js
 			}
 	
 			if (type === 2 /* Dom.TEXTNODE */) {
@@ -7842,6 +7937,7 @@ function __eval(source, include) {
 					container.appendChild(document.createTextNode(content));
 				}
 				
+				// end:source ../../mask/src/build/type.textNode.js
 				return container;
 			}
 	
@@ -7937,16 +8033,12 @@ function __eval(source, include) {
 			var html;
 	
 			
-			console.time('-build-')
 			builder_html(template, model, cntx, container, controller);
-			console.timeEnd('-build-');
 			
 			
 			if (cntx.async === true) {
 				
-				console.time('-build-async-wait-');
 				cntx.done(function(){
-					console.timeEnd('-build-async-wait-');
 					
 					if (cntx.page && cntx.page.query.debug === 'tree') {
 						// cntx.req - is only present, when called by a page instance
@@ -7956,11 +8048,7 @@ function __eval(source, include) {
 						return;
 					}
 					
-					console.time('-stringify-')
 					html = html_stringify(container, model, cntx, controller);
-					
-					console.timeEnd('-stringify-');
-					
 					
 					cntx.resolve(html);
 				});
@@ -7973,11 +8061,8 @@ function __eval(source, include) {
 				return JSON.stringify(logger_dimissCircular(container));
 			
 	
-			console.time('-stringify-')
+			
 			html = html_stringify(container, model, cntx, controller);
-			
-			console.timeEnd('-stringify-');
-			
 			
 			return html;
 		};
@@ -7987,6 +8072,7 @@ function __eval(source, include) {
 		
 	}());
 	
+	// end:source ../src/builder.js
 
 
 	// source ../../mask/src/mask.js
@@ -8306,6 +8392,7 @@ function __eval(source, include) {
 	 **/
 	Mask.renderDom = Mask.render;
 	
+	// end:source ../../mask/src/mask.js
 	
 	// source ../src/mock/mock.js
 	
@@ -8468,6 +8555,7 @@ function __eval(source, include) {
 			}
 		};
 	}());
+	// end:source Meta.js
 	// source attr-handler.js
 	var mock_AttrHandler = (function() {
 		
@@ -8511,6 +8599,7 @@ function __eval(source, include) {
 		};
 	
 	}());
+	// end:source attr-handler.js
 	// source tag-handler.js
 	var mock_TagHandler = (function() {
 		
@@ -8537,6 +8626,7 @@ function __eval(source, include) {
 		};
 			
 	}());
+	// end:source tag-handler.js
 	// source util-handler.js
 	var mock_UtilHandler = (function() {
 		
@@ -8600,6 +8690,7 @@ function __eval(source, include) {
 		};
 	
 	}());
+	// end:source util-handler.js
 	
 	
 	
@@ -8660,6 +8751,7 @@ function __eval(source, include) {
 		}
 		
 	};
+	// end:source ../src/mock/mock.js
 	
 	// source ../../mask/src/formatter/stringify.lib.js
 	(function(mask){
@@ -8857,11 +8949,13 @@ function __eval(source, include) {
 			};
 		}());
 		
+		// end:source stringify.js
 	
 		mask.stringify = stringify;
 	
 	}(Mask));
 	
+	// end:source ../../mask/src/formatter/stringify.lib.js
 
 	
 	/* Handlers */
@@ -9045,6 +9139,7 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
+	// end:source ../../mask/src/handlers/sys.js
 	// source ../../mask/src/handlers/utils.js
 	(function(mask) {
 	
@@ -9152,6 +9247,7 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
+	// end:source ../../mask/src/handlers/utils.js
 
 	// source ../../mask/src/libs/compo.js
 	
@@ -9175,6 +9271,7 @@ function __eval(source, include) {
 			console.warn('jQuery / Zepto etc. was not loaded before compo.js, please use Compo.config.setDOMLibrary to define dom engine');
 		}
 		
+		// end:source ../src/scope-vars.js
 	
 		// source ../src/util/object.js
 		function obj_extend(target, source){
@@ -9202,6 +9299,7 @@ function __eval(source, include) {
 			return copy;
 		}
 		
+		// end:source ../src/util/object.js
 		// source ../src/util/function.js
 		function fn_proxy(fn, context) {
 			
@@ -9210,6 +9308,7 @@ function __eval(source, include) {
 			};
 			
 		}
+		// end:source ../src/util/function.js
 		// source ../src/util/selector.js
 		function selector_parse(selector, type, direction) {
 			if (selector == null){
@@ -9231,7 +9330,7 @@ function __eval(source, include) {
 					break;
 				case '.':
 					key = 'class';
-					selector = new RegExp('\\b' + selector.substring(1) + '\\b');
+					selector = sel_hasClassDelegate(selector.substring(1));
 					prop = 'attr';
 					break;
 				default:
@@ -9267,11 +9366,17 @@ function __eval(source, include) {
 				return false;
 			}
 		
+			if (typeof selector.selector === 'function') {
+				return selector.selector(obj[selector.key]);
+			}
+			
 			if (selector.selector.test != null) {
 				if (selector.selector.test(obj[selector.key])) {
 					return true;
 				}
-			} else {
+			}
+			
+			else {
 				// == - to match int and string
 				if (obj[selector.key] == selector.selector) {
 					return true;
@@ -9281,6 +9386,40 @@ function __eval(source, include) {
 			return false;
 		}
 		
+		
+		
+		function sel_hasClassDelegate(matchClass) {
+			return function(className){
+				return sel_hasClass(className, matchClass);
+			};
+		}
+		
+		// [perf] http://jsperf.com/match-classname-indexof-vs-regexp/2
+		function sel_hasClass(className, matchClass, index) {
+			if (typeof className !== 'string')
+				return false;
+			
+			if (index == null) 
+				index = 0;
+				
+			index = className.indexOf(matchClass, index);
+		
+			if (index === -1)
+				return false;
+		
+			if (index > 0 && className.charCodeAt(index - 1) > 32)
+				return sel_hasClass(className, matchClass, index + 1);
+		
+			var class_Length = className.length,
+				match_Length = matchClass.length;
+				
+			if (index < class_Length - match_Length && className.charCodeAt(index + match_Length) > 32)
+				return sel_hasClass(className, matchClass, index + 1);
+		
+			return true;
+		}
+		
+		// end:source ../src/util/selector.js
 		// source ../src/util/traverse.js
 		function find_findSingle(node, matcher) {
 			if (node instanceof Array) {
@@ -9300,6 +9439,7 @@ function __eval(source, include) {
 			return (node = node[matcher.nextKey]) && find_findSingle(node, matcher);
 		}
 		
+		// end:source ../src/util/traverse.js
 		// source ../src/util/dom.js
 		function dom_addEventListener(element, event, listener) {
 			
@@ -9318,6 +9458,7 @@ function __eval(source, include) {
 			}
 		}
 		
+		// end:source ../src/util/dom.js
 		// source ../src/util/domLib.js
 		/**
 		 *	Combine .filter + .find
@@ -9338,6 +9479,7 @@ function __eval(source, include) {
 			return $set;
 		}
 		
+		// end:source ../src/util/domLib.js
 	
 		// source ../src/compo/children.js
 		var Children_ = {
@@ -9401,6 +9543,7 @@ function __eval(source, include) {
 			}
 		};
 		
+		// end:source ../src/compo/children.js
 		// source ../src/compo/events.js
 		var Events_ = {
 			on: function(component, events, $element) {
@@ -9450,6 +9593,7 @@ function __eval(source, include) {
 		},
 			EventDecorator = null;
 		
+		// end:source ../src/compo/events.js
 		// source ../src/compo/events.deco.js
 		var EventDecos = (function() {
 		
@@ -9496,6 +9640,7 @@ function __eval(source, include) {
 		
 		}());
 		
+		// end:source ../src/compo/events.deco.js
 		// source ../src/compo/pipes.js
 		var Pipes = (function() {
 		
@@ -9655,6 +9800,7 @@ function __eval(source, include) {
 		
 		}());
 		
+		// end:source ../src/compo/pipes.js
 	
 		// source ../src/compo/anchor.js
 		
@@ -9728,6 +9874,7 @@ function __eval(source, include) {
 		
 		}());
 		
+		// end:source ../src/compo/anchor.js
 		// source ../src/compo/Compo.js
 		var Compo = (function() {
 		
@@ -9900,6 +10047,7 @@ function __eval(source, include) {
 				};
 			}
 			
+			// end:source Compo.util.js
 			// source Compo.static.js
 			obj_extend(Compo, {
 				create: function(controller){
@@ -10093,6 +10241,7 @@ function __eval(source, include) {
 			});
 			
 			
+			// end:source Compo.static.js
 			// source async.js
 			(function(){
 				
@@ -10207,6 +10356,7 @@ function __eval(source, include) {
 				};
 				
 			}());
+			// end:source async.js
 		
 			var Proto = {
 				type: Dom.CONTROLLER,
@@ -10293,9 +10443,14 @@ function __eval(source, include) {
 					var parent;
 		
 					if (this.$ == null) {
-						var dom = typeof template === 'string' ? mask.compile(template) : template;
+						var dom = typeof template === 'string'
+							? mask.compile(template)
+							: template;
 		
-						parent = selector ? find_findSingle(this, selector_parse(selector, Dom.CONTROLLER, 'down')) : this;
+						parent = selector
+							? find_findSingle(this, selector_parse(selector, Dom.CONTROLLER, 'down'))
+							: this;
+							
 						if (parent.nodes == null) {
 							this.nodes = dom;
 							return this;
@@ -10305,15 +10460,20 @@ function __eval(source, include) {
 		
 						return this;
 					}
-					var array = mask.render(template, model, null, compo_containerArray(), this);
+					
+					var fragment = mask.render(template, model, null, null, this);
 		
-					parent = selector ? this.$.find(selector) : this.$;
-					for (var i = 0; i < array.length; i++) {
-						parent.append(array[i]);
-					}
-		
+					parent = selector
+						? this.$.find(selector)
+						: this.$;
+						
+					
+					parent.append(fragment);
+					
+					
+					// @todo do not emit to created compos before
 					this.emitIn('domInsert');
-					//- Shots.emit(this, 'DOMInsert');
+					
 					return this;
 				},
 				find: function(selector){
@@ -10408,6 +10568,7 @@ function __eval(source, include) {
 			return Compo;
 		}());
 		
+		// end:source ../src/compo/Compo.js
 		// source ../src/compo/signals.js
 		(function() {
 		
@@ -10687,6 +10848,7 @@ function __eval(source, include) {
 		
 		}());
 		
+		// end:source ../src/compo/signals.js
 	
 		// source ../src/jcompo/jCompo.js
 		(function(){
@@ -10724,6 +10886,7 @@ function __eval(source, include) {
 		
 		}());
 		
+		// end:source ../src/jcompo/jCompo.js
 	
 		// source ../src/handler/slot.js
 		
@@ -10747,12 +10910,14 @@ function __eval(source, include) {
 			}
 		};
 		
+		// end:source ../src/handler/slot.js
 	
 	
 		return Compo;
 	
 	}(Mask));
 	
+	// end:source ../../mask/src/libs/compo.js
 	// source ../../mask/src/libs/jmask.js
 	
 	var jmask = exports.jmask = (function(mask){
@@ -10773,6 +10938,7 @@ function __eval(source, include) {
 		}
 		
 		
+		// end:source ../src/scope-vars.js
 	
 		// source ../src/util/object.js
 		function util_extend(target, source){
@@ -10790,6 +10956,7 @@ function __eval(source, include) {
 			return target;
 		}
 		
+		// end:source ../src/util/object.js
 		// source ../src/util/array.js
 		function arr_each(array, fn) {
 			for (var i = 0, length = array.length; i < length; i++) {
@@ -10861,6 +11028,7 @@ function __eval(source, include) {
 		}());
 		
 		
+		// end:source ../src/util/array.js
 		// source ../src/util/selector.js
 		
 		var sel_key_UP = 'parent',
@@ -10991,7 +11159,7 @@ function __eval(source, include) {
 		
 		// [perf] http://jsperf.com/match-classname-indexof-vs-regexp/2
 		function sel_hasClass(className, matchClass, index) {
-			if (className == null) 
+			if (typeof className !== 'string')
 				return false;
 			
 			if (index == null) 
@@ -11086,6 +11254,7 @@ function __eval(source, include) {
 			return matched;
 		}
 		
+		// end:source ../src/util/selector.js
 		// source ../src/util/utils.js
 		
 		function jmask_filter(arr, matcher) {
@@ -11226,6 +11395,7 @@ function __eval(source, include) {
 		////////}
 		
 		
+		// end:source ../src/util/utils.js
 	
 		// source ../src/jmask/jmask.js
 		function jMask(mix) {
@@ -11450,6 +11620,7 @@ function __eval(source, include) {
 		
 		});
 		
+		// end:source ../src/jmask/jmask.js
 		// source ../src/jmask/manip.attr.js
 		(function() {
 			arr_each(['add', 'remove', 'toggle', 'has'], function(method) {
@@ -11653,6 +11824,7 @@ function __eval(source, include) {
 		
 		}());
 		
+		// end:source ../src/jmask/manip.attr.js
 		// source ../src/jmask/manip.dom.js
 		
 		
@@ -11730,6 +11902,7 @@ function __eval(source, include) {
 			};
 		});
 		
+		// end:source ../src/jmask/manip.dom.js
 		// source ../src/jmask/traverse.js
 		util_extend(jMask.prototype, {
 			each: function(fn, cntx) {
@@ -11816,6 +11989,7 @@ function __eval(source, include) {
 		
 		});
 		
+		// end:source ../src/jmask/traverse.js
 	
 	
 	
@@ -11823,6 +11997,7 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
+	// end:source ../../mask/src/libs/jmask.js
 	// source ../../mask.binding/lib/binding.embed.node.js
 	
 	(function(mask, Compo){
@@ -14194,6 +14369,7 @@ function __eval(source, include) {
 	
 	}(Mask, Compo));
 	
+	// end:source ../../mask.binding/lib/binding.embed.node.js
 	
 
 
