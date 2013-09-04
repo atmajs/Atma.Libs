@@ -1,0 +1,1 @@
+atma custom build/process --publish
