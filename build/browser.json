@@ -1,0 +1,37 @@
+{
+	"settings": {
+		"output": "browser/"
+	},
+	"routes": { 
+		"libs": "../../{0}/lib/{1}.js",
+		"compos": "../../compos/{0}/lib/{1}.js"
+	},
+	
+	"libraries": {
+		"libs": [
+			"class",
+			"include/include",
+			"mask",
+			"mask.animation",
+			"ruta",
+			"ruqq/arr",
+			"ruqq/utils",
+			"ruqq/net/uri"
+		],
+		"compos": [
+			"layout"
+		]
+	},
+	
+	"pckg" : [
+		"class",
+		"include",
+		"mask",
+		"mask.animation",
+		"ruta",
+		"arr",
+		"uri",
+		"utils",
+		"layout"
+	]
+}

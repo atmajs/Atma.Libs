@@ -15,9 +15,11 @@ include
 		include.exports = Class({
 			Extends: Class.Deferred,
 			
-			Construct: function(pckg, name){
+			Construct: function(pckg, setts){
 				this.pckg = pckg;
-				this.name = name;
+				this.setts = Object.extend({
+					output: '',
+				}, setts);
 			},
 			
 			process: function(){
@@ -55,26 +57,15 @@ include
 					? '-' + mode
 					: '';
 				
-				if (!this.name) {
-					
-					switch (type) {
-						case 'namespace':
-							return 'index' + mode + '.js';
-						case 'common':
-							return 'exports' + mode + '.js';
-						case 'globals':
-							return 'globals' + mode + '.js'
-					}
-					
-				}
+				var output = this.setts.output;
 				
 				switch (type) {
 					case 'namespace':
-						return name + '/index' + mode + '.js';
+						return output + 'index' + mode + '.js';
 					case 'common':
-						return name + '/exports' + mode + '.js';
+						return output + 'exports' + mode + '.js';
 					case 'globals':
-						return name + '/globals' + mode + '.js'
+						return output + 'globals' + mode + '.js'
 				}
 				
 				console.error('ERROR - undefined type -', type);

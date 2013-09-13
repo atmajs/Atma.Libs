@@ -4,22 +4,33 @@
 	(function(root, factory){
 	"use strict";
 
-	var _global, _exports;
+	var _isCommonJS = false,
+		_global,
+		_exports;
 	
-	if (typeof exports !== 'undefined' && (root === exports || root == null)){
+	if (typeof exports !== 'undefined' && (root == null || root === exports || root === global)){
 		// raw nodejs module
-    	_global = _exports = global;
+        _global = global;
+		_isCommonJS = true;
     }
 	
 	if (_global == null) {
-		_global = typeof window === 'undefined' ? global : window;
+		_global = typeof window === 'undefined'
+			? global
+			: window
+			;
 	}
+	
 	if (_exports == null) {
 		_exports = root || _global;
 	}
 	
 	
 	factory(_global, _exports);
+	
+	if (_isCommonJS) {
+		module.exports = _exports.Class;
+	}
 	
 }(this, function(global, exports){
 	"use strict";
@@ -1296,8 +1307,8 @@
 					for (var i = 0, imax = this.length; i < imax; i++){
 						
 						fn.call(cntx || this, this[i], i);
-						
 					}
+		            return this;
 				},
 				
 				
@@ -1338,24 +1349,67 @@
 					if (mix == null)
 						return this[0];
 					
-					var imax = this.length,
-						i = 0;
-					while (--imax !== -1) {
-						if (check(this[i++], mix))
-							return this[i - 1];
-					}
-					return null;
+					var i = this.indexOf(mix);
+					return i !== -1
+						? this[i]
+						: null;
+						
 				},
 				last: function(mix){
 					if (mix == null)
-						return this[0];
+						return this[this.length - 1];
+					
+					var i = this.lastIndexOf(mix);
+					return i !== -1
+						? this[i]
+						: null;
+				},
+				indexOf: function(mix, index){
+					if (mix == null)
+						return -1;
+					
+					if (index != null) {
+						if (index < 0) 
+							index = 0;
+							
+						if (index >= this.length) 
+							return -1;
+						
+					}
+					else{
+						index = 0;
+					}
+					
 					
 					var imax = this.length;
-					while (--imax !== -1) {
-						if (check(this[imax], mix))
-							return this[imax];
+					for(; index < imax; index++) {
+						if (check(this[index], mix))
+							return index;
 					}
-					return null;
+					return -1;
+				},
+				lastIndexOf: function(mix, index){
+					if (mix == null)
+						return -1;
+					
+					if (index != null) {
+						if (index >= this.length) 
+							index = this.length - 1;
+						
+						if (index < 0) 
+							return -1;
+					}
+					else {
+						index = this.length - 1;
+					}
+					
+					
+					for (; index > -1; index--) {
+						if (check(this[index], mix))
+							return index;
+					}
+					
+					return -1;
 				}
 			};
 			
@@ -2049,7 +2103,10 @@
 	// source ../src/utils/path.js
 	function path_getDir(url) {
 		var index = url.lastIndexOf('/');
-		return index === -1 ? '' : url.substring(index + 1, -index);
+		return index === -1
+			? ''
+			: url.substring(index + 1, -index)
+			;
 	}
 	
 	function path_resolveCurrent() {
@@ -2062,8 +2119,21 @@
 		var scripts = document.getElementsByTagName('script'),
 			last = scripts[scripts.length - 1],
 			url = last && last.getAttribute('src') || '';
-			
-		return (url[0] === '/') ? url : '/' + url;
+		
+		if (url[0] === '/') {
+			return url;
+		}
+		
+		var location = window
+			.location
+			.pathname
+			.replace(/\/[^\/]+\.\w+$/, '');
+		
+		if (location[location.length - 1] !== '/') {
+			location += '/';
+		}
+		
+		return location + url;
 	}
 	
 	function path_win32Normalize(path){
@@ -2380,6 +2450,7 @@
     		currentResource,
     		stack = [],
     		
+    		_cb_complete = [],
     		_paused;
     		
     		
@@ -2401,7 +2472,12 @@
     	}
     
     	function loadByEmbedding() {
-    		if (_paused || stack.length === 0) {
+    		if (_paused) {
+    			return;
+    		}
+    		
+    		if (stack.length === 0){
+    			trigger_complete();
     			return;
     		}
     
@@ -2460,9 +2536,15 @@
     	}
     	
     	function processByEval() {
-    		if (_paused || stack.length === 0) {
+    		if (_paused) {
     			return;
     		}
+    		
+    		if (stack.length === 0){
+    			trigger_complete();
+    			return;
+    		}
+    		
     		if (currentResource != null) {
     			return;
     		}
@@ -2493,6 +2575,17 @@
     		currentResource = null;
     		processByEval();
     
+    	}
+    	
+    	
+    	function trigger_complete() {
+    		var i = -1,
+    			imax = _cb_complete.length;
+    		while (++i < imax) {
+    			_cb_complete[i]();
+    		}
+    		
+    		_cb_complete.length = 0;
     	}
     
     	
@@ -2605,6 +2698,14 @@
     				: loadByEmbedding;
     				
     			fn();
+    		},
+    		complete: function(callback){
+    			if (_paused === false && stack.length === 0) {
+    				callback();
+    				return;
+    			}
+    			
+    			_cb_complete.push(callback);
     		}
     	};
     })();
@@ -2995,7 +3096,9 @@
 			},
 			
 			pauseStack: ScriptStack.pause,
-			resumeStack: ScriptStack.resume
+			resumeStack: ScriptStack.resume,
+			
+			allDone: ScriptStack.complete
 		});
 		
 		
@@ -3546,7 +3649,7 @@
 		
 		        timeout = setTimeout(function() {
 		            var res = bin_load(bin_remove(url));
-		            
+		
 		            if (res && typeof cfg.autoreload === 'object') {
 		                cfg.autoreload.fileChanged(url);
 		            }
@@ -3604,25 +3707,28 @@
 		    resource.content = null;
 		    resource.exports = null;
 		
-		    return resource
-		        .parent
+		    var parent = resource.parent;
+		    return parent
 		        .create(
-		        resource.type,
-		        resource.route,
-		        resource.namespace,
-		        resource.xpath);
+		            resource.type,
+		            resource.route,
+		            resource.namespace,
+		            resource.xpath
+		        )
+		        .on(4, parent.childLoaded);
 		
 		}
 		
 		function bin_tryReload(path, callback) {
 		    var res = bin_remove(path);
-		    
+		
 		    if (res == null) {
 		        callback && callback();
 		        return;
 		    }
-		    
-		    return bin_load(res).done(callback);
+		
+		    return bin_load(res)
+		        .done(callback);
 		}
 		// end:source utils/bin.js
 		
