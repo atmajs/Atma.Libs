@@ -6,7 +6,7 @@
 	
 	"libraries": {
 		"libs": [
-			"class",
+			"class/class.node",
 			"include/include.node",
 			"mask.node",
 			"ruta",
