@@ -191,20 +191,15 @@
 				_class.prototype.constructor = _class;
 			}
 	
-			proto_extend(_class.prototype, original);
-	
-	
 			if (_extends != null) {
 				arr_each(_extends, function(x) {
-					var a = {};
-					proto_extend(a, x);
 					
-					delete a.constructor;
-					for (var key in a) {
-						_class.prototype[key] = a[key];
-					}
+					delete x.constructor;
+					proto_extend(_class, x);
 				});
 			}
+			
+			proto_extend(_class, original); 
 		}
 	
 		return '__proto__' in Object.prototype === true ? inherit : inherit_protoLess;
@@ -888,7 +883,9 @@
 	}());
 	// end:source ../src/business/Route.js
 	// source ../src/business/Deferred.js
-	var DeferredProto = {
+	function Deferred(){}
+	
+	Deferred.prototype = {
 		_isAsync: true,
 			
 		_done: null,
@@ -993,6 +990,7 @@
 			return this;
 		},
 	};
+	
 	// end:source ../src/business/Deferred.js
 	// source ../src/business/EventEmitter.js
 	var EventEmitter = (function(){
@@ -1006,12 +1004,18 @@
 	        constructor: Emitter,
 			
 	        on: function(event, callback) {
-	            (this._listeners[event] || (this._listeners[event] = [])).push(callback);
+	            if (callback != null){
+					(this._listeners[event] || (this._listeners[event] = [])).push(callback);
+				}
+				
 	            return this;
 	        },
 	        once: function(event, callback){
-	            callback._once = true;
-	            (this._listeners[event] || (this._listeners[event] = [])).push(callback);
+				if (callback != null) {
+					callback._once = true;
+					(this._listeners[event] || (this._listeners[event] = [])).push(callback);
+				}
+				
 	            return this;
 	        },
 			
@@ -1284,7 +1288,7 @@
 	
 	
 	Class.Serializable = Serializable;
-	Class.Deferred = DeferredProto;
+	Class.Deferred = Deferred;
 	Class.EventEmitter = EventEmitter;
 	
 	Class.validate = Validation.validate;
@@ -1716,7 +1720,7 @@
 			this._route = new Route(route);
 		};
 		
-		obj_inherit(XHRRemote, StoreProto, DeferredProto, {
+		obj_inherit(XHRRemote, StoreProto, Deferred, {
 			
 			fetch: function(data){
 				XHR.get(this._route.create(data || this), this);
@@ -2013,7 +2017,7 @@
 	        /**
 	         * @TODO - replace ensureFree with a stack of calls
 	         */
-	        obj_inherit(MongoStoreSingle, StoreProto, DeferredProto, {
+	        obj_inherit(MongoStoreSingle, StoreProto, Deferred, {
 	            _busy: false,
 	            
 	            fetch: function(data) {
@@ -2153,7 +2157,7 @@
 	        }
 	            
 	            
-	        obj_inherit(MongoStoreCollection, DeferredProto, {
+	        obj_inherit(MongoStoreCollection, Deferred, {
 	            
 	            fetch: function(data){
 	                if (this._ensureFree() === false)
@@ -5161,7 +5165,7 @@ function __eval(source, include) {
 	// source ../src/util/function.js
 	
 	function fn_isFunction(fn) {
-		return fn instanceof Function;
+		return typeof fn === 'function';
 	}
 	
 	function fn_empty() {
@@ -7966,7 +7970,7 @@ function __eval(source, include) {
 				cacheInfo;
 			
 			var compoName = node.compoName || node.tagName,
-				Ctor = custom_Tags[compoName];
+				Ctor = custom_Tags[compoName] || node.controller;
 			
 			if (Ctor != null) 
 				cacheInfo = is_Function(Ctor)
@@ -8293,8 +8297,8 @@ function __eval(source, include) {
 				return new html_Comment(text);
 			},
 			
-			createComponent: function(compo, model, cntx, container, controller){
-				return new html_Component(compo, model, cntx, container, controller);
+			createComponent: function(compo, model, ctx, container, controller){
+				return new html_Component(compo, model, ctx, container, controller);
 			}
 		};
 		
@@ -8385,19 +8389,18 @@ function __eval(source, include) {
 		
 		// end:source handler/document.js
 		
-		
-		
+		// source util/json.js
 		var logger_dimissCircular = (function() {
 			var cache;
-	
+		
 			function clone(mix) {
 				if (mix == null) {
 					return null;
 				}
-	
-	
+		
+		
 				var cloned;
-	
+		
 				if (mix instanceof Array) {
 					cloned = [];
 					for (var i = 0, imax = mix.length; i < imax; i++) {
@@ -8405,37 +8408,182 @@ function __eval(source, include) {
 					}
 					return cloned;
 				}
-	
+		
 				if (typeof mix === 'object') {
-	
+		
 					if (~cache.indexOf(mix)) {
 						return '[object Circular]';
 					}
 					cache.push(mix);
-	
+		
 					cloned = {};
 					for (var key in mix) {
 						cloned[key] = clone(mix[key]);
 					}
 					return cloned;
 				}
-	
+		
 				return mix;
 			}
-	
+		
 			return function(mix) {
 				if (typeof mix === 'object' && mix != null) {
 					cache = [];
 					mix = clone(mix);
 					cache = null;
 				}
-	
+		
 				return mix;
 			};
 		}());
+		// end:source util/json.js
+		
+		// source ../../mask/src/build/type.node.js
+		
+		var build_node = (function(){
+			
+			var el_create = (function(doc){
+				return function(name){
+					
+					return doc.createElement(name);
+				};
+			}(document));
+			
+			return function build_node(node, model, ctx, container, controller, childs){
+				
+				var tagName = node.tagName,
+					attr = node.attr,
+					tag;
+				
+				// if DEBUG
+				try {
+				// endif
+					tag = el_create(tagName);
+				// if DEBUG
+				} catch(error) {
+					console.error(tagName, 'element cannot be created. If this should be a custom handler tag, then controller is not defined');
+					return;
+				}
+				// endif
+				
+				
+				if (childs != null){
+					childs.push(tag);
+					attr['x-compo-id'] = controller.ID;
+				}
+				
+				// ++ insert tag into container before setting attributes, so that in any
+				// custom util parentNode is available. This is for mask.node important
+				// http://jsperf.com/setattribute-before-after-dom-insertion/2
+				if (container != null) {
+					container.appendChild(tag);
+				}
+				
+				var key,
+					value;
+				for (key in attr) {
+				
+					/* if !SAFE
+					if (hasOwnProp.call(attr, key) === false) {
+						continue;
+					}
+					*/
+				
+					if (fn_isFunction(attr[key])) {
+						value = attr[key]('attr', model, ctx, tag, controller, key);
+						if (value instanceof Array) {
+							value = value.join('');
+						}
+				
+					} else {
+						value = attr[key];
+					}
+				
+					// null or empty string will not be handled
+					if (value) {
+						if (fn_isFunction(custom_Attributes[key])) {
+							custom_Attributes[key](node, value, model, ctx, tag, controller, container);
+						} else {
+							tag.setAttribute(key, value);
+						}
+					}
+				
+				}
+			
+			
+				return tag;
+			}
+			
+		}());
+		// end:source ../../mask/src/build/type.node.js
+		// source ../../mask/src/build/type.textNode.js
+		
+		var build_textNode = (function(){
+			
+			var append_textNode = (function(document){
+				
+				return function(element, text){
+					element.appendChild(document.createTextNode(text));
+				};
+				
+			}(document));
+			
+			return function build_textNode(node, model, ctx, container, controller) {
+				
+				var content = node.content;
+					
+				
+				if (fn_isFunction(content)) {
+				
+					var result = content('node', model, ctx, container, controller);
+				
+					if (typeof result === 'string') {
+						
+						append_textNode(container, result);
+						return;
+					} 
+				
+					
+					// result is array with some htmlelements
+					var text = '',
+						jmax = result.length,
+						j = 0,
+						x;
+						
+					for (; j < jmax; j++) {
+						x = result[j];
+			
+						if (typeof x === 'object') {
+							// In this casee result[j] should be any HTMLElement
+							if (text !== '') {
+								append_textNode(container, text);
+								text = '';
+							}
+							if (x.nodeType == null) {
+								text += x.toString();
+								continue;
+							}
+							container.appendChild(x);
+							continue;
+						}
+			
+						text += x;
+					}
+					
+					if (text !== '') {
+						append_textNode(container, text);
+					}
+					
+					return;
+				} 
+				
+				append_textNode(container, content);
+			}
+		}());
+		// end:source ../../mask/src/build/type.textNode.js
+		
 	
-	
-		function builder_html(node, model, cntx, container, controller, childs) {
+		function builder_html(node, model, ctx, container, controller, childs) {
 	
 			if (node == null) {
 				return container;
@@ -8446,9 +8594,9 @@ function __eval(source, include) {
 				elements,
 				j, jmax, key, value;
 	
-			if (type === 10 /*SET*/ || node instanceof Array) {
+			if (type === 10 /*SET*/ || is_Array(node)) {
 				for (j = 0, jmax = node.length; j < jmax; j++) {
-					builder_html(node[j], model, cntx, container, controller);
+					builder_html(node[j], model, ctx, container, controller);
 				}
 				return container;
 			}
@@ -8463,125 +8611,21 @@ function __eval(source, include) {
 			}
 	
 			if (type === 1 /* Dom.NODE */) {
-				// source ../../mask/src/build/type.node.js
+				container = build_node(node, model, ctx, container, controller, childs);
+				childs = null;
 				
-				var tagName = node.tagName,
-					attr = node.attr,
-					tag;
-				
-				// if DEBUG
-				try {
-				// endif
-					tag = document.createElement(tagName);
-				// if DEBUG
-				} catch(error) {
-					console.error(tagName, 'element cannot be created. If this should be a custom handler tag, then controller is not defined');
-					return;
-				}
-				// endif
-				
-				
-				if (childs != null){
-					childs.push(tag);
-					childs = null;
-					attr['x-compo-id'] = controller.ID;
-				}
-				
-				// ++ insert tag into container before setting attributes, so that in any
-				// custom util parentNode is available. This is for mask.node important
-				// http://jsperf.com/setattribute-before-after-dom-insertion/2
-				if (container != null) {
-					container.appendChild(tag);
-				}
-				
-				
-				for (key in attr) {
-				
-					/* if !SAFE
-					if (hasOwnProp.call(attr, key) === false) {
-						continue;
-					}
-					*/
-				
-					if (typeof attr[key] === 'function') {
-						value = attr[key]('attr', model, cntx, tag, controller, key);
-						if (value instanceof Array) {
-							value = value.join('');
-						}
-				
-					} else {
-						value = attr[key];
-					}
-				
-					// null or empty string will not be handled
-					if (value) {
-						if (typeof custom_Attributes[key] === 'function') {
-							custom_Attributes[key](node, value, model, cntx, tag, controller, container);
-						} else {
-							tag.setAttribute(key, value);
-						}
-					}
-				
-				}
-				
-				
-				container = tag;
-				
-				// end:source ../../mask/src/build/type.node.js
 			}
 	
 			if (type === 2 /* Dom.TEXTNODE */) {
-				// source ../../mask/src/build/type.textNode.js
-				var x, content, result, text;
 				
-				content = node.content;
+				build_textNode(node, model, ctx, container, controller);
 				
-				if (typeof content === 'function') {
-				
-					result = content('node', model, cntx, container, controller);
-				
-					if (typeof result === 'string') {
-						container.appendChild(document.createTextNode(result));
-				
-					} else {
-				
-						text = '';
-						// result is array with some htmlelements
-						for (j = 0, jmax = result.length; j < jmax; j++) {
-							x = result[j];
-				
-							if (typeof x === 'object') {
-								// In this casee result[j] should be any HTMLElement
-								if (text !== '') {
-									container.appendChild(document.createTextNode(text));
-									text = '';
-								}
-								if (x.nodeType == null) {
-									text += x.toString();
-									continue;
-								}
-								container.appendChild(x);
-								continue;
-							}
-				
-							text += x;
-						}
-						if (text !== '') {
-							container.appendChild(document.createTextNode(text));
-						}
-					}
-				
-				} else {
-					container.appendChild(document.createTextNode(content));
-				}
-				
-				// end:source ../../mask/src/build/type.textNode.js
 				return container;
 			}
 	
 			if (type === 4 /* Dom.COMPONENT */) {
 				
-				element = document.createComponent(node, model, cntx, container, controller);
+				element = document.createComponent(node, model, ctx, container, controller);
 				container.appendChild(element);
 				container = element;
 				
@@ -8592,7 +8636,7 @@ function __eval(source, include) {
 					if (compo.model && controller.model !== compo.model) {
 						model = compo.model;
 						
-						var modelID = cntx._model.tryAppend(compo);
+						var modelID = ctx._model.tryAppend(compo);
 						if (modelID !== -1)
 							element.modelID = modelID;
 						
@@ -8614,14 +8658,16 @@ function __eval(source, include) {
 			var nodes = node.nodes;
 			if (nodes != null) {
 	
-				var isarray = nodes instanceof Array,
+				var isarray = is_Array(nodes),
 					length = isarray === true ? nodes.length : 1,
 					i = 0, childNode;
 	
 	
 				for (; i < length; i++) {
 	
-					childNode = isarray === true ? nodes[i] : nodes;
+					childNode = isarray === true
+						? nodes[i]
+						: nodes;
 	
 					if (type === 4 /* Dom.COMPONENT */ && childNode.type === 1 /* Dom.NODE */){
 						
@@ -8629,7 +8675,7 @@ function __eval(source, include) {
 							childNode.attr['x-compo-id'] = element.ID;
 					}
 	
-					builder_html(childNode, model, cntx, container, controller, elements);
+					builder_html(childNode, model, ctx, container, controller, elements);
 				}
 	
 			}
@@ -8637,7 +8683,7 @@ function __eval(source, include) {
 			if (container.nodeType === Dom.COMPONENT) {
 				
 				if (controller.onRenderEndServer && controller.async !== true) {
-					controller.onRenderEndServer(elements, model, cntx, container, controller);
+					controller.onRenderEndServer(elements, model, ctx, container, controller);
 				}
 				
 			}
@@ -8653,7 +8699,7 @@ function __eval(source, include) {
 		}
 	
 	
-		return function(template, model, cntx, container, controller) {
+		return function(template, model, ctx, container, controller) {
 			if (container == null) 
 				container = new html_DocumentFragment();
 			
@@ -8661,46 +8707,46 @@ function __eval(source, include) {
 				controller = new Component();
 			}
 				
-			if (cntx == null) 
-				cntx = {};
+			if (ctx == null) 
+				ctx = {};
 			
 			
-			cntx._model = new ModelBuilder(model, Cache.modelID);
-			cntx._id = Cache.controllerID;
+			ctx._model = new ModelBuilder(model, Cache.modelID);
+			ctx._id = Cache.controllerID;
 			
 			var html;
 	
 			
-			builder_html(template, model, cntx, container, controller);
+			builder_html(template, model, ctx, container, controller);
 			
 			
-			if (cntx.async === true) {
+			if (ctx.async === true) {
 				
-				cntx.done(function(){
+				ctx.done(function(){
 					
-					if (cntx.page && cntx.page.query.debug === 'tree') {
-						// cntx.req - is only present, when called by a page instance
+					if (ctx.page && ctx.page.query.debug === 'tree') {
+						// ctx.req - is only present, when called by a page instance
 						// @TODO - expose render fn only for page-render purpose
 						
-						cntx.resolve(JSON.stringify(logger_dimissCircular(container)));
+						ctx.resolve(JSON.stringify(logger_dimissCircular(container)));
 						return;
 					}
 					
-					html = html_stringify(container, model, cntx, controller);
+					html = html_stringify(container, model, ctx, controller);
 					
-					cntx.resolve(html);
+					ctx.resolve(html);
 				});
 				
 				return null;
 			}
 			
 			
-			if (cntx.page && cntx.page.query.debug === 'tree') 
+			if (ctx.page && ctx.page.query.debug === 'tree') 
 				return JSON.stringify(logger_dimissCircular(container));
 			
 	
 			
-			html = html_stringify(container, model, cntx, controller);
+			html = html_stringify(container, model, ctx, controller);
 			
 			return html;
 		};
@@ -9893,7 +9939,8 @@ function __eval(source, include) {
 			Dom = mask.Dom,
 			__array_slice = Array.prototype.slice,
 			
-			_mask_ensureTmplFnOrig = mask.Utils.ensureTmplFn;
+			_mask_ensureTmplFnOrig = mask.Utils.ensureTmplFn,
+			__Class;
 		
 		function _mask_ensureTmplFn(value) {
 			if (typeof value !== 'string') {
@@ -9906,8 +9953,30 @@ function __eval(source, include) {
 			console.warn('jQuery / Zepto etc. was not loaded before compo.js, please use Compo.config.setDOMLibrary to define dom engine');
 		}
 		
+		__Class = global.Class;
+		
+		if (__Class == null) {
+			
+			if (typeof exports !== 'undefined') {
+				__Class = exports.Class;
+			}
+			
+		}
+		
 		// end:source ../src/scope-vars.js
 	
+		// source ../src/util/polyfill.js
+		if (!Array.prototype.indexOf) {
+			Array.prototype.indexOf = function(x){
+				for (var i = 0, imax = this.length; i < imax; i++){
+					if (this[i] === x)
+						return i;
+				}
+				
+				return -1;
+			}
+		}
+		// end:source ../src/util/polyfill.js
 		// source ../src/util/object.js
 		function obj_extend(target, source){
 			if (target == null){
@@ -9935,6 +10004,38 @@ function __eval(source, include) {
 		}
 		
 		// end:source ../src/util/object.js
+		// source ../src/util/array.js
+			
+		function arr_each(array, fn){
+			for(var i = 0, length = array.length; i < length; i++){
+				fn(array[i], i);
+			}
+		}
+		
+		function arr_remove(array, child){
+			if (array == null){
+				console.error('Can not remove myself from parent', child);
+				return;
+			}
+		
+			var index = array.indexOf(child);
+		
+			if (index === -1){
+				console.error('Can not remove myself from parent', child, index);
+				return;
+			}
+		
+			array.splice(index, 1);
+		}
+		
+		function arr_isArray(arr){
+			return arr != null
+				&& typeof arr === 'object'
+				&& typeof arr.length === 'number'
+				&& typeof arr.splice === 'function'
+				;
+		}
+		// end:source ../src/util/array.js
 		// source ../src/util/function.js
 		function fn_proxy(fn, context) {
 			
@@ -9942,6 +10043,10 @@ function __eval(source, include) {
 				return fn.apply(context, arguments);
 			};
 			
+		}
+		
+		function fn_isFunction(fn){
+			return typeof fn === 'function';
 		}
 		// end:source ../src/util/function.js
 		// source ../src/util/selector.js
@@ -10075,6 +10180,33 @@ function __eval(source, include) {
 		}
 		
 		// end:source ../src/util/traverse.js
+		// source ../src/util/manipulate.js
+		function node_tryDispose(node){
+			if (node.hasAttribute('x-compo-id')) {
+				
+				var id = node.getAttribute('x-compo-id'),
+					compo = Anchor.getByID(id)
+					;
+				
+				if (compo) 
+					compo_dispose(compo);
+				return;
+			}
+			
+			node_tryDisposeChildren(node);
+		}
+		
+		function node_tryDisposeChildren(node){
+			var child = node.firstChild;
+			while(child != null) {
+				if (child.nodeType === 1) {
+					node_tryDispose(child);
+				}
+				
+				child = child.nextSibling;
+			}
+		}
+		// end:source ../src/util/manipulate.js
 		// source ../src/util/dom.js
 		function dom_addEventListener(element, event, listener) {
 			
@@ -10388,14 +10520,31 @@ function __eval(source, include) {
 			}
 			Pipe.prototype = {
 				constructor: Pipe,
-				emit: function(signal, args){
+				emit: function(signal){
 					var controllers = Collection[this.pipeName],
-						pipeName = this.pipeName;
+						pipeName = this.pipeName,
+						args;
+					
 					if (controllers == null) {
-						console.warn('Pipe.emit: No signals were bound to a Pipe', pipeName);
+						//if DEBUG
+						console.warn('Pipe.emit: No signals were bound to:', pipeName);
+						//endif
 						return;
 					}
-		
+					
+					/**
+					 * @TODO - for backward comp. support
+					 * to pass array of arguments as an Array in second args
+					 *
+					 * - switch to use plain arguments
+					 */
+					
+					if (arguments.length === 2 && arr_isArray(arguments[1])) {
+						args = arguments[1];
+					} else if (arguments.length > 1) {
+						args = __array_slice.call(arguments, 1);
+					}
+					
 					var i = controllers.length,
 						controller, slots, slot, called;
 		
@@ -10427,9 +10576,9 @@ function __eval(source, include) {
 				addController: controller_add,
 				removeController: controller_remove,
 		
-				emit: function(pipeName, signal, args) {
-					Pipe(pipeName).emit(signal, args);
-				},
+				////emit: function(pipeName, signal, args) {
+				////	Pipe(pipeName).emit(signal, args);
+				////},
 				pipe: Pipe
 			};
 		
@@ -10504,6 +10653,9 @@ function __eval(source, include) {
 						return;
 					}
 					delete _cache[compo.ID];
+				},
+				getByID: function(id){
+					return _cache[id];
 				}
 			};
 		
@@ -10560,7 +10712,7 @@ function __eval(source, include) {
 					if (controller[key] == null){
 						controller[key] = Proto[key];
 					}
-					controller['base_' + key] = Proto[key];
+					//- controller['base_' + key] = Proto[key];
 				}
 		
 				klass.prototype = controller;
@@ -10685,15 +10837,15 @@ function __eval(source, include) {
 			// end:source Compo.util.js
 			// source Compo.static.js
 			obj_extend(Compo, {
-				create: function(controller){
+				create: function(proto){
 					var klass;
 			
-					if (controller == null){
-						controller = {};
+					if (proto == null){
+						proto = {};
 					}
 			
-					if (controller.hasOwnProperty('constructor')){
-						klass = controller.constructor;
+					if (proto.hasOwnProperty('constructor')){
+						klass = proto.constructor;
 					}
 			
 					if (klass == null){
@@ -10701,17 +10853,59 @@ function __eval(source, include) {
 					}
 			
 					for(var key in Proto){
-						if (controller[key] == null){
-							controller[key] = Proto[key];
+						if (proto[key] == null){
+							proto[key] = Proto[key];
 						}
-						controller['base_' + key] = Proto[key];
 					}
 			
 			
-					klass.prototype = controller;
+					klass.prototype = proto;
 			
 			
 					return klass;
+				},
+				
+				createClass: function(classProto){
+					if (classProto.attr != null) {
+						
+						for (var key in classProto.attr) {
+							classProto.attr[key] = _mask_ensureTmplFn(classProto.attr[key]);
+						}
+					}
+					
+					var slots = classProto.slots;
+					if (slots != null) {
+						for (var key in slots) {
+							if (typeof slots[key] === 'string'){
+								//if DEBUG
+								typeof classProto[slots[key]] !== 'function' && console.error('Not a Function @Slot.',slots[key]);
+								// endif
+								slots[key] = classProto[slots[key]];
+							}
+						}
+					}
+					
+					var ctor;
+					
+					if (classProto.hasOwnProperty('constructor'))
+						ctor = classProto.constructor;
+					
+					if (ctor == null)
+						ctor = classProto.Construct;
+					
+					classProto.Construct = compo_createConstructor(ctor, classProto);
+					
+					
+					var Ext = classProto.Extends;
+					if (Ext == null) {
+						classProto.Extends = Proto
+					} else if (arr_isArray(Ext)) {
+						Ext.unshift(Proto)
+					} else {
+						classProto.Extends = [Proto, Ext];
+					}
+					
+					return __Class(classProto);
 				},
 			
 				/* obsolete */
@@ -11004,6 +11198,7 @@ function __eval(source, include) {
 				compoName: null,
 				nodes: null,
 				attr: null,
+				model: null,
 				
 				slots: null,
 				pipes: null,
@@ -11014,34 +11209,31 @@ function __eval(source, include) {
 				onRenderStart: null,
 				onRenderEnd: null,
 				render: null,
-				renderStart: function(model, cntx, container){
+				renderStart: function(model, ctx, container){
 		
 					if (arguments.length === 1 && model != null && model instanceof Array === false && model[0] != null){
-						model = arguments[0][0];
-						cntx = arguments[0][1];
-						container = arguments[0][2];
+						var args = arguments[0];
+						model = args[0];
+						ctx = args[1];
+						container = args[2];
 					}
-		
-					// - do not override with same model
-					//if (this.model == null){
-					//	this.model = model;
-					//}
 		
 					if (this.nodes == null){
 						compo_ensureTemplate(this);
 					}
 					
-					if (typeof this.onRenderStart === 'function'){
-						this.onRenderStart(model, cntx, container);
+					if (fn_isFunction(this.onRenderStart)){
+						this.onRenderStart(model, ctx, container);
 					}
 		
 				},
-				renderEnd: function(elements, model, cntx, container){
+				renderEnd: function(elements, model, ctx, container){
 					if (arguments.length === 1 && elements instanceof Array === false){
-						elements = arguments[0][0];
-						model = arguments[0][1];
-						cntx = arguments[0][2];
-						container = arguments[0][3];
+						var args = arguments[0];
+						elements = args[0];
+						model = args[1];
+						ctx = args[2];
+						container = args[3];
 					}
 		
 					Anchor.create(this, elements);
@@ -11056,13 +11248,16 @@ function __eval(source, include) {
 						Children_.select(this, this.compos);
 					}
 		
-					if (typeof this.onRenderEnd === 'function'){
-						this.onRenderEnd(elements, model, cntx, container);
+					if (fn_isFunction(this.onRenderEnd)){
+						this.onRenderEnd(elements, model, ctx, container);
 					}
 				},
-				appendTo: function(x) {
+				appendTo: function(mix) {
 					
-					var element = typeof x === 'string' ? document.querySelector(x) : x;
+					var element = typeof mix === 'string'
+						? document.querySelector(mix)
+						: mix
+						;
 					
 		
 					if (element == null) {
@@ -11070,8 +11265,11 @@ function __eval(source, include) {
 						return this;
 					}
 		
-					for (var i = 0; i < this.$.length; i++) {
-						element.appendChild(this.$[i]);
+					var els = this.$,
+						i = 0,
+						imax = els.length;
+					for (; i < imax; i++) {
+						element.appendChild(els[i]);
 					}
 		
 					this.emitIn('domInsert');
@@ -11121,7 +11319,7 @@ function __eval(source, include) {
 					return find_findSingle(this, selector_parse(selector, Dom.CONTROLLER, 'up'));
 				},
 				on: function() {
-					var x = Array.prototype.slice.call(arguments);
+					var x = __array_slice.call(arguments);
 					if (arguments.length < 3) {
 						console.error('Invalid Arguments Exception @use .on(type,selector,fn)');
 						return this;
@@ -11134,7 +11332,7 @@ function __eval(source, include) {
 		
 					if (this.events == null) {
 						this.events = [x];
-					} else if (this.events instanceof Array) {
+					} else if (arr_isArray(this.events)) {
 						this.events.push(x);
 					} else {
 						this.events = [x, this.events];
@@ -11192,11 +11390,25 @@ function __eval(source, include) {
 				},
 		
 				emitOut: function(signalName /* args */){
-					Compo.signal.emitOut(this, signalName, this, arguments.length > 1 ? __array_slice.call(arguments, 1) : null);
+					Compo.signal.emitOut(
+						this,
+						signalName,
+						this,
+						arguments.length > 1
+							? __array_slice.call(arguments, 1)
+							: null
+					);
 				},
 		
 				emitIn: function(signalName /* args */){
-					Compo.signal.emitIn(this, signalName, this, arguments.length > 1 ? __array_slice.call(arguments, 1) : null);
+					Compo.signal.emitIn(
+						this,
+						signalName,
+						this,
+						arguments.length > 1
+							? __array_slice.call(arguments, 1)
+							: null
+					);
 				}
 			};
 		
@@ -11517,6 +11729,77 @@ function __eval(source, include) {
 				}
 				return model;
 			};
+			
+			
+			(function(){
+				
+				var jQ_Methods = [
+					'append',
+					'prepend',
+					'insertAfter',
+					'insertBefore'
+				];
+				
+				arr_each([
+					'appendMask',
+					'prependMask',
+					'insertMaskBefore',
+					'insertMaskAfter'
+				], function(method, index){
+					
+					domLib.fn[method] = function(template, model, controller, ctx){
+						
+						if (controller == null) {
+							
+							controller = index < 2
+								? this.compo()
+								: this.parent().compo()
+								;
+						}
+						
+						// if DEBUG
+						controller == null && console.warn(
+							'$.***Mask - controller not found, this can lead to memory leaks if template contains compos'
+						);
+						// endif
+						
+						var fragment = mask.render(template, model, ctx, null, controller);
+						
+						return this[jQ_Methods[index]](fragment);
+					};
+					
+				});
+			}());
+			
+			
+			// remove
+			(function(){
+				var jq_remove = domLib.fn.remove,
+					jq_empty = domLib.fn.empty
+					;
+				
+				domLib.fn.removeAndDispose = function(){
+					this.each(each_tryDispose);
+					
+					return jq_remove.call(this);
+				};
+				
+				domLib.fn.emptyAndDispose = function(){
+					this.each(each_tryDisposeChildren);
+					
+					return jq_empty.call(this);
+				}
+				
+				
+				function each_tryDispose(index, node){
+					node_tryDispose(node);
+				}
+				
+				function each_tryDisposeChildren(index, node){
+					node_tryDisposeChildren(node);
+				}
+				
+			}());
 		
 		}());
 		
@@ -12837,7 +13120,8 @@ function __eval(source, include) {
 					old = value;
 		            value = x;
 		            rebinder(path, old);
-				}
+				},
+		        configurable: true
 			});
 		}
 		
@@ -14501,6 +14785,12 @@ function __eval(source, include) {
 		});
 		// end:source ../src/mask-attr/xxVisible.js
 	    // source ../src/mask-attr/xToggle.js
+	    /**
+	     *	Toggle value with ternary operator on an event.
+	     *
+	     *	button x-toggle='click: foo === "bar" ? "zet" : "bar" > 'Toggle'
+	     */
+	    
 	    __mask_registerAttrHandler('x-toggle', 'client', function(node, attrValue, model, ctx, element, controller){
 	        
 	        
@@ -14508,6 +14798,11 @@ function __eval(source, include) {
 	            expression = attrValue.substring(event.length + 1),
 	            ref = expression_varRefs(expression);
 	        
+	    	if (typeof ref !== 'string') {
+	    		// assume is an array
+	    		ref = ref[0];
+	    	}
+	    	
 	        __dom_addEventListener(element, event, function(){
 	            var value = expression_eval(expression, model, ctx, controller);
 	            
@@ -15140,8 +15435,19 @@ function __eval(source, include) {
 }(this, function(global){
 	"use strict";
 	
+	// source ../src/vars.js
+	
 	var mask = global.mask || Mask;
 	
+	// settings
+	
+	/** define if routes like '/path' are strict by default,
+	 * or set explicit '!/path' - strict, '^/path' - not strict
+	 *
+	 * Strict means - like in regex start-end /^$/
+	 * */
+	var	_cfg_isStrict = true;
+	// end:source ../src/vars.js
 	// source ../src/utils/path.js
 	function path_normalize(str) {
 		
@@ -15177,6 +15483,15 @@ function __eval(source, include) {
 		return '/' + parts.join('/');
 	}
 	
+	function path_getPartsFromUrl(url){
+		var query = url.indexOf('?'),
+			path = query === -1
+				? url
+				: url.substring(0, query);
+		
+		
+		return path_split(path);
+	}
 	// end:source ../src/utils/path.js
 	// source ../src/utils/query.js
 	function query_deserialize(query, delimiter) {
@@ -15247,9 +15562,31 @@ function __eval(source, include) {
 		
 		function route_parseDefinition(route, definition) {
 			
-			if (definition[0] === '!') {
-				route.strict = true;
-				definition = definition.substring(1);
+			var c = definition.charCodeAt(0);
+			switch(c){
+				case 33:
+					// !
+					route.strict = true;
+					definition = definition.substring(1);
+					break;
+				case 94:
+					// ^
+					route.strict = false;
+					definition = definition.substring(1);
+					break;
+				case 40:
+					// (
+					var start = 1,
+						end = definition.length - 1
+						;
+					if (definition.charCodeAt(definition.length - 1) !== 41) {
+						// )
+						console.error('<ruta> rgx parse - expect group closing');
+						end ++;
+					}
+					
+					route.match = new RegExp(definition.substring(start, end));
+					return;
 			}
 			
 			
@@ -15270,7 +15607,7 @@ function __eval(source, include) {
 				isAlias,
 				rgx;
 		
-			var array = [];
+			var array = route.parts = [];
 			
 			for (; i < imax; i++) {
 				x = parts[i];
@@ -15298,22 +15635,12 @@ function __eval(source, include) {
 				
 		
 				// if DEBUG
-				!isOptional && !gettingMatcher && console.log('Strict route part found after optional', definition);
+				!isOptional && !gettingMatcher && console.log('<ruta> strict part found after optional', definition);
 				// endif
 		
 		
 				if (isOptional) 
 					gettingMatcher = false;
-				
-		
-				////if (gettingMatcher) {
-				////	strictCount += 1;
-				////	matcher += '/' + (isAlias ? regexp_var : x)
-				////}
-				////
-				////if (isAlias) {
-				////	(alias || (alias = {}))[index] = x;
-				////}
 				
 				var bracketIndex = x.indexOf('(');
 				if (isAlias && bracketIndex !== -1) {
@@ -15340,7 +15667,6 @@ function __eval(source, include) {
 				
 			}
 		
-			route.parts = array;
 		}
 		
 		
@@ -15398,23 +15724,21 @@ function __eval(source, include) {
 		// source match.js
 			
 			
-		function route_match(url, routes){
-			url = path_normalize(url);
+		function route_match(url, routes, currentMethod){
 			
-			var query = url.indexOf('?'),
-				path = query === -1
-					? url
-					: url.substring(0, query);
-			
-			
-			var parts = path_split(path);
+			var parts = path_getPartsFromUrl(url);
 			
 			for (var i = 0, route, imax = routes.length; i < imax; i++){
 				route = routes[i];
 				
-				if (route_isMatch(parts, route)) {
-					route.current = route_parsePath(route, url);
+				if (route_isMatch(parts, route, currentMethod)) {
+					if (route.parts == null) {
+								
+						route.current = { params: {} };
+						return route;
+					}
 					
+					route.current = route_parsePath(route, url);
 					return route;
 				}
 			}
@@ -15422,17 +15746,31 @@ function __eval(source, include) {
 			return null;
 		};
 		
-		function route_isMatch(parts, route) {
+		function route_isMatch(parts, route, currentMethod) {
+			
+			if (currentMethod != null &&
+				route.method != null &&
+				route.method !== currentMethod) {
+				return false;
+			}
+			
+			if (route.match) {
+				
+				return route.match.test(
+					typeof parts === 'string'
+						? parts
+						: parts.join('/')
+				);
+			}
 			
 			if (typeof parts === 'string') 
-				parts = path_split(parts);
+				parts = path_getPartsFromUrl(parts);
 			
 			
 				
 			var routeParts = route.parts,
 				routeLength = routeParts.length;
 		
-			
 			
 			for (var i = 0, x, imax = parts.length; i < imax; i++){
 				
@@ -15472,7 +15810,17 @@ function __eval(source, include) {
 		var regexp_var = '([^\\\\]+)';
 		
 		function Route(definition, value) {
-		
+			
+			this.method = definition.charCodeAt(0) === 36
+				? definition.substring(1, definition.indexOf(' ')).toUpperCase()
+				: null
+				;
+			
+			if (this.method != null) {
+				definition = definition.substring( this.method.length + 2 );
+			}
+			
+			this.strict = _cfg_isStrict;
 			this.value = value;
 			this.definition = definition;
 			
@@ -15500,9 +15848,9 @@ function __eval(source, include) {
 				return this;
 			},
 			
-			get: function(path){
+			get: function(path, currentMethod){
 				
-				return route_match(path, this.routes);
+				return route_match(path, this.routes, currentMethod);
 			}
 		};
 		
@@ -15690,6 +16038,10 @@ function __eval(source, include) {
 				router = new Location(routes, type);
 			
 			return this;
+		},
+		
+		setStrictBehaviour: function(isStrict){
+			_cfg_isStrict = isStrict;
 		},
 		
 		add: function(regpath, mix){

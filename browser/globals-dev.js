@@ -192,20 +192,15 @@
 				_class.prototype.constructor = _class;
 			}
 	
-			proto_extend(_class.prototype, original);
-	
-	
 			if (_extends != null) {
 				arr_each(_extends, function(x) {
-					var a = {};
-					proto_extend(a, x);
 					
-					delete a.constructor;
-					for (var key in a) {
-						_class.prototype[key] = a[key];
-					}
+					delete x.constructor;
+					proto_extend(_class, x);
 				});
 			}
+			
+			proto_extend(_class, original); 
 		}
 	
 		return '__proto__' in Object.prototype === true ? inherit : inherit_protoLess;
@@ -889,7 +884,9 @@
 	}());
 	// end:source ../src/business/Route.js
 	// source ../src/business/Deferred.js
-	var DeferredProto = {
+	function Deferred(){}
+	
+	Deferred.prototype = {
 		_isAsync: true,
 			
 		_done: null,
@@ -994,6 +991,7 @@
 			return this;
 		},
 	};
+	
 	// end:source ../src/business/Deferred.js
 	// source ../src/business/EventEmitter.js
 	var EventEmitter = (function(){
@@ -1007,12 +1005,18 @@
 	        constructor: Emitter,
 			
 	        on: function(event, callback) {
-	            (this._listeners[event] || (this._listeners[event] = [])).push(callback);
+	            if (callback != null){
+					(this._listeners[event] || (this._listeners[event] = [])).push(callback);
+				}
+				
 	            return this;
 	        },
 	        once: function(event, callback){
-	            callback._once = true;
-	            (this._listeners[event] || (this._listeners[event] = [])).push(callback);
+				if (callback != null) {
+					callback._once = true;
+					(this._listeners[event] || (this._listeners[event] = [])).push(callback);
+				}
+				
 	            return this;
 	        },
 			
@@ -1288,7 +1292,7 @@
 	
 	
 	Class.Serializable = Serializable;
-	Class.Deferred = DeferredProto;
+	Class.Deferred = Deferred;
 	Class.EventEmitter = EventEmitter;
 	
 	Class.validate = Validation.validate;
@@ -1720,7 +1724,7 @@
 			this._route = new Route(route);
 		};
 		
-		obj_inherit(XHRRemote, StoreProto, DeferredProto, {
+		obj_inherit(XHRRemote, StoreProto, Deferred, {
 			
 			fetch: function(data){
 				XHR.get(this._route.create(data || this), this);
@@ -1777,7 +1781,7 @@
 			this._route = new Route(route);
 		};
 		
-		obj_inherit(LocalStore, StoreProto, DeferredProto, {
+		obj_inherit(LocalStore, StoreProto, Deferred, {
 			
 			fetch: function(data){
 				
@@ -7357,7 +7361,8 @@ function __eval(source, include) {
 			Dom = mask.Dom,
 			__array_slice = Array.prototype.slice,
 			
-			_mask_ensureTmplFnOrig = mask.Utils.ensureTmplFn;
+			_mask_ensureTmplFnOrig = mask.Utils.ensureTmplFn,
+			__Class;
 		
 		function _mask_ensureTmplFn(value) {
 			if (typeof value !== 'string') {
@@ -7368,6 +7373,16 @@ function __eval(source, include) {
 		
 		if (document != null && domLib == null){
 			console.warn('jQuery / Zepto etc. was not loaded before compo.js, please use Compo.config.setDOMLibrary to define dom engine');
+		}
+		
+		__Class = global.Class;
+		
+		if (__Class == null) {
+			
+			if (typeof exports !== 'undefined') {
+				__Class = exports.Class;
+			}
+			
 		}
 		
 		// end:source ../src/scope-vars.js
@@ -7927,14 +7942,31 @@ function __eval(source, include) {
 			}
 			Pipe.prototype = {
 				constructor: Pipe,
-				emit: function(signal, args){
+				emit: function(signal){
 					var controllers = Collection[this.pipeName],
-						pipeName = this.pipeName;
+						pipeName = this.pipeName,
+						args;
+					
 					if (controllers == null) {
-						console.warn('Pipe.emit: No signals were bound to a Pipe', pipeName);
+						//if DEBUG
+						console.warn('Pipe.emit: No signals were bound to:', pipeName);
+						//endif
 						return;
 					}
-		
+					
+					/**
+					 * @TODO - for backward comp. support
+					 * to pass array of arguments as an Array in second args
+					 *
+					 * - switch to use plain arguments
+					 */
+					
+					if (arguments.length === 2 && arr_isArray(arguments[1])) {
+						args = arguments[1];
+					} else if (arguments.length > 1) {
+						args = __array_slice.call(arguments, 1);
+					}
+					
 					var i = controllers.length,
 						controller, slots, slot, called;
 		
@@ -7966,9 +7998,9 @@ function __eval(source, include) {
 				addController: controller_add,
 				removeController: controller_remove,
 		
-				emit: function(pipeName, signal, args) {
-					Pipe(pipeName).emit(signal, args);
-				},
+				////emit: function(pipeName, signal, args) {
+				////	Pipe(pipeName).emit(signal, args);
+				////},
 				pipe: Pipe
 			};
 		
@@ -8227,15 +8259,15 @@ function __eval(source, include) {
 			// end:source Compo.util.js
 			// source Compo.static.js
 			obj_extend(Compo, {
-				create: function(controller){
+				create: function(proto){
 					var klass;
 			
-					if (controller == null){
-						controller = {};
+					if (proto == null){
+						proto = {};
 					}
 			
-					if (controller.hasOwnProperty('constructor')){
-						klass = controller.constructor;
+					if (proto.hasOwnProperty('constructor')){
+						klass = proto.constructor;
 					}
 			
 					if (klass == null){
@@ -8243,17 +8275,59 @@ function __eval(source, include) {
 					}
 			
 					for(var key in Proto){
-						if (controller[key] == null){
-							controller[key] = Proto[key];
+						if (proto[key] == null){
+							proto[key] = Proto[key];
 						}
-						controller['base_' + key] = Proto[key];
 					}
 			
 			
-					klass.prototype = controller;
+					klass.prototype = proto;
 			
 			
 					return klass;
+				},
+				
+				createClass: function(classProto){
+					if (classProto.attr != null) {
+						
+						for (var key in classProto.attr) {
+							classProto.attr[key] = _mask_ensureTmplFn(classProto.attr[key]);
+						}
+					}
+					
+					var slots = classProto.slots;
+					if (slots != null) {
+						for (var key in slots) {
+							if (typeof slots[key] === 'string'){
+								//if DEBUG
+								typeof classProto[slots[key]] !== 'function' && console.error('Not a Function @Slot.',slots[key]);
+								// endif
+								slots[key] = classProto[slots[key]];
+							}
+						}
+					}
+					
+					var ctor;
+					
+					if (classProto.hasOwnProperty('constructor'))
+						ctor = classProto.constructor;
+					
+					if (ctor == null)
+						ctor = classProto.Construct;
+					
+					classProto.Construct = compo_createConstructor(ctor, classProto);
+					
+					
+					var Ext = classProto.Extends;
+					if (Ext == null) {
+						classProto.Extends = Proto
+					} else if (arr_isArray(Ext)) {
+						Ext.unshift(Proto)
+					} else {
+						classProto.Extends = [Proto, Ext];
+					}
+					
+					return __Class(classProto);
 				},
 			
 				/* obsolete */
@@ -13863,8 +13937,19 @@ function __eval(source, include) {
 }(this, function(global){
 	"use strict";
 	
+	// source ../src/vars.js
+	
 	var mask = global.mask || Mask;
 	
+	// settings
+	
+	/** define if routes like '/path' are strict by default,
+	 * or set explicit '!/path' - strict, '^/path' - not strict
+	 *
+	 * Strict means - like in regex start-end /^$/
+	 * */
+	var	_cfg_isStrict = true;
+	// end:source ../src/vars.js
 	// source ../src/utils/path.js
 	function path_normalize(str) {
 		
@@ -13900,6 +13985,15 @@ function __eval(source, include) {
 		return '/' + parts.join('/');
 	}
 	
+	function path_getPartsFromUrl(url){
+		var query = url.indexOf('?'),
+			path = query === -1
+				? url
+				: url.substring(0, query);
+		
+		
+		return path_split(path);
+	}
 	// end:source ../src/utils/path.js
 	// source ../src/utils/query.js
 	function query_deserialize(query, delimiter) {
@@ -13970,9 +14064,31 @@ function __eval(source, include) {
 		
 		function route_parseDefinition(route, definition) {
 			
-			if (definition[0] === '!') {
-				route.strict = true;
-				definition = definition.substring(1);
+			var c = definition.charCodeAt(0);
+			switch(c){
+				case 33:
+					// !
+					route.strict = true;
+					definition = definition.substring(1);
+					break;
+				case 94:
+					// ^
+					route.strict = false;
+					definition = definition.substring(1);
+					break;
+				case 40:
+					// (
+					var start = 1,
+						end = definition.length - 1
+						;
+					if (definition.charCodeAt(definition.length - 1) !== 41) {
+						// )
+						console.error('<ruta> rgx parse - expect group closing');
+						end ++;
+					}
+					
+					route.match = new RegExp(definition.substring(start, end));
+					return;
 			}
 			
 			
@@ -13993,7 +14109,7 @@ function __eval(source, include) {
 				isAlias,
 				rgx;
 		
-			var array = [];
+			var array = route.parts = [];
 			
 			for (; i < imax; i++) {
 				x = parts[i];
@@ -14021,22 +14137,12 @@ function __eval(source, include) {
 				
 		
 				// if DEBUG
-				!isOptional && !gettingMatcher && console.log('Strict route part found after optional', definition);
+				!isOptional && !gettingMatcher && console.log('<ruta> strict part found after optional', definition);
 				// endif
 		
 		
 				if (isOptional) 
 					gettingMatcher = false;
-				
-		
-				////if (gettingMatcher) {
-				////	strictCount += 1;
-				////	matcher += '/' + (isAlias ? regexp_var : x)
-				////}
-				////
-				////if (isAlias) {
-				////	(alias || (alias = {}))[index] = x;
-				////}
 				
 				var bracketIndex = x.indexOf('(');
 				if (isAlias && bracketIndex !== -1) {
@@ -14063,7 +14169,6 @@ function __eval(source, include) {
 				
 			}
 		
-			route.parts = array;
 		}
 		
 		
@@ -14121,23 +14226,21 @@ function __eval(source, include) {
 		// source match.js
 			
 			
-		function route_match(url, routes){
-			url = path_normalize(url);
+		function route_match(url, routes, currentMethod){
 			
-			var query = url.indexOf('?'),
-				path = query === -1
-					? url
-					: url.substring(0, query);
-			
-			
-			var parts = path_split(path);
+			var parts = path_getPartsFromUrl(url);
 			
 			for (var i = 0, route, imax = routes.length; i < imax; i++){
 				route = routes[i];
 				
-				if (route_isMatch(parts, route)) {
-					route.current = route_parsePath(route, url);
+				if (route_isMatch(parts, route, currentMethod)) {
+					if (route.parts == null) {
+								
+						route.current = { params: {} };
+						return route;
+					}
 					
+					route.current = route_parsePath(route, url);
 					return route;
 				}
 			}
@@ -14145,17 +14248,31 @@ function __eval(source, include) {
 			return null;
 		};
 		
-		function route_isMatch(parts, route) {
+		function route_isMatch(parts, route, currentMethod) {
+			
+			if (currentMethod != null &&
+				route.method != null &&
+				route.method !== currentMethod) {
+				return false;
+			}
+			
+			if (route.match) {
+				
+				return route.match.test(
+					typeof parts === 'string'
+						? parts
+						: parts.join('/')
+				);
+			}
 			
 			if (typeof parts === 'string') 
-				parts = path_split(parts);
+				parts = path_getPartsFromUrl(parts);
 			
 			
 				
 			var routeParts = route.parts,
 				routeLength = routeParts.length;
 		
-			
 			
 			for (var i = 0, x, imax = parts.length; i < imax; i++){
 				
@@ -14195,7 +14312,17 @@ function __eval(source, include) {
 		var regexp_var = '([^\\\\]+)';
 		
 		function Route(definition, value) {
-		
+			
+			this.method = definition.charCodeAt(0) === 36
+				? definition.substring(1, definition.indexOf(' ')).toUpperCase()
+				: null
+				;
+			
+			if (this.method != null) {
+				definition = definition.substring( this.method.length + 2 );
+			}
+			
+			this.strict = _cfg_isStrict;
 			this.value = value;
 			this.definition = definition;
 			
@@ -14223,9 +14350,9 @@ function __eval(source, include) {
 				return this;
 			},
 			
-			get: function(path){
+			get: function(path, currentMethod){
 				
-				return route_match(path, this.routes);
+				return route_match(path, this.routes, currentMethod);
 			}
 		};
 		
@@ -14413,6 +14540,10 @@ function __eval(source, include) {
 				router = new Location(routes, type);
 			
 			return this;
+		},
+		
+		setStrictBehaviour: function(isStrict){
+			_cfg_isStrict = isStrict;
 		},
 		
 		add: function(regpath, mix){
