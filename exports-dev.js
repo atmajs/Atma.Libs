@@ -11080,17 +11080,17 @@ function __eval(source, include) {
 			// source async.js
 			(function(){
 				
-				function _on(cntx, type, callback) {
-					if (cntx[type] == null)
-						cntx[type] = [];
+				function _on(ctx, type, callback) {
+					if (ctx[type] == null)
+						ctx[type] = [];
 					
-					cntx[type].push(callback);
+					ctx[type].push(callback);
 					
-					return cntx;
+					return ctx;
 				}
 				
-				function _call(cntx, type, _arguments) {
-					var cbs = cntx[type];
+				function _call(ctx, type, _arguments) {
+					var cbs = ctx[type];
 					if (cbs == null) 
 						return;
 					
@@ -11140,30 +11140,34 @@ function __eval(source, include) {
 					}
 				}
 				
-				Compo.pause = function(compo, cntx){
+				Compo.pause = function(compo, ctx){
 					
-					if (cntx.async == null) {
-						cntx.defers = [];
+					if (ctx.async == null) {
+						ctx.defers = [];
 						
-						cntx._cbs_done = null;
-						cntx._cbs_fail = null;
-						cntx._cbs_always = null;
+						ctx._cbs_done = null;
+						ctx._cbs_fail = null;
+						ctx._cbs_always = null;
 						
 						for (var key in DeferProto) {
-							cntx[key] = DeferProto[key];
+							ctx[key] = DeferProto[key];
 						}
 					}
 					
-					cntx.async = true;
+					ctx.async = true;
 					
 					for (var key in CompoProto) {
 						compo[key] = CompoProto[key];
 					}
 					
-					cntx.defers.push(compo);
+					ctx.defers.push(compo);
+					
+					return function(){
+						Compo.resume(compo, ctx);
+					};
 				}
 				
-				Compo.resume = function(compo, cntx){
+				Compo.resume = function(compo, ctx){
 					
 					// fn can be null when calling resume synced after pause
 					if (compo.resume) 
@@ -11172,11 +11176,11 @@ function __eval(source, include) {
 					compo.async = false;
 					
 					var busy = false;
-					for (var i = 0, x, imax = cntx.defers.length; i < imax; i++){
-						x = cntx.defers[i];
+					for (var i = 0, x, imax = ctx.defers.length; i < imax; i++){
+						x = ctx.defers[i];
 						
 						if (x === compo) {
-							cntx.defers[i] = null;
+							ctx.defers[i] = null;
 							continue;
 						}
 						
@@ -11186,7 +11190,7 @@ function __eval(source, include) {
 					}
 					
 					if (busy === false) {
-						cntx.resolve();
+						ctx.resolve();
 					}
 				};
 				
