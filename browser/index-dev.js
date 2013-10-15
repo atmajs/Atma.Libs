@@ -1088,13 +1088,27 @@
 	var Validation = (function(){
 		
 		
-		function val_check(instance, validation) {
-			if (typeof validation === 'function') 
+		function val_check(instance, validation, props) {
+			if (is_Function(validation)) 
 				return validation.call(instance);
 			
-			var result;
+			var result,
+				property;
 			
-			for (var property in validation) {
+			if (props) {
+				for (var i = 0, imax = props.length; i < imax; i++){
+					
+					property = props[i];
+					result = val_checkProperty(instance, property, validation[property]);
+					
+					if (result) 
+						return result;
+				}
+				
+				return;
+			}
+			
+			for (property in validation) {
 				
 				result = val_checkProperty(instance, property, validation[property]);
 				
@@ -1105,18 +1119,27 @@
 		
 		
 		function val_checkProperty(instance, property, checker) {
+			
+			if (is_Function(checker) === false) 
+				return '<validation> Function expected for ' + property;
+			
+			
 			var value = obj_getProperty(instance, property);
 			
 			return checker.call(instance, value);
 		}
 		
 		
-		function val_process(instance) {
-			var result;
+		function val_process(instance /* ... properties */) {
+			var result,
+				props;
 			
+			if (arguments.length > 1 && typeof arguments[1] === 'string') {
+				props = _Array_slice.call(arguments, 1);
+			}
 			
 			if (instance.Validate != null) {
-				result  = val_check(instance, instance.Validate);
+				result  = val_check(instance, instance.Validate, props);
 				if (result)
 					return result;
 			}
@@ -9174,6 +9197,19 @@ function __eval(source, include) {
 				], function(method, index){
 					
 					domLib.fn[method] = function(template, model, controller, ctx){
+						
+						if (this.length === 0) {
+							// if DEBUG
+							console.warn('<jcompo> $.', method, '- no element was selected(found)');
+							// endif
+							return this;
+						}
+						
+						if (this.length > 1) {
+							// if DEBUG
+							console.warn('<jcompo> $.', method, ' can insert only to one element. Fix is comming ...');
+							// endif
+						}
 						
 						if (controller == null) {
 							
