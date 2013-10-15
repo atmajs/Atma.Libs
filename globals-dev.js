@@ -361,31 +361,53 @@
 	var JSONHelper = {
 		toJSON: function(){
 			var obj = {},
-				key, value;
+				key, val;
 			
 			for (key in this) {
 				
 				// _ (private)
-				if (key.charCodeAt(0) === 95)
+				if (key.charCodeAt(0) === 95 && key !== '_id')
 					continue;
 				
 				if ('Static' === key || 'Validate' === key)
 					continue;
 				
-				value = this[key];
+				val = this[key];
 				
-				if (value == null)
+				if (val == null) 
 					continue;
 				
-				if (typeof value === 'function')
+				if (typeof val === 'function') 
 					continue;
 				
+				obj[key] = val;
+			}
+			return obj;
+		},
+		
+		arrayToJSON: function(){
+			var array = new Array(this.length),
+				i = 0,
+				imax = this.length,
+				x;
+			
+			for(; i < imax; i++){
 				
-				obj[key] = value;
+				x = this[i];
+				
+				if (typeof x !== 'object') {
+					array[i] = x;
+					return;
+				}
+				
+				array[i] = is_Function(x.toJSON)
+					? x.toJSON()
+					: JSONHelper.toJSON.call(x)
+					;
 				
 			}
 			
-			return obj;
+			return array;
 		}
 	};
 	
@@ -714,13 +736,28 @@
 		constructor: Serializable,
 		
 		serialize: function() {
+			
 			return JSON.stringify(this);
 		},
 		
 		deserialize: function(json) {
 			
-			if (is_String(json)) 
-				json = JSON.parse(json);
+			if (is_String(json)) {
+				try {
+					json = JSON.parse(json);
+				}catch(error){
+					console.error('<json:deserialize>', json);
+					return this;
+				}
+			}
+			
+			if (is_Array(json) && is_Function(this.push)) {
+				this.length = 0;
+				for (var i = 0, imax = json.length; i < imax; i++){
+					this.push(json[i]);
+				}
+				return;
+			}
 			
 			var props = this._props,
 				key,
@@ -1670,7 +1707,25 @@
 				}
 				
 				return array;
-			}	
+			},
+			
+			toJSON: function(){
+				var array = new Array(this.length);
+				for (var i = 0, x, imax = this.length; i < imax; i++){
+					x = this[i];
+					
+					if (x == null)
+						// skip also index - will be undefined
+						continue;
+					
+					array[i] = is_Function(this[i].toJSON)
+						? this[i].toJSON()
+						: JSONHelper.toJSON.call(this[i])
+						;
+				}
+				
+				return array;
+			}
 		};
 		
 		function overrideConstructor(baseConstructor, Child) {
@@ -1711,10 +1766,16 @@
 		// Serialization
 		deserialize: function(json) {
 			
-			if (typeof json === 'string') 
-				json = JSON.parse(json);
+			if (typeof json === 'string') {
+				try {
+					json = JSON.parse(json);
+				}catch(error){
+					console.error('<json:deserialize>', json);
+					return this;
+				}
+			}
 			
-			if (arr_isArray(json) && typeof fn_isFunction(this.push)) {
+			if (is_Array(json) && is_Function(this.push)) {
 				for (var i = 0, imax = json.length; i < imax; i++){
 					this.push(json[i]);
 				}
@@ -1763,6 +1824,14 @@
 		};
 		
 		obj_inherit(XHRRemote, StoreProto, Deferred, {
+			
+			serialize: function(){
+				
+				return is_Array(this)
+					? JSONHelper.arrayToJSON.call(this)
+					: JSONHelper.toJSON.call(this)
+					;
+			},
 			
 			fetch: function(data){
 				XHR.get(this._route.create(data || this), this);
@@ -2141,31 +2210,7 @@
 	                }
 	            },
 	    
-	            serialize: function(){
-	                var obj = {},
-	                    key, val;
-	                
-	                for (key in this) {
-	                    
-	                    // _ (private)
-	                    if (key.charCodeAt(0) === 95 && key !== '_id')
-	                        continue;
-	                    
-	                    if ('Static' === key || 'Validate' === key)
-	                        continue;
-	                    
-	                    val = this[key];
-	                    
-	                    if (val == null) 
-	                        continue;
-	                    
-	                    if (typeof val === 'function') 
-	                        continue;
-	                    
-	                    obj[key] = val;
-	                }
-	                return obj;
-	            },
+	            serialize: JSONHelper.toJSON,
 	            
 	            _ensureFree: function(){
 	                if (this._busy) 
