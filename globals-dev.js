@@ -1997,7 +1997,7 @@
 	            
 	            db
 	                .collection(coll)
-	                .insert(data, callback);
+	                .insert(data, { safe: true }, callback);
 	        }
 	        
 	        db_updateSingle = function(coll, data, callback){
@@ -2238,9 +2238,16 @@
 	                this._completed(error);
 	            },
 	            
-	            _inserted: function(error, object){
-	                if (object != null && this._id == null) {
-	                    this._id = object._id
+	            _inserted: function(error, array){
+	                
+	                if (array != null && this._id == null) {
+	                    
+	                    if (is_Array(array) && array.length === 1) 
+	                        this._id = array[0]._id
+	                    else 
+	                        console.error('<mongo:insert-single> expection an array in callback');
+	                    
+	                    
 	                }
 	                
 	                this._completed(error);
