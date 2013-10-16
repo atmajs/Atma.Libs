@@ -2182,12 +2182,12 @@
 	                    return this;
 	                
 	                var json = this.serialize(),
-	                    fn = json._id != null
+	                    fn = json._id == null
 	                        ? db_insert
 	                        : db_updateSingle
 	                        ;
 	                
-	                fn(this._collection, json, fn_proxy(this._completed, this));
+	                fn(this._collection, json, fn_proxy(this._inserted, this));
 	                return this;
 	            },
 	            del: function() {
@@ -2213,8 +2213,10 @@
 	            serialize: JSONHelper.toJSON,
 	            
 	            _ensureFree: function(){
-	                if (this._busy) 
+	                if (this._busy) {
+	                    console.warn('<mongo:single> requested transport, but is busy by the same instance.');
 	                    return false;
+	                }
 	                
 	                this._busy = true;
 	                this._resolved = null;
@@ -2232,6 +2234,14 @@
 	            },
 	            _fetched: function(error, json) {
 	                this.deserialize(json);
+	                
+	                this._completed(error);
+	            },
+	            
+	            _inserted: function(error, object){
+	                if (object != null && this._id == null) {
+	                    this._id = object._id
+	                }
 	                
 	                this._completed(error);
 	            }
@@ -2297,6 +2307,7 @@
 	                    return this;
 	                
 	                var insert = [],
+	    				insertIndexes = [],
 	                    update = [],
 	                    coll = this._collection,
 	                    onComplete = fn_proxy(this._completed, this);
@@ -2306,6 +2317,7 @@
 	                    
 	                    if (x._id == null) {
 	                        insert.push(x.serialize());
+	    					insertIndexes.push(i);
 	                        continue;
 	                    }
 	                    update.push(x.serialize());
@@ -2314,13 +2326,13 @@
 	                if (insert.length && update.length) {
 	                    var listener = cb_createListener(2, onComplete);
 	                    
-	                    db_insert(coll, insert, listener);
+	                    db_insert(coll, insert, this._insertedDelegate(this, listener, insertIndexes));
 	                    db_updateMany(coll, update, listener);
 	                    return this;
 	                }
 	                
 	                if (insert.length) {
-	                    db_insert(coll, insert, onComplete);
+	                    db_insert(coll, insert, this._insertedDelegate(this, this._completed, insertIndexes));
 	                    return this;
 	                }
 	                
@@ -2377,8 +2389,10 @@
 	            /* -- private -- */
 	            _busy: false,
 	            _ensureFree: function(){
-	                if (this._busy) 
+	                if (this._busy) {
+	    				console.warn('<mongo:collection> requested transport, but is busy by the same instance.');
 	                    return false;
+	                }
 	                
 	                this._busy = true;
 	                this._resolved = null;
@@ -2408,7 +2422,42 @@
 	                }
 	                
 	                this._completed(error);
-	            }
+	            },
+	    		
+	    		_insertedDelegate: function(ctx, callback, indexes){
+	    			
+	    			/**
+	    			 *	@TODO make sure if mongodb returns an array of inserted documents
+	    			 *	in the same order as it was passed to insert method
+	    			 */
+	    			
+	    			function call() {
+	    				callback.call(ctx);
+	    			}
+	    			
+	    			return function(error, coll){
+	    				
+	    				if (is_Array(coll) === false) {
+	    					console.error('<mongo:bulk insert> array expected');
+	    					
+	    					return call();
+	    				}
+	    				
+	    				if (coll.length !== indexes.length) {
+	    					console.error('<mongo:bul insert> count missmatch', coll.length, indexes.length);
+	    					
+	    					return call();
+	    				}
+	    				
+	    				for (var i = 0, index, imax = indexes.length; i < imax; i++){
+	    					index = indexes[i];
+	    					
+	    					ctx[index]._id = coll[i]._id;
+	    				}
+	    				
+	    				call();
+	    			};
+	    		}
 	        });    
 	        
 	        
