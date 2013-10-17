@@ -2006,11 +2006,13 @@
 	            if (db == null) 
 	                return connect(fn_createDelegate(db_updateSingle, coll, data, callback));
 	            
+	            if (data._id == null) 
+	                return callback('<mongo:update> invalid ID');
 	            
 	            db
 	                .collection(coll)
 	                .update({
-	                    _id: queryToMongo({_id: data._id})
+	                    _id: db_ensureObjectID(data._id)
 	                }, data, {
 	                    upsert: true,
 	                    multi: false,
@@ -2050,7 +2052,7 @@
 	        
 	        db_ensureObjectID = function(value){
 	            if (is_String(value) && value.length === 16) 
-	                return mongo.ObjectID(value);
+	                return getMongo().ObjectID(value);
 	            
 	            return value;
 	        };
@@ -2098,6 +2100,12 @@
 	        
 	            };
 	        }());
+	        
+	        var getMongo = function(){
+	            return db == null 
+	                ? (db = require('mongodb'))
+	                : db;
+	        };
 	        
 	        var queryToMongo = function(query){
 	            if (query == null) {
@@ -2158,7 +2166,7 @@
 	            }
 	            
 	            return query;
-	        }
+	        };
 	    }());
 	    // end:source Driver.js
 	    // source MongoSingle.js
