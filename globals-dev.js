@@ -2221,7 +2221,10 @@
 	            serialize: JSONHelper.toJSON,
 	            deserialize: function(json){
 	                
-	                Serializable.prototype.call(this, json);
+	                Serializable
+	                    .prototype
+	                    .deserialize
+	                    .call(this, json);
 	                
 	                if (this._id)
 	                    this._id = db_ensureObjectID(this._id);
