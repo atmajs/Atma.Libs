@@ -1948,7 +1948,9 @@
 	        db_insert,
 	        db_updateSingle,
 	        db_updateMany,
-	        db_remove;
+	        db_remove,
+	        db_ensureObjectID
+	        ;
 	    
 	    (function(){
 	        
@@ -2044,7 +2046,14 @@
 	                    
 	                    callback(error);
 	                });
-	        }
+	        };
+	        
+	        db_ensureObjectID = function(value){
+	            if (is_String(value) && value.length === 16) 
+	                return mongo.ObjectID(value);
+	            
+	            return value;
+	        };
 	        
 	        
 	        var connect = (function(){
@@ -2102,9 +2111,8 @@
 	                return query;
 	            }
 	            
-	            if (is_notEmptyString(query._id)) {
-	                query._id = mongo.ObjectID(query._id);
-	            }
+	            if (query.hasOwnProperty('_id')) 
+	                query._id = db_ensureObjectID(query._id);
 	            
 	            var comparer = {
 	                62: {
@@ -2211,6 +2219,15 @@
 	            },
 	    
 	            serialize: JSONHelper.toJSON,
+	            deserialize: function(json){
+	                
+	                Serializable.prototype.call(this, json);
+	                
+	                if (this._id)
+	                    this._id = db_ensureObjectID(this._id);
+	              
+	                return this;  
+	            },
 	            
 	            _ensureFree: function(){
 	                if (this._busy) {
