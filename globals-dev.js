@@ -2051,7 +2051,7 @@
 	        };
 	        
 	        db_ensureObjectID = function(value){
-	            if (is_String(value) && value.length === 16) 
+	            if (is_String(value) && value.length === 24) 
 	                return getMongo().ObjectID(value);
 	            
 	            return value;
