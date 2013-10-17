@@ -2077,8 +2077,9 @@
 	                if (connecting) 
 	                    return;
 	                
+	                getMongo();
+	                
 	                connecting = true;
-	                mongo = require('mongodb');
 	                
 	                var Client = mongo.MongoClient,
 	                    Server = mongo.Server;
@@ -2102,9 +2103,13 @@
 	        }());
 	        
 	        var getMongo = function(){
-	            return db == null 
-	                ? (db = require('mongodb'))
-	                : db;
+	            getMongo = function() {
+	                return mongo;
+	            };
+	            
+	            mongo = require('mongodb');
+	            
+	            return getMongo();
 	        };
 	        
 	        var queryToMongo = function(query){
