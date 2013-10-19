@@ -378,8 +378,15 @@
 				if (val == null) 
 					continue;
 				
-				if (typeof val === 'function') 
-					continue;
+				switch(typeof val){
+					case 'function':
+						continue;
+					case 'object':
+						if (is_Function(val.toJSON)) {
+							obj[key] = val.toJSON();
+							continue;
+						}
+				}
 				
 				obj[key] = val;
 			}
@@ -468,6 +475,262 @@
 	// source ../src/xhr/XHR.js
 	var XHR = {};
 	
+	(function(){
+		
+		// source promise.js
+		/*
+		 *  Copyright 2012-2013 (c) Pierre Duquesne <stackp@online.fr>
+		 *  Licensed under the New BSD License.
+		 *  https://github.com/stackp/promisejs
+		 */
+		
+		(function(exports) {
+		
+		    var ct_URL_ENCODED = 'application/x-www-form-urlencoded',
+		        ct_JSON = 'application/json';
+		    
+		    var e_NO_XHR = 1,
+		        e_TIMEOUT = 2,
+		        e_PRAPAIR_DATA = 3;
+		        
+		    function Promise() {
+		        this._callbacks = [];
+		    }
+		
+		    Promise.prototype.then = function(func, context) {
+		        var p;
+		        if (this._isdone) {
+		            p = func.apply(context, this.result);
+		        } else {
+		            p = new Promise();
+		            this._callbacks.push(function () {
+		                var res = func.apply(context, arguments);
+		                if (res && typeof res.then === 'function')
+		                    res.then(p.done, p);
+		            });
+		        }
+		        return p;
+		    };
+		
+		    Promise.prototype.done = function() {
+		        this.result = arguments;
+		        this._isdone = true;
+		        for (var i = 0; i < this._callbacks.length; i++) {
+		            this._callbacks[i].apply(null, arguments);
+		        }
+		        this._callbacks = [];
+		    };
+		
+		    function join(promises) {
+		        var p = new Promise();
+		        var results = [];
+		
+		        if (!promises || !promises.length) {
+		            p.done(results);
+		            return p;
+		        }
+		
+		        var numdone = 0;
+		        var total = promises.length;
+		
+		        function notifier(i) {
+		            return function() {
+		                numdone += 1;
+		                results[i] = Array.prototype.slice.call(arguments);
+		                if (numdone === total) {
+		                    p.done(results);
+		                }
+		            };
+		        }
+		
+		        for (var i = 0; i < total; i++) {
+		            promises[i].then(notifier(i));
+		        }
+		
+		        return p;
+		    }
+		
+		    function chain(funcs, args) {
+		        var p = new Promise();
+		        if (funcs.length === 0) {
+		            p.done.apply(p, args);
+		        } else {
+		            funcs[0].apply(null, args).then(function() {
+		                funcs.splice(0, 1);
+		                chain(funcs, arguments).then(function() {
+		                    p.done.apply(p, arguments);
+		                });
+		            });
+		        }
+		        return p;
+		    }
+		
+		    /*
+		     * AJAX requests
+		     */
+		
+		    function _encode(data) {
+		        var result = "";
+		        if (typeof data === "string") {
+		            result = data;
+		        } else {
+		            var e = encodeURIComponent;
+		            for (var k in data) {
+		                if (data.hasOwnProperty(k)) {
+		                    result += '&' + e(k) + '=' + e(data[k]);
+		                }
+		            }
+		        }
+		        return result;
+		    }
+		
+		    function new_xhr() {
+		        var xhr;
+		        if (window.XMLHttpRequest) {
+		            xhr = new XMLHttpRequest();
+		        } else if (window.ActiveXObject) {
+		            try {
+		                xhr = new ActiveXObject("Msxml2.XMLHTTP");
+		            } catch (e) {
+		                xhr = new ActiveXObject("Microsoft.XMLHTTP");
+		            }
+		        }
+		        return xhr;
+		    }
+		
+		
+		    function ajax(method, url, data, headers) {
+		        var p = new Promise(),
+		            contentType = headers && headers['Content-Type'] || promise.contentType;
+		        
+		        var xhr,
+		            payload;
+		        
+		
+		        try {
+		            xhr = new_xhr();
+		        } catch (e) {
+		            p.done(e_NO_XHR, "");
+		            return p;
+		        }
+		        if (data) {
+		            
+		            if ('GET' === method) {
+		                
+		                url += '?' + _encode(data);
+		                data = null;
+		            } else {
+		                
+		                
+		                switch (contentType) {
+		                    case ct_URL_ENCODED:
+		                        data = _encode(data);
+		                        break;
+		                    case ct_JSON:
+		                        try {
+		                            data = JSON.stringify(data);
+		                        } catch(error){
+		                            
+		                            p.done(e_PRAPAIR_DATA, '');
+		                            return p;
+		                        }
+		                    default:
+		                        // @TODO notify not supported content type
+		                        // -> fallback to url encode
+		                        data = _encode(data);
+		                        break;
+		                }
+		            }
+		            
+		        }
+		        
+		        xhr.open(method, url);
+		        
+		        if (data) 
+		            xhr.setRequestHeader('Content-Type', contentType);
+		        
+		        for (var h in headers) {
+		            if (headers.hasOwnProperty(h)) {
+		                xhr.setRequestHeader(h, headers[h]);
+		            }
+		        }
+		
+		        function onTimeout() {
+		            xhr.abort();
+		            p.done(e_TIMEOUT, "", xhr);
+		        }
+		
+		        var timeout = promise.ajaxTimeout;
+		        if (timeout) {
+		            var tid = setTimeout(onTimeout, timeout);
+		        }
+		
+		        xhr.onreadystatechange = function() {
+		            if (timeout) {
+		                clearTimeout(tid);
+		            }
+		            if (xhr.readyState === 4) {
+		                var err = (!xhr.status ||
+		                           (xhr.status < 200 || xhr.status >= 300) &&
+		                           xhr.status !== 304);
+		                p.done(err, xhr.responseText, xhr);
+		            }
+		        };
+		
+		        xhr.send(data);
+		        return p;
+		    }
+		
+		    function _ajaxer(method) {
+		        return function(url, data, headers) {
+		            return ajax(method, url, data, headers);
+		        };
+		    }
+		
+		    var promise = {
+		        Promise: Promise,
+		        join: join,
+		        chain: chain,
+		        ajax: ajax,
+		        get: _ajaxer('GET'),
+		        post: _ajaxer('POST'),
+		        put: _ajaxer('PUT'),
+		        del: _ajaxer('DELETE'),
+		
+		        /* Error codes */
+		        ENOXHR: e_NO_XHR,
+		        ETIMEOUT: e_TIMEOUT,
+		        E_PREPAIR_DATA: e_PRAPAIR_DATA,
+		        /**
+		         * Configuration parameter: time in milliseconds after which a
+		         * pending AJAX request is considered unresponsive and is
+		         * aborted. Useful to deal with bad connectivity (e.g. on a
+		         * mobile network). A 0 value disables AJAX timeouts.
+		         *
+		         * Aborted requests resolve the promise with a ETIMEOUT error
+		         * code.
+		         */
+		        ajaxTimeout: 0,
+		        
+		        
+		        contentType: ct_JSON
+		    };
+		
+		    if (typeof define === 'function' && define.amd) {
+		        /* AMD support */
+		        define(function() {
+		            return promise;
+		        });
+		    } else {
+		        exports.promise = promise;
+		    }
+		
+		})(this);
+		
+		// end:source promise.js
+		
+	}.call(XHR));
+	
 	arr_each(['get'], function(key){
 		XHR[key] = function(path, sender){
 			
@@ -498,219 +761,6 @@
 	
 	
 	// end:source ../src/xhr/XHR.js
-	// source ../src/xhr/promise.js
-	/*
-	 *  Copyright 2012-2013 (c) Pierre Duquesne <stackp@online.fr>
-	 *  Licensed under the New BSD License.
-	 *  https://github.com/stackp/promisejs
-	 */
-	
-	(function(exports) {
-	
-	    function bind(func, context) {
-	        return function() {
-	            return func.apply(context, arguments);
-	        };
-	    }
-	
-	    function Promise() {
-	        this._callbacks = [];
-	    }
-	
-	    Promise.prototype.then = function(func, context) {
-	        var f = bind(func, context);
-	        if (this._isdone) {
-	            f(this.error, this.result);
-	        } else {
-	            this._callbacks.push(f);
-	        }
-	    };
-	
-	    Promise.prototype.done = function(error, result) {
-	        this._isdone = true;
-	        this.error = error;
-	        this.result = result;
-	        for (var i = 0; i < this._callbacks.length; i++) {
-	            this._callbacks[i](error, result);
-	        }
-	        this._callbacks = [];
-	    };
-	
-	    function join(funcs) {
-	        var numfuncs = funcs.length;
-	        var numdone = 0;
-	        var p = new Promise();
-	        var errors = [];
-	        var results = [];
-	
-	        function notifier(i) {
-	            return function(error, result) {
-	                numdone += 1;
-	                errors[i] = error;
-	                results[i] = result;
-	                if (numdone === numfuncs) {
-	                    p.done(errors, results);
-	                }
-	            };
-	        }
-	
-	        for (var i = 0; i < numfuncs; i++) {
-	            funcs[i]()
-	                .then(notifier(i));
-	        }
-	
-	        return p;
-	    }
-	
-	    function chain(funcs, error, result) {
-	        var p = new Promise();
-	        if (funcs.length === 0) {
-	            p.done(error, result);
-	        } else {
-	            funcs[0](error, result)
-	                .then(function(res, err) {
-	                funcs.splice(0, 1);
-	                chain(funcs, res, err)
-	                    .then(function(r, e) {
-	                    p.done(r, e);
-	                });
-	            });
-	        }
-	        return p;
-	    }
-	
-	    /*
-	     * AJAX requests
-	     */
-	
-	    function _encode(data) {
-	        var result = "";
-	        if (typeof data === "string") {
-	            result = data;
-	        } else {
-	            var e = encodeURIComponent;
-	            for (var k in data) {
-	                if (data.hasOwnProperty(k)) {
-	                    result += '&' + e(k) + '=' + e(data[k]);
-	                }
-	            }
-	        }
-	        return result;
-	    }
-	
-	    function new_xhr() {
-	        var xhr;
-	        if (window.XMLHttpRequest) {
-	            xhr = new XMLHttpRequest();
-	        } else if (window.ActiveXObject) {
-	            try {
-	                xhr = new ActiveXObject("Msxml2.XMLHTTP");
-	            } catch (e) {
-	                xhr = new ActiveXObject("Microsoft.XMLHTTP");
-	            }
-	        }
-	        return xhr;
-	    }
-	
-	    function ajax(method, url, data, headers) {
-	        var p = new Promise();
-	        var xhr, payload;
-	        data = data || {};
-	        headers = headers || {};
-	
-	        try {
-	            xhr = new_xhr();
-	        } catch (e) {
-	            p.done(-1, "");
-	            return p;
-	        }
-	
-	        payload = _encode(data);
-	        if (method === 'GET' && payload) {
-	            url += '?' + payload;
-	            payload = null;
-	        }
-	
-	        xhr.open(method, url);
-	        xhr.setRequestHeader('Content-type',
-	            'application/x-www-form-urlencoded');
-	        for (var h in headers) {
-	            if (headers.hasOwnProperty(h)) {
-	                xhr.setRequestHeader(h, headers[h]);
-	            }
-	        }
-	
-	        function onTimeout() {
-	            xhr.abort();
-	            p.done(exports.promise.ETIMEOUT, "");
-	        }
-	
-	        var timeout = exports.promise.ajaxTimeout;
-	        if (timeout) {
-	            var tid = setTimeout(onTimeout, timeout);
-	        }
-	
-	        xhr.onreadystatechange = function() {
-	            if (timeout) {
-	                clearTimeout(tid);
-	            }
-	            if (xhr.readyState === 4) {
-	                if (xhr.status === 200) {
-	                    p.done(null, xhr.responseText);
-	                } else {
-	                    p.done(xhr.status, xhr.responseText);
-	                }
-	            }
-	        };
-	
-	        xhr.send(payload);
-	        return p;
-	    }
-	
-	    function _ajaxer(method) {
-	        return function(url, data, headers) {
-	            return ajax(method, url, data, headers);
-	        };
-	    }
-	
-	    var promise = {
-	        Promise: Promise,
-	        join: join,
-	        chain: chain,
-	        ajax: ajax,
-	        get: _ajaxer('GET'),
-	        post: _ajaxer('POST'),
-	        put: _ajaxer('PUT'),
-	        del: _ajaxer('DELETE'),
-	
-	        /* Error codes */
-	        ENOXHR: 1,
-	        ETIMEOUT: 2,
-	
-	        /**
-	         * Configuration parameter: time in milliseconds after which a
-	         * pending AJAX request is considered unresponsive and is
-	         * aborted. Useful to deal with bad connectivity (e.g. on a
-	         * mobile network). A 0 value disables AJAX timeouts.
-	         *
-	         * Aborted requests resolve the promise with a ETIMEOUT error
-	         * code.
-	         */
-	        ajaxTimeout: 0
-	    };
-	
-	    if (typeof define === 'function' && define.amd) {
-	        /* AMD support */
-	        define(function() {
-	            return promise;
-	        });
-	    } else {
-	        exports.promise = promise;
-	    }
-	
-	
-	})(XHR);
-	// end:source ../src/xhr/promise.js
 	
 	// source ../src/business/Serializable.js
 	function Serializable(data) {
@@ -1450,10 +1500,11 @@
 			}
 		
 			var ArrayProto = {
+				length: 0,
 				push: function(/*mix*/) { 
 					for (var i = 0, imax = arguments.length; i < imax; i++){
 						
-						this[this.length++] = create(this._constructor, arguments[i]);
+						this[this.length++] = create(this._ctor, arguments[i]);
 					}
 					
 					return this;
@@ -1491,7 +1542,7 @@
 						this[imax] = this[imax - 1];
 					}
 					
-					this[0] = create(this._constructor, mix);
+					this[0] = create(this._ctor, mix);
 					return this;
 				},
 				
@@ -1548,7 +1599,7 @@
 					i = rm_start;
 					y = 2;
 					for (; y < arguments.length; y) {
-						this[i++] = create(this._constructor, arguments[y++]);
+						this[i++] = create(this._ctor, arguments[y++]);
 					}
 					
 					
@@ -1703,7 +1754,6 @@
 		}
 		
 		var CollectionProto = {
-			
 			toArray: function(){
 				var array = new Array(this.length);
 				for (var i = 0, imax = this.length; i < imax; i++){
@@ -1713,46 +1763,28 @@
 				return array;
 			},
 			
-			toJSON: function(){
-				var array = new Array(this.length);
-				for (var i = 0, x, imax = this.length; i < imax; i++){
-					x = this[i];
-					
-					if (x == null)
-						// skip also index - will be undefined
-						continue;
-					
-					array[i] = is_Function(this[i].toJSON)
-						? this[i].toJSON()
-						: JSONHelper.toJSON.call(this[i])
-						;
-				}
-				
-				return array;
-			}
+			toJSON: JSONHelper.arrayToJSON
 		};
 		
-		function overrideConstructor(baseConstructor, Child) {
-			
-			return function CollectionConstructor(){
-				this.length = 0;
-				this._constructor = Child;
-				
-				if (baseConstructor != null)
-					return baseConstructor.apply(this, arguments);
-				
-				return this;
-			};
-			
-		}
+		//////function overrideConstructor(baseConstructor, Child) {
+		//////	
+		//////	return function CollectionConstructor(){
+		//////		this.length = 0;
+		//////		this._constructor = Child;
+		//////		
+		//////		if (baseConstructor != null)
+		//////			return baseConstructor.apply(this, arguments);
+		//////		
+		//////		return this;
+		//////	};
+		//////	
+		//////}
 		
 		function Collection(Child, Proto) {
 			
-			//var __proto = {
-			//	Construct: overrideConstructor(Proto.Construct, Child)
-			//};
-			//delete Proto.Construct;
-			Proto.Construct = overrideConstructor(Proto.Construct, Child);
+			//////Proto.Construct = overrideConstructor(Proto.Construct, Child);
+			
+			Proto._ctor = Child;
 			
 			
 			obj_inherit(Proto, CollectionProto, ArrayProto);
@@ -1766,39 +1798,6 @@
 	
 	// source ../src/store/Store.js
 	var StoreProto = {
-		
-		// Serialization
-		deserialize: function(json) {
-			
-			if (typeof json === 'string') {
-				try {
-					json = JSON.parse(json);
-				}catch(error){
-					console.error('<json:deserialize>', json);
-					return this;
-				}
-			}
-			
-			if (is_Array(json) && is_Function(this.push)) {
-				for (var i = 0, imax = json.length; i < imax; i++){
-					this.push(json[i]);
-				}
-				return this;
-			}
-			
-			for (var key in json) 
-				this[key] = json[key];
-			
-			return this;
-		},
-		serialize: function() {
-			var json = this;
-			if (fn_isFunction(json.toArray)) {
-				json = json.toArray()
-			}
-			
-			return JSON.stringify(json);
-		},
 		
 		
 		// Abstract
@@ -1827,7 +1826,7 @@
 			this._route = new Route(route);
 		};
 		
-		obj_inherit(XHRRemote, StoreProto, Deferred, {
+		obj_inherit(XHRRemote, StoreProto, Serializable, Deferred, {
 			
 			serialize: function(){
 				
@@ -1931,7 +1930,7 @@
 			this._route = new Route(route);
 		};
 		
-		obj_inherit(LocalStore, StoreProto, Deferred, {
+		obj_inherit(LocalStore, StoreProto, Serializable, Deferred, {
 			
 			serialize: function(){
 				
@@ -12468,6 +12467,26 @@ function __eval(source, include) {
 	    });
 	    
 	    // end:source ../src/mask-attr/xToggle.js
+		// source ../src/mask-attr/xClassToggle.js
+		/**
+		 *	Toggle Class Name
+		 *
+		 *	button x-toggle='click: selected'
+		 */
+		
+		__mask_registerAttrHandler('x-class-toggle', 'client', function(node, attrValue, model, ctx, element, controller){
+		    
+		    
+		    var event = attrValue.substring(0, attrValue.indexOf(':')),
+		        $class = attrValue.substring(event.length + 1).trim();
+		    
+			
+		    __dom_addEventListener(element, event, function(){
+		         domLib(element).toggleClass($class);
+		    });
+		});
+		
+		// end:source ../src/mask-attr/xClassToggle.js
 	
 		// source ../src/sys/sys.js
 		(function(mask) {
