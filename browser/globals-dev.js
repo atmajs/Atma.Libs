@@ -367,7 +367,7 @@
 			for (key in this) {
 				
 				// _ (private)
-				if (key.charCodeAt(0) === 95 && key !== '_id')
+				if (key.charCodeAt(0) === 95)
 					continue;
 				
 				if ('Static' === key || 'Validate' === key)
@@ -390,6 +390,11 @@
 				
 				obj[key] = val;
 			}
+			
+			// make mongodb _id property not private
+			if (this._id != null) 
+				obj._id = this._id;
+			
 			return obj;
 		},
 		
@@ -736,10 +741,10 @@
 			
 			this
 				.promise[key](path)
-				.then(function(error, response){
+				.then(function(errored, response, xhr){
 					
-					if (error) {
-						sender.onError(error, response);
+					if (errored) {
+						sender.onError(errored, response, xhr);
 						return;
 					}
 					
@@ -753,8 +758,8 @@
 		XHR[key] = function(path, data, cb){
 			this
 				.promise[key](path, data)
-				.then(function(error, response){
-					cb(error, response);
+				.then(function(error, response, xhr){
+					cb(error, response, xhr);
 				});
 		};
 	});
@@ -1854,17 +1859,7 @@
 				this._resolved = null;
 				this._rejected = null;
 				
-				XHR[method](path, json, function(error, response){
-						
-						// @obsolete -> use deferred
-						if (callback) 
-							callback(error, response);
-						
-						if (error) 
-							return self.reject(error);
-						
-						self.resolve(response);
-				});
+				XHR[method](path, json, resolveDelegate(this, callback));
 				return this;
 			},
 			
@@ -1876,44 +1871,54 @@
 				this._resolved = null;
 				this._rejected = null;
 				
-				XHR.del(path, json, function(error, response){
-						
-						// @obsolete -> use deferred
-						if (callback) 
-							callback(error, response);
-						
-						if (error) 
-							return self.reject(error);
-						
-						self.resolve(response);
-				});
+				XHR.del(path, json, resolveDelegate(this, callback));
 				return this;
 			},
 			
 			onSuccess: function(response){
-				var json;
-				
-				try {
-					json = JSON.parse(response);	
-				} catch(error) {
-					this.onError(error);
-					return;
-				}
-				
-				
-				this.deserialize(json);
-				this.resolve(this);
+				parseFetched(this, response);
 			},
-			onError: function(error){
-				this.reject({
-					error: error
-				});
+			onError: function(errored, response, xhr){
+				reject(this, response, xhr);
 			}
 			
 			
 		});
 		
+		function parseFetched(self, response){
+			var json;
+				
+			try {
+				json = JSON.parse(response);	
+			} catch(error) {
+				
+				reject(self, error);
+				return;
+			}
+			
+			
+			self.deserialize(json);
+			self.resolve(self);
+		}
 		
+		function reject(self, response, xhr){
+			self.reject(response);
+		}
+		
+		function resolveDelegate(self, callback){
+			
+			return function(error, response, xhr){
+						
+					// @obsolete -> use deferred
+					if (callback) 
+						callback(error, response);
+					
+					if (error) 
+						return reject(self, response, xhr);
+					
+					self.resolve(response);
+			};
+		}
 		
 		return function(route){
 			
@@ -3096,6 +3101,10 @@
 		stub_release(Include.prototype);
 		
 		obj_inherit(Include, IncludeDeferred, {
+			
+			isBrowser: true,
+			isNode: false,
+			
 			setCurrent: function(data) {
 	
 				var resource = new Resource('js', {
@@ -11470,15 +11479,16 @@ function __eval(source, include) {
 				this.element = element;
 				this.value = attr.value;
 				this.property = attr.property;
-				this.setter = controller.attr.setter;
-				this.getter = controller.attr.getter;
+				this.setter = attr.setter;
+				this.getter = attr.getter;
 				this.dismiss = 0;
 				this.bindingType = bindingType;
 				this.log = false;
 				this.signal_domChanged = null;
 				this.signal_objectChanged = null;
 				this.locked = false;
-		
+				
+				
 				if (this.property == null) {
 		
 					switch (element.tagName) {
@@ -11513,39 +11523,34 @@ function __eval(source, include) {
 				 *	Send signal on OBJECT or DOM change
 				 */
 				if (attr['x-signal']) {
-					var signal = signal_parse(attr['x-signal'], null, 'dom')[0];
+					var signal = signal_parse(attr['x-signal'], null, 'dom')[0],
+						signalType = singal && signal.type;
 					
-					if (signal) {
-							
-						if (signal.type === 'dom') {
-							this.signal_domChanged = signal.signal;
-						}
-						
-						else if (signal.type === 'object') {
-							this.signal_objectChanged = signal.signal;
-						}
-						
-						else {
-							console.error('Type is not supported', signal);
-						}
+					switch(signalType){
+						case 'dom':
+						case 'object':
+							this['signal_' + signalType + 'Changed'] = signal.signal;
+							break;
+						default:
+							console.error('Signal typs is not supported', signal);
+							break;
 					}
+					
 					
 				}
 				
 				if (attr['x-pipe-signal']) {
-					var signal = signal_parse(attr['x-pipe-signal'], true, 'dom')[0];
-					if (signal) {
-						if (signal.type === 'dom') {
-							this.pipe_domChanged = signal;
-						}
+					var signal = signal_parse(attr['x-pipe-signal'], true, 'dom')[0],
+						signalType = signal && signal.type;
 						
-						else if (signal.type === 'object') {
-							this.pipe_objectChanged = signal;
-						}
-						
-						else {
-							console.error('Type is not supported', signal)
-						}
+					switch(signalType){
+						case 'dom':
+						case 'object':
+							this['pipe_' + signalType + 'Changed'] = signal;
+							break;
+						default:
+							console.error('Pipe type is not supported');
+							break;
 					}
 				}
 				
@@ -11629,29 +11634,6 @@ function __eval(source, include) {
 		
 			BindingProvider.prototype = {
 				constructor: BindingProvider,
-				
-				//////handlers: {
-				//////	attr: {
-				//////		'x-signal': function(provider, value){
-				//////			var signal = signal_parse(value, null, 'dom')[0];
-				//////	
-				//////			if (signal) {
-				//////					
-				//////				if (signal.type === 'dom') {
-				//////					provider.signal_domChanged = signal.signal;
-				//////				}
-				//////				
-				//////				else if (signal.type === 'object') {
-				//////					provider.signal_objectChanged = signal.signal;
-				//////				}
-				//////				
-				//////				else {
-				//////					console.error('Type is not supported', signal);
-				//////				}
-				//////			}
-				//////		}
-				//////	}
-				//////},
 				
 				dispose: function() {
 					expression_unbind(this.expression, this.model, this.controller, this.binder);
@@ -11831,6 +11813,17 @@ function __eval(source, include) {
 							onDomChange = provider.domChanged.bind(provider);
 			
 						__dom_addEventListener(element, eventType, onDomChange);
+					}
+					
+						
+					if (!provider.objectWay.get(provider, provider.expression)) {
+						
+						setTimeout(function(){
+							if (provider.domWay.get(provider))
+								provider.domChanged();	
+						})
+						
+						return provider;
 					}
 				}
 		
@@ -13390,6 +13383,20 @@ function __eval(source, include) {
 			}
 		}
 		
+		function time_fromString(str){
+			if (!str) 
+				return 0;
+			
+			if (str.indexOf('ms') !== -1) 
+				return parseInt(str);
+			
+			if (str.indexOf('s')) 
+				return parseFloat(str) * 1000;
+			
+			console.warn('<mask:animation> parsing time', str);
+			return 0;
+		}
+		
 		function model_getDuration(model) {
 		
 			var isarray = arr_isArray(model),
@@ -13405,12 +13412,9 @@ function __eval(source, include) {
 				
 				if (fn_isFunction(x.getDuration)) {
 					ms = x.getDuration();
-				}
-				else if (model.duration.indexOf('ms') !== -1) {
-					ms = parseInt(model.duration);
-				}
-				else if (model.duration.indexOf('s') !== -1) {
-					ms = parseInt(model.duration) * 1000;
+				} else {
+					
+					ms = time_fromString(model.duration) + time_fromString(model.delay);
 				}
 				
 				if (ms > max) 

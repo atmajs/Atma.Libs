@@ -366,7 +366,7 @@
 			for (key in this) {
 				
 				// _ (private)
-				if (key.charCodeAt(0) === 95 && key !== '_id')
+				if (key.charCodeAt(0) === 95)
 					continue;
 				
 				if ('Static' === key || 'Validate' === key)
@@ -389,6 +389,11 @@
 				
 				obj[key] = val;
 			}
+			
+			// make mongodb _id property not private
+			if (this._id != null) 
+				obj._id = this._id;
+			
 			return obj;
 		},
 		
@@ -735,10 +740,10 @@
 			
 			this
 				.promise[key](path)
-				.then(function(error, response){
+				.then(function(errored, response, xhr){
 					
-					if (error) {
-						sender.onError(error, response);
+					if (errored) {
+						sender.onError(errored, response, xhr);
 						return;
 					}
 					
@@ -752,8 +757,8 @@
 		XHR[key] = function(path, data, cb){
 			this
 				.promise[key](path, data)
-				.then(function(error, response){
-					cb(error, response);
+				.then(function(error, response, xhr){
+					cb(error, response, xhr);
 				});
 		};
 	});
@@ -1850,17 +1855,7 @@
 				this._resolved = null;
 				this._rejected = null;
 				
-				XHR[method](path, json, function(error, response){
-						
-						// @obsolete -> use deferred
-						if (callback) 
-							callback(error, response);
-						
-						if (error) 
-							return self.reject(error);
-						
-						self.resolve(response);
-				});
+				XHR[method](path, json, resolveDelegate(this, callback));
 				return this;
 			},
 			
@@ -1872,44 +1867,54 @@
 				this._resolved = null;
 				this._rejected = null;
 				
-				XHR.del(path, json, function(error, response){
-						
-						// @obsolete -> use deferred
-						if (callback) 
-							callback(error, response);
-						
-						if (error) 
-							return self.reject(error);
-						
-						self.resolve(response);
-				});
+				XHR.del(path, json, resolveDelegate(this, callback));
 				return this;
 			},
 			
 			onSuccess: function(response){
-				var json;
-				
-				try {
-					json = JSON.parse(response);	
-				} catch(error) {
-					this.onError(error);
-					return;
-				}
-				
-				
-				this.deserialize(json);
-				this.resolve(this);
+				parseFetched(this, response);
 			},
-			onError: function(error){
-				this.reject({
-					error: error
-				});
+			onError: function(errored, response, xhr){
+				reject(this, response, xhr);
 			}
 			
 			
 		});
 		
+		function parseFetched(self, response){
+			var json;
+				
+			try {
+				json = JSON.parse(response);	
+			} catch(error) {
+				
+				reject(self, error);
+				return;
+			}
+			
+			
+			self.deserialize(json);
+			self.resolve(self);
+		}
 		
+		function reject(self, response, xhr){
+			self.reject(response);
+		}
+		
+		function resolveDelegate(self, callback){
+			
+			return function(error, response, xhr){
+						
+					// @obsolete -> use deferred
+					if (callback) 
+						callback(error, response);
+					
+					if (error) 
+						return reject(self, response, xhr);
+					
+					self.resolve(response);
+			};
+		}
 		
 		return function(route){
 			
@@ -3582,6 +3587,10 @@
 		stub_release(Include.prototype);
 		
 		obj_inherit(Include, IncludeDeferred, {
+			
+			isBrowser: true,
+			isNode: false,
+			
 			setCurrent: function(data) {
 	
 				var resource = new Resource('js', {
@@ -4509,6 +4518,10 @@
 		
 		// source export-resource.js
 		obj_inherit(Resource, {
+		    
+		    isBrowser: false,
+		    isNode: true,
+		    
 		    bin_remove: bin_remove,
 		    bin_tryReload: bin_tryReload,
 		    path_getFile: function() {
@@ -4635,6 +4648,11 @@
 		// end:source export-resource.js
 		// source export-include.js
 		obj_inherit(Include, {
+		    
+		    isBrowser: false,
+		    isNode: true,
+		    
+		    
 		    bin_tryReload: bin_tryReload,
 		    bin_remove: bin_remove
 		});
@@ -8835,9 +8853,18 @@ function __eval(source, include) {
 			}
 	
 			if (type === 1 /* Dom.NODE */) {
-				container = build_node(node, model, ctx, container, controller, childs);
-				childs = null;
 				
+				if (node.tagName[0] === ':') {
+					
+					type = 4;
+					node.mode = mode_CLIENT;
+					node.controller = mock_TagHandler.create(node.tagName, null, mode_CLIENT);
+					
+				} else {
+				
+					container = build_node(node, model, ctx, container, controller, childs);
+					childs = null;
+				}
 			}
 	
 			if (type === 2 /* Dom.TEXTNODE */) {
@@ -11977,6 +12004,19 @@ function __eval(source, include) {
 					
 					domLib.fn[method] = function(template, model, controller, ctx){
 						
+						if (this.length === 0) {
+							// if DEBUG
+							console.warn('<jcompo> $.', method, '- no element was selected(found)');
+							// endif
+							return this;
+						}
+						
+						if (this.length > 1) {
+							// if DEBUG
+							console.warn('<jcompo> $.', method, ' can insert only to one element. Fix is comming ...');
+							// endif
+						}
+						
 						if (controller == null) {
 							
 							controller = index < 2
@@ -14100,15 +14140,16 @@ function __eval(source, include) {
 				this.element = element;
 				this.value = attr.value;
 				this.property = attr.property;
-				this.setter = controller.attr.setter;
-				this.getter = controller.attr.getter;
+				this.setter = attr.setter;
+				this.getter = attr.getter;
 				this.dismiss = 0;
 				this.bindingType = bindingType;
 				this.log = false;
 				this.signal_domChanged = null;
 				this.signal_objectChanged = null;
 				this.locked = false;
-		
+				
+				
 				if (this.property == null) {
 		
 					switch (element.tagName) {
@@ -14143,39 +14184,34 @@ function __eval(source, include) {
 				 *	Send signal on OBJECT or DOM change
 				 */
 				if (attr['x-signal']) {
-					var signal = signal_parse(attr['x-signal'], null, 'dom')[0];
+					var signal = signal_parse(attr['x-signal'], null, 'dom')[0],
+						signalType = singal && signal.type;
 					
-					if (signal) {
-							
-						if (signal.type === 'dom') {
-							this.signal_domChanged = signal.signal;
-						}
-						
-						else if (signal.type === 'object') {
-							this.signal_objectChanged = signal.signal;
-						}
-						
-						else {
-							console.error('Type is not supported', signal);
-						}
+					switch(signalType){
+						case 'dom':
+						case 'object':
+							this['signal_' + signalType + 'Changed'] = signal.signal;
+							break;
+						default:
+							console.error('Signal typs is not supported', signal);
+							break;
 					}
+					
 					
 				}
 				
 				if (attr['x-pipe-signal']) {
-					var signal = signal_parse(attr['x-pipe-signal'], true, 'dom')[0];
-					if (signal) {
-						if (signal.type === 'dom') {
-							this.pipe_domChanged = signal;
-						}
+					var signal = signal_parse(attr['x-pipe-signal'], true, 'dom')[0],
+						signalType = signal && signal.type;
 						
-						else if (signal.type === 'object') {
-							this.pipe_objectChanged = signal;
-						}
-						
-						else {
-							console.error('Type is not supported', signal)
-						}
+					switch(signalType){
+						case 'dom':
+						case 'object':
+							this['pipe_' + signalType + 'Changed'] = signal;
+							break;
+						default:
+							console.error('Pipe type is not supported');
+							break;
 					}
 				}
 				
@@ -14259,29 +14295,6 @@ function __eval(source, include) {
 		
 			BindingProvider.prototype = {
 				constructor: BindingProvider,
-				
-				//////handlers: {
-				//////	attr: {
-				//////		'x-signal': function(provider, value){
-				//////			var signal = signal_parse(value, null, 'dom')[0];
-				//////	
-				//////			if (signal) {
-				//////					
-				//////				if (signal.type === 'dom') {
-				//////					provider.signal_domChanged = signal.signal;
-				//////				}
-				//////				
-				//////				else if (signal.type === 'object') {
-				//////					provider.signal_objectChanged = signal.signal;
-				//////				}
-				//////				
-				//////				else {
-				//////					console.error('Type is not supported', signal);
-				//////				}
-				//////			}
-				//////		}
-				//////	}
-				//////},
 				
 				dispose: function() {
 					expression_unbind(this.expression, this.model, this.controller, this.binder);
@@ -14461,6 +14474,17 @@ function __eval(source, include) {
 							onDomChange = provider.domChanged.bind(provider);
 			
 						__dom_addEventListener(element, eventType, onDomChange);
+					}
+					
+						
+					if (!provider.objectWay.get(provider, provider.expression)) {
+						
+						setTimeout(function(){
+							if (provider.domWay.get(provider))
+								provider.domChanged();	
+						})
+						
+						return provider;
 					}
 				}
 		
@@ -15039,6 +15063,26 @@ function __eval(source, include) {
 	    });
 	    
 	    // end:source ../src/mask-attr/xToggle.js
+		// source ../src/mask-attr/xClassToggle.js
+		/**
+		 *	Toggle Class Name
+		 *
+		 *	button x-toggle='click: selected'
+		 */
+		
+		__mask_registerAttrHandler('x-class-toggle', 'client', function(node, attrValue, model, ctx, element, controller){
+		    
+		    
+		    var event = attrValue.substring(0, attrValue.indexOf(':')),
+		        $class = attrValue.substring(event.length + 1).trim();
+		    
+			
+		    __dom_addEventListener(element, event, function(){
+		         domLib(element).toggleClass($class);
+		    });
+		});
+		
+		// end:source ../src/mask-attr/xClassToggle.js
 	
 		// source ../src/sys/sys.js
 		(function(mask) {
