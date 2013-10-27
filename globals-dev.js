@@ -9646,7 +9646,7 @@ function __eval(source, include) {
 		custom_Attributes[attrName] = mock_AttrHandler.create(attrName, fn, mix);
 	};
 	
-	Mask.registerUtility = function(name, fn, mode){
+	Mask.registerUtil = function(name, fn, mode){
 		
 		if (mode == null) {
 			custom_Utils[name] = fn;
@@ -9655,6 +9655,9 @@ function __eval(source, include) {
 		
 		custom_Utils[name] = mock_UtilHandler.create(name, fn, mode);
 	};
+	
+	// backward support
+	Mask.registerUtility  = Mask.registerUtil;
 	
 	Mask.registerHandler = function(tagName, compo){
 		
@@ -9670,7 +9673,7 @@ function __eval(source, include) {
 		custom_Tags[tagName] = compo;
 	};
 	
-	Mask.compoDefinitions = function(compos){
+	Mask.compoDefinitions = function(compos, utils, attributes){
 		var tags = custom_Tags,
 			defs = custom_Tags_defs;
 			
@@ -9685,6 +9688,17 @@ function __eval(source, include) {
 			tags[tagName] = mock_TagHandler.create(tagName, null, 'client');
 		}
 		
+		for (var key in utils){
+			if (utils[key].mode === 'client'){
+				Mask.registerUtil(key, function(){}, 'client');
+			}
+		}
+		
+		for (var key in attributes){
+			if (attributes[key].mode === 'client') {
+				Mask.registerAttrHandler(key, function(){}, 'client');
+			}
+		}
 	};
 	// end:source ../src/mock/mock.js
 	
