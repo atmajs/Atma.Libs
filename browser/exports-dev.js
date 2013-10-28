@@ -8006,7 +8006,7 @@ function __eval(source, include) {
 		var Pipes = (function() {
 		
 		
-			mask.registerAttrHandler('x-pipe-signal', function(node, attrValue, model, cntx, element, controller) {
+			mask.registerAttrHandler('x-pipe-signal', 'client', function(node, attrValue, model, cntx, element, controller) {
 		
 				var arr = attrValue.split(';');
 				for (var i = 0, x, length = arr.length; i < length; i++) {
@@ -9364,15 +9364,32 @@ function __eval(source, include) {
 								;
 						}
 						
-						// if DEBUG
-						controller == null && console.warn(
-							'$.***Mask - controller not found, this can lead to memory leaks if template contains compos'
-						);
-						// endif
+						if (controller == null) {
+							controller = {};
+							// if DEBUG
+							console.warn(
+								'$.***Mask - controller not found, this can lead to memory leaks if template contains compos'
+							);
+							// endif
+						}
 						
-						var fragment = mask.render(template, model, ctx, null, controller);
 						
-						return this[jQ_Methods[index]](fragment);
+						if (controller.components == null) {
+							controller.components = [];
+						}
+						
+						var components = controller.components,
+							i = components.length,
+							fragment = mask.render(template, model, ctx, null, controller);
+						
+						var self = this[jQ_Methods[index]](fragment),
+							imax = components.length;
+						
+						for (; i < imax; i++) {
+							Compo.signal.emitIn(components[i], 'domInsert');
+						}
+						
+						return self;
 					};
 					
 				});
