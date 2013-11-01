@@ -3829,41 +3829,18 @@ function __eval(source, include) {
 	_exports = root || _global;
     
 
-    function construct(plugins){
+    function construct(){
 
-        if (plugins == null) {
-            plugins = {};
-        }
-        var lib = factory(_global, plugins, _document),
-            key;
-
-        for (key in plugins) {
-            lib[key] = plugins[key];
-        }
-
-        return lib;
+        factory(_global, _exports, _document);
     };
 
     
-    if (typeof exports !== 'undefined' && exports === root) {
-        module.exports = construct();
-        return;
-    }
     if (typeof define === 'function' && define.amd) {
-        define(construct);
-        return;
+        return define(construct);
     }
     
-    var plugins = {},
-        lib = construct(plugins);
-
-    _exports.mask = lib;
-
-    for (var key in plugins) {
-        _exports[key] = plugins[key];
-    }
-
-    
+	// Browser OR Node
+    construct();
 
 }(this, function (global, exports, document) {
     'use strict';
@@ -5868,15 +5845,33 @@ function __eval(source, include) {
 						continue;
 					}
 	
-					// inline comments
-					if (c === 47 && template.charCodeAt(index + 1) === 47) {
+					// COMMENTS
+					if (c === 47) {
 						// /
-						index++;
-						while (c !== 10 && c !== 13 && index < length) {
-							// goto newline
-							c = template.charCodeAt(++index);
+						nextC = template.charCodeAt(index + 1);
+						if (nextC === 47){
+							// inline (/)
+							index++;
+							while (c !== 10 && c !== 13 && index < length) {
+								// goto newline
+								c = template.charCodeAt(++index);
+							}
+							continue;
 						}
-						continue;
+						if (nextC === 42) {
+							// block (*)
+							index = template.indexOf('*/', index + 2) + 2;
+							
+							if (index === 1) {
+								// if DEBUG
+								console.warn('<mask:parse> block comment has no end');
+								// endif
+								index = length;
+							}
+							
+							
+							continue;
+						}
 					}
 	
 					if (last === state_attr) {
@@ -10967,13 +10962,30 @@ function __eval(source, include) {
 			if (observers.length === 0) {
 				// create wrappers for first time
 				var i = 0,
-					fns = ['push', 'unshift', 'splice', 'pop', 'shift', 'reverse', 'sort'],
+					fns = [
+						// native mutators
+						'push',
+						'unshift',
+						'splice',
+						'pop',
+						'shift',
+						'reverse',
+						'sort',
+						
+						// collections mutator
+						'remove'],
 					length = fns.length,
+					fn,
 					method;
 			
 				for (; i < length; i++) {
 					method = fns[i];
-					arr[method] = _array_createWrapper(arr, arr[method], method);
+					fn = arr[method];
+					
+					if (fn != null) {
+						arr[method] = _array_createWrapper(arr, fn, method);
+					}
+		
 				}
 			}
 		
@@ -11042,11 +11054,13 @@ function __eval(source, include) {
 				return result;
 			}
 		
-		
-			for (var i = 0, x, length = callbacks.length; i < length; i++) {
+			var i = 0,
+				imax = callbacks.length,
+				x;
+			for (; i < imax; i++) {
 				x = callbacks[i];
 				if (typeof x === 'function') {
-					x(array, method, args);
+					x(array, method, args, result);
 				}
 			}
 		
@@ -11541,7 +11555,7 @@ function __eval(source, include) {
 				 */
 				if (attr['x-signal']) {
 					var signal = signal_parse(attr['x-signal'], null, 'dom')[0],
-						signalType = singal && signal.type;
+						signalType = signal && signal.type;
 					
 					switch(signalType){
 						case 'dom':
@@ -12850,6 +12864,20 @@ function __eval(source, include) {
 					}
 				}
 				
+				function list_remove(self, removed){
+					var compos = self.components,
+						i = compos.length,
+						x;
+					while(--i > -1){
+						x = compos[i];
+						
+						if (removed.indexOf(x.model) === -1) 
+							continue;
+						
+						compo_dispose(x, self);
+					}
+				}
+				
 				// end:source attr.each.helper.js
 			
 				var Component = mask.Dom.Component,
@@ -12888,7 +12916,7 @@ function __eval(source, include) {
 			
 			
 				var EachProto = {
-					refresh: function(array, method, args) {
+					refresh: function(array, method, args, result) {
 						var i = 0,
 							x, imax;
 			
@@ -12951,6 +12979,11 @@ function __eval(source, include) {
 						case 'sort':
 						case 'reverse':
 							list_sort(this, array);
+							break;
+						case 'remove':
+							if (result != null && result.length) {
+								list_remove(this, result);
+							}
 							break;
 						}
 			
@@ -13102,8 +13135,10 @@ function __eval(source, include) {
 	// end:source ../src/libs/mask.binding.js
 
 
-	return Mask;
+	Mask.Compo = Compo;
+	Mask.jmask = jmask;
 
+	exports.mask = Mask;
 }));
 /* jshint -W053 */
 
@@ -13225,7 +13260,16 @@ function __eval(source, include) {
     
     function fn_proxy(ctx, fn) {
         return function(){
-    		return fn.apply(ctx, arguments);
+    		switch(arguments.length){
+    			case 0:
+    				return fn.call(ctx);
+    			case 1:
+    				return fn.call(ctx, arguments[0]);
+    			case 2:
+    				return fn.call(ctx, arguments[1]);
+    			default:
+    				return fn.apply(ctx, arguments);		
+    		}
     	};
     }
     // end:source ../src/utils/fn.js
@@ -13311,8 +13355,10 @@ function __eval(source, include) {
 				data = {},
 				length = arr.length;
 	
-			data.prop = arr[0] in vendorProperties ? vendorPrfx + arr[0] : arr[0];
-	
+			data.prop = arr[0] in vendorProperties
+				? vendorPrfx + arr[0]
+				: arr[0]
+				;
 	
 			var vals = arr[1].split(/ *> */);
 	
@@ -13987,15 +14033,19 @@ function __eval(source, include) {
 		}
 		
 		// end:source helper.js
+		
+		var state_READY = 1,
+			state_ANIMATE = 2
+			;
 	
-		function AnimationCompo() {
-	
-		}
+		function AnimationCompo() {}
 	
 		AnimationCompo.prototype = {
 			constructor: AnimationCompo,
-	
-			render: function(model, cntx, container){
+			state: state_READY,
+			repeat: 1,
+			step: 1, 
+			render: function(model, ctx, container){
 	
 				if (this.nodes == null) {
 					console.warn('No Animation Model');
@@ -14038,14 +14088,46 @@ function __eval(source, include) {
 					Compo.pipe.addController(this);
 				}
 	
-	
-	
 				this.model = new Model(mask_toJSON(this.nodes));
 				this.container = container;
+				
+				if (this.attr['x-repeat']) {
+					this.repeat = this.attr['x-repeat'] << 0 || Infinity; 
+				}
 			},
 	
 			start: function(callback, element){
-				this.model.start(element || this.container, callback);
+				
+				
+				if (this.state === state_ANIMATE) {
+					this.stop();
+				}
+				
+				this.element = element || this.container;
+				this.state = state_ANIMATE;
+				this.callback = callback;
+				
+				this.step = 1;
+				this.model.start(this.element, fn_proxy(this, this.nextStep));
+			},
+			
+			stop: function(){
+				// Not Completely Implemented
+				
+				if (this.callback) 
+					this.callback(this);
+					
+				this.element = null;
+				this.callback = null;
+				this.state = state_READY;
+				
+			},
+			nextStep: function(){
+				if (++this.step > this.repeat) 
+					return this.stop();
+				
+				
+				this.model.start(this.element, fn_proxy(this, this.nextStep));
 			}
 		};
 	
