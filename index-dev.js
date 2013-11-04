@@ -285,6 +285,83 @@
 		}
 	}
 	// end:source ../src/util/proto.js
+	// source ../src/util/json.js
+	var JSONHelper = (function() {
+		
+		var _date_toJSON = Date.prototype.toJSON;
+		
+		return {
+			// Create from Complex Class Instance a lightweight json object 
+			toJSON: function() {
+				var obj = {},
+					key, val;
+	
+				for (key in this) {
+	
+					// _ (private)
+					if (key.charCodeAt(0) === 95)
+						continue;
+	
+					if ('Static' === key || 'Validate' === key)
+						continue;
+	
+					val = this[key];
+	
+					if (val == null)
+						continue;
+	
+					switch (typeof val) {
+						case 'function':
+							continue;
+						case 'object':
+							var toJSON = val.toJSON;
+							
+							if (toJSON === _date_toJSON) {
+								// do not serialize Date
+								break;
+							}
+							
+							if (is_Function(toJSON)) {
+								obj[key] = val.toJSON();
+								continue;
+							}
+					}
+	
+					obj[key] = val;
+				}
+	
+				// make mongodb's _id property not private
+				if (this._id != null)
+					obj._id = this._id;
+	
+				return obj;
+			},
+	
+			arrayToJSON: function() {
+				var array = new Array(this.length),
+					i = 0,
+					imax = this.length,
+					x;
+	
+				for (; i < imax; i++) {
+	
+					x = this[i];
+	
+					if (typeof x !== 'object') {
+						array[i] = x;
+						return;
+					}
+	
+					array[i] = is_Function(x.toJSON) ? x.toJSON() : JSONHelper.toJSON.call(x);
+	
+				}
+	
+				return array;
+			}
+		};
+	
+	}());
+	// end:source ../src/util/json.js
 	// source ../src/util/object.js
 	function obj_inherit(target /* source, ..*/ ) {
 		if (typeof target === 'function') {
@@ -366,72 +443,6 @@
 		}
 		return target;
 	}
-	
-	
-	var JSONHelper = {
-		toJSON: function(){
-			var obj = {},
-				key, val;
-			
-			for (key in this) {
-				
-				// _ (private)
-				if (key.charCodeAt(0) === 95)
-					continue;
-				
-				if ('Static' === key || 'Validate' === key)
-					continue;
-				
-				val = this[key];
-				
-				if (val == null) 
-					continue;
-				
-				switch(typeof val){
-					case 'function':
-						continue;
-					case 'object':
-						if (is_Function(val.toJSON)) {
-							obj[key] = val.toJSON();
-							continue;
-						}
-				}
-				
-				obj[key] = val;
-			}
-			
-			// make mongodb _id property not private
-			if (this._id != null) 
-				obj._id = this._id;
-			
-			return obj;
-		},
-		
-		arrayToJSON: function(){
-			var array = new Array(this.length),
-				i = 0,
-				imax = this.length,
-				x;
-			
-			for(; i < imax; i++){
-				
-				x = this[i];
-				
-				if (typeof x !== 'object') {
-					array[i] = x;
-					return;
-				}
-				
-				array[i] = is_Function(x.toJSON)
-					? x.toJSON()
-					: JSONHelper.toJSON.call(x)
-					;
-				
-			}
-			
-			return array;
-		}
-	};
 	
 	// end:source ../src/util/object.js
 	// source ../src/util/function.js
@@ -4397,7 +4408,7 @@
 		
 		                delete bin[type][id];
 		                return res.parent && res.parent.url
-		                    ? bin_remove(res.parent)
+		                    ? bin_remove(res.parent.url)
 		                    : res
 		                    ;
 		            }
@@ -4702,41 +4713,18 @@ function __eval(source, include) {
 	_exports = root || _global;
     
 
-    function construct(plugins){
+    function construct(){
 
-        if (plugins == null) {
-            plugins = {};
-        }
-        var lib = factory(_global, plugins, _document),
-            key;
-
-        for (key in plugins) {
-            lib[key] = plugins[key];
-        }
-
-        return lib;
+        factory(_global, _exports, _document);
     };
 
     
-    if (typeof exports !== 'undefined' && exports === root) {
-        module.exports = construct();
-        return;
-    }
     if (typeof define === 'function' && define.amd) {
-        define(construct);
-        return;
+        return define(construct);
     }
     
-    var plugins = {},
-        lib = construct(plugins);
-
-    _exports.mask = lib;
-
-    for (var key in plugins) {
-        _exports[key] = plugins[key];
-    }
-
-    
+	// Browser OR Node
+    construct();
 
 }(this, function (global, exports, document) {
     'use strict';
@@ -6809,15 +6797,33 @@ function __eval(source, include) {
 						continue;
 					}
 	
-					// inline comments
-					if (c === 47 && template.charCodeAt(index + 1) === 47) {
+					// COMMENTS
+					if (c === 47) {
 						// /
-						index++;
-						while (c !== 10 && c !== 13 && index < length) {
-							// goto newline
-							c = template.charCodeAt(++index);
+						nextC = template.charCodeAt(index + 1);
+						if (nextC === 47){
+							// inline (/)
+							index++;
+							while (c !== 10 && c !== 13 && index < length) {
+								// goto newline
+								c = template.charCodeAt(++index);
+							}
+							continue;
 						}
-						continue;
+						if (nextC === 42) {
+							// block (*)
+							index = template.indexOf('*/', index + 2) + 2;
+							
+							if (index === 1) {
+								// if DEBUG
+								console.warn('<mask:parse> block comment has no end');
+								// endif
+								index = length;
+							}
+							
+							
+							continue;
+						}
 					}
 	
 					if (last === state_attr) {
@@ -13637,13 +13643,30 @@ function __eval(source, include) {
 			if (observers.length === 0) {
 				// create wrappers for first time
 				var i = 0,
-					fns = ['push', 'unshift', 'splice', 'pop', 'shift', 'reverse', 'sort'],
+					fns = [
+						// native mutators
+						'push',
+						'unshift',
+						'splice',
+						'pop',
+						'shift',
+						'reverse',
+						'sort',
+						
+						// collections mutator
+						'remove'],
 					length = fns.length,
+					fn,
 					method;
 			
 				for (; i < length; i++) {
 					method = fns[i];
-					arr[method] = _array_createWrapper(arr, arr[method], method);
+					fn = arr[method];
+					
+					if (fn != null) {
+						arr[method] = _array_createWrapper(arr, fn, method);
+					}
+		
 				}
 			}
 		
@@ -13712,11 +13735,13 @@ function __eval(source, include) {
 				return result;
 			}
 		
-		
-			for (var i = 0, x, length = callbacks.length; i < length; i++) {
+			var i = 0,
+				imax = callbacks.length,
+				x;
+			for (; i < imax; i++) {
 				x = callbacks[i];
 				if (typeof x === 'function') {
-					x(array, method, args);
+					x(array, method, args, result);
 				}
 			}
 		
@@ -14211,7 +14236,7 @@ function __eval(source, include) {
 				 */
 				if (attr['x-signal']) {
 					var signal = signal_parse(attr['x-signal'], null, 'dom')[0],
-						signalType = singal && signal.type;
+						signalType = signal && signal.type;
 					
 					switch(signalType){
 						case 'dom':
@@ -15462,6 +15487,20 @@ function __eval(source, include) {
 					}
 				}
 				
+				function list_remove(self, removed){
+					var compos = self.components,
+						i = compos.length,
+						x;
+					while(--i > -1){
+						x = compos[i];
+						
+						if (removed.indexOf(x.model) === -1) 
+							continue;
+						
+						compo_dispose(x, self);
+					}
+				}
+				
 				// end:source attr.each.helper.js
 			
 				var Component = mask.Dom.Component,
@@ -15500,7 +15539,7 @@ function __eval(source, include) {
 			
 			
 				var EachProto = {
-					refresh: function(array, method, args) {
+					refresh: function(array, method, args, result) {
 						var i = 0,
 							x, imax;
 			
@@ -15563,6 +15602,11 @@ function __eval(source, include) {
 						case 'sort':
 						case 'reverse':
 							list_sort(this, array);
+							break;
+						case 'remove':
+							if (result != null && result.length) {
+								list_remove(this, result);
+							}
 							break;
 						}
 			
@@ -15715,7 +15759,10 @@ function __eval(source, include) {
 	
 
 
-	return Mask;
+	Mask.Compo = Compo;
+	Mask.jmask = jmask;
+
+	exports.mask = Mask;
 
 }));
 (function(root, factory){
