@@ -137,16 +137,16 @@
 					: function(args){
 					
 						if (_isArguments(args)) {
-							return __super.apply(this, args);
+							return fn_apply(__super, this, args);
 						}
 						
-						return __super.apply(this, arguments);
+						return fn_apply(__super, this, arguments);
 					};
 	        
 	        return function(){
 	            this['super'] = __proxy;
 	            
-	            return fn.apply(this, arguments);
+	            return fn_apply(fn, this, arguments);
 	        };
 	    }
 	
@@ -396,25 +396,38 @@
 		return target;
 	}
 	
-	 function obj_getProperty(o, chain) {
-		if (typeof o !== 'object' || chain == null) {
-			return o;
-		}
 	
-		var value = o,
-			props = chain.split('.'),
-			length = props.length,
-			i = 0,
-			key;
 	
+	function obj_getProperty(obj, property) {
+		var chain = property.split('.'),
+			length = chain.length,
+			i = 0;
 		for (; i < length; i++) {
-			key = props[i];
-			value = value[key];
-			if (value == null) 
-				return value;
-			
+			if (obj == null) {
+				return null;
+			}
+	
+			obj = obj[chain[i]];
 		}
-		return value;
+		return obj;
+	}
+	
+	
+	function obj_setProperty(obj, property, value) {
+		var chain = property.split('.'),
+			length = chain.length,
+			i = 0,
+			key = null;
+	
+		for (; i < length - 1; i++) {
+			key = chain[i];
+			if (obj[key] == null) {
+				obj[key] = {};
+			}
+			obj = obj[key];
+		}
+	
+		obj[chain[i]] = value;
 	}
 	
 	function obj_isRawObject(value) {
@@ -445,41 +458,50 @@
 		return target;
 	}
 	
+	
+	function obj_isNullOrGlobal(ctx){
+		return ctx === void 0 || ctx === global;
+	}
 	// end:source ../src/util/object.js
 	// source ../src/util/function.js
 	function fn_proxy(fn, ctx) {
 	
 		return function() {
-			switch (arguments.length) {
-				case 1:
-					return fn.call(ctx, arguments[0]);
-				case 2:
-					return fn.call(ctx,
-						arguments[0],
-						arguments[1]);
-				case 3:
-					return fn.call(ctx,
-						arguments[0],
-						arguments[1],
-						arguments[2]);
-				case 4:
-					return fn.call(ctx,
-						arguments[0],
-						arguments[1],
-						arguments[2],
-						arguments[3]);
-				case 5:
-					return fn.call(ctx,
-						arguments[0],
-						arguments[1],
-						arguments[2],
-						arguments[3],
-						arguments[4]
-						);
-			};
-			
-			return fn.apply(ctx, arguments);
-		}
+			return fn_apply(fn, ctx, arguments);
+		};
+	}
+	
+	function fn_apply(fn, ctx, _arguments){
+		
+		switch (_arguments.length) {
+			case 1:
+				return fn.call(ctx, _arguments[0]);
+			case 2:
+				return fn.call(ctx,
+					_arguments[0],
+					_arguments[1]);
+			case 3:
+				return fn.call(ctx,
+					_arguments[0],
+					_arguments[1],
+					_arguments[2]);
+			case 4:
+				return fn.call(ctx,
+					_arguments[0],
+					_arguments[1],
+					_arguments[2],
+					_arguments[3]);
+			case 5:
+				return fn.call(ctx,
+					_arguments[0],
+					_arguments[1],
+					_arguments[2],
+					_arguments[3],
+					_arguments[4]
+					);
+		};
+		
+		return fn.apply(ctx, _arguments);
 	}
 	
 	function fn_isFunction(fn){
@@ -487,12 +509,12 @@
 	}
 	
 	function fn_createDelegate(fn /* args */) {
-		var args = Array.prototype.slice.call(arguments, 1);
+		var args = _Array_slice.call(arguments, 1);
 		return function(){
 			if (arguments.length > 0) 
 				args = args.concat(arguments);
 			
-			return fn.apply(null, args);
+			return fn_apply(fn, null, args);
 		};
 	}
 	// end:source ../src/util/function.js
@@ -722,6 +744,7 @@
 		        post: _ajaxer('POST'),
 		        put: _ajaxer('PUT'),
 		        del: _ajaxer('DELETE'),
+		        patch: _ajaxer('PATCH'),
 		
 		        /* Error codes */
 		        ENOXHR: e_NO_XHR,
@@ -775,7 +798,7 @@
 		};
 	});
 	
-	arr_each(['del', 'post', 'put'], function(key){
+	arr_each(['del', 'post', 'put', 'patch'], function(key){
 		XHR[key] = function(path, data, cb){
 			this
 				.promise[key](path, data)
@@ -1027,7 +1050,7 @@
 		_resolved: null,
 		_rejected: null,
 		
-		deferr: function(){
+		defer: function(){
 			this._rejected = null;
 			this._resolved = null;
 		},
@@ -1047,7 +1070,7 @@
 				imax = _done.length;
 				i = 0;
 				while (imax-- !== 0) {
-					_done[i++].apply(this, arguments);
+					fn_apply(_done[i++], this, arguments);
 				}
 				_done.length = 0;
 			}
@@ -1078,7 +1101,7 @@
 				imax = _fail.length;
 				i = 0;
 				while (imax-- !== 0) {
-					_fail[i++].apply(this, arguments);
+					fn_apply(_fail[i++], this, arguments);
 				}
 			}
 	
@@ -1095,7 +1118,7 @@
 	
 		done: function(callback) {
 			if (this._resolved != null)
-				callback.apply(this, this._resolved);
+				fn_apply(callback, this, this._resolved);
 			else
 				(this._done || (this._done = [])).push(callback);
 	
@@ -1105,7 +1128,7 @@
 		fail: function(callback) {
 			
 			if (this._rejected != null)
-				callback.apply(this, this._rejected);
+				fn_apply(callback, this, this._rejected);
 			else
 				(this._fail || (this._fail = [])).push(callback);
 	
@@ -1154,17 +1177,17 @@
 			
 			pipe: function(event){
 				var that = this,
-					slice = Array.prototype.slice, 
 					args;
 				return function(){
-					args = slice.call(arguments);
+					args = _Array_slice.call(arguments);
 					args.unshift(event);
-					that.trigger.apply(that, args);
+					
+					fn_apply(that.trigger, that, args);
 				};
 			},
 	        
 	        trigger: function() {
-	            var args = Array.prototype.slice.call(arguments),
+	            var args = _Array_slice.call(arguments),
 	                event = args.shift(),
 	                fns = this._listeners[event],
 	                fn, imax, i = 0;
@@ -1174,10 +1197,10 @@
 				
 				for (imax = fns.length; i < imax; i++) {
 					fn = fns[i];
-					fn.apply(this, args);
+					fn_apply(fn, this, args);
 					
 					if (fn._once === true){
-						fns.splice(i,1);
+						fns.splice(i, 1);
 						i--;
 						imax--;
 					}
@@ -1196,15 +1219,17 @@
 				}
 				
 				var imax = listeners.length,
-					i = 0;
+					i = -1;
 					
-				for (; i < imax; i++) {
+				while (++i < imax) {
 					
-					if (listeners[i] === callback) 
+					if (listeners[i] === callback) {
+						
 						listeners.splice(i, 1);
+						i--;
+						imax--;
+					}
 					
-					i--;
-					imax--;
 				}
 			
 	            return this;
@@ -1369,35 +1394,47 @@
 		}
 	
 		_class = function() {
-	
+			
+			//// consider to remove 
+			////if (this instanceof _class === false) 
+			////	return new (_class.bind.apply(_class, [null].concat(arguments)));
+			
+		
 			if (_extends != null) {
 				var isarray = _extends instanceof Array,
-					length = isarray ? _extends.length : 1,
+					
+					imax = isarray ? _extends.length : 1,
+					i = 0,
 					x = null;
-				for (var i = 0; isarray ? i < length : i < 1; i++) {
-					x = isarray ? _extends[i] : _extends;
+				for (; i < imax; i++) {
+					x = isarray
+						? _extends[i]
+						: _extends
+						;
 					if (typeof x === 'function') {
-						x.apply(this, arguments);
+						fn_apply(x, this, arguments);
 					}
 				}
 			}
 	
 			if (_base != null) {
-				_base.apply(this, arguments);
+				fn_apply(_base, this, arguments);
 			}
 			
-			if (_self != null) {
+			if (_self != null && obj_isNullOrGlobal(this) === false) {
+				
 				for (var key in _self) {
 					this[key] = fn_proxy(_self[key], this);
 				}
 			}
 	
 			if (_construct != null) {
-				var r = _construct.apply(this, arguments);
+				var r = fn_apply(_construct, this, arguments);
 				if (r != null) {
 					return r;
 				}
 			}
+			
 			return this;
 		};
 	
@@ -1634,7 +1671,7 @@
 				},
 				
 				slice: function(){
-					return _Array_slice.apply(this, arguments);
+					return fn_apply(_Array_slice, this, arguments);
 				},
 				
 				sort: function(fn){
@@ -1847,7 +1884,11 @@
 	 */
 	
 	Class.Remote = (function(){
-		
+	
+		var str_CONTENT_TYPE = 'content-type',
+			str_JSON = 'json'
+			;
+			
 		var XHRRemote = function(route){
 			this._route = new Route(route);
 		};
@@ -1877,10 +1918,16 @@
 						: 'post'
 					;
 				
-				this._resolved = null;
-				this._rejected = null;
+				this.defer();
+				XHR[method](path, json, resolveDelegate(this, callback, 'save'));
+				return this;
+			},
+			
+			patch: function(patch){
+				obj_patch(patch);
 				
-				XHR[method](path, json, resolveDelegate(this, callback));
+				this.defer();
+				XHR.patch(path, json, resolveDelegate(this, callback));
 				return this;
 			},
 			
@@ -1889,9 +1936,7 @@
 					json = this.serialize(),
 					path = this._route.create(this);
 					
-				this._resolved = null;
-				this._rejected = null;
-				
+				this.defer();
 				XHR.del(path, json, resolveDelegate(this, callback));
 				return this;
 			},
@@ -1926,16 +1971,37 @@
 			self.reject(response);
 		}
 		
-		function resolveDelegate(self, callback){
+		function resolveDelegate(self, callback, action){
 			
 			return function(error, response, xhr){
+					
+					var isJSON = xhr
+						.getResponseHeader(str_CONTENT_TYPE)
+						.indexOf(str_JSON) !== -1
+						;
 						
+					if (isJSON) {
+						try {
+							response = JSON.parse(response);
+						} catch(error){
+							console.error('<XHR> invalid json response', response);
+							
+							return reject(self, response, xhr);
+						}
+					}
+					
 					// @obsolete -> use deferred
 					if (callback) 
 						callback(error, response);
 					
 					if (error) 
 						return reject(self, response, xhr);
+					
+					if ('save' === action) {
+						self.deserialize(response);
+						
+						return self.resolve(self)
+					}
 					
 					self.resolve(response);
 			};
@@ -2113,7 +2179,7 @@
 		
 				
 				return _cache[id] == null
-					? (_cache[id] = fn.apply(this, arguments))
+					? (_cache[id] = fn_apply(fn, this, arguments))
 					: _cache[id];
 			};
 		}
@@ -2126,7 +2192,7 @@
 				
 				for (var i = 0, x, imax = cbs[id].length; i < imax; i++){
 					x = cbs[id][i];
-					x.apply(this, arguments);
+					fn_apply(x, this, arguments);
 				}
 				
 				cbs[i] = null;
@@ -2142,13 +2208,13 @@
 				
 			return function(){
 				
-				var args = Array.prototype.slice.call(arguments),
+				var args = _Array_slice.call(arguments),
 					callback = args.pop();
 				
 				var id = args_id(_args, args);
 				
 				if (_cache[id]){
-					callback.apply(this, _cache[id])
+					fn_apply(callback, this, _cache[id])
 					return; 
 				}
 				
@@ -2159,10 +2225,10 @@
 				
 				_cacheCbs[id] = [callback];
 				
-				args = Array.prototype.slice.call(args);
+				args = _Array_slice.call(args);
 				args.push(fn_resolveDelegate(_cache, _cacheCbs, id));
 				
-				fn.apply(this, args);
+				fn_apply(fn, this, args);
 			};
 		}
 		
@@ -2440,6 +2506,59 @@
 		return path.substring(path.lastIndexOf('.', query) + 1, query);
 	}
 	// end:source ../src/utils/path.js
+	// source ../src/utils/tree.js
+	var tree_resolveUsage;
+	
+	
+	(function(){
+		
+		tree_resolveUsage = function(resource, usage){
+			var use = [],
+				imax = usage.length,
+				i = -1;
+			while( ++i < imax ) {
+				
+				use[i] = use_resolveExports(usage[i], resource.parent);
+			}
+			
+			return use;
+		};
+		
+		
+		function use_resolveExports(name, resource){
+			
+			if (resource == null) {
+				// if DEBUG
+				console.warn('<include:use> Not Found. Ensure to have it included before with correct alias', name);
+				// endif
+				return null;
+			}
+			
+			
+			var includes = resource.includes,
+				i = -1,
+				imax = includes.length,
+				
+				include, exports
+				;
+				
+			while( ++i < imax) {
+				include = includes[i];
+				if (include.route.alias === name) {
+					exports = include.resource.exports;
+					// if DEBUG
+					console.warn('<include:use> Used resource has no exports');
+					// endif
+					return exports;
+				}
+			}
+			
+			return use_resolveExports(resource.parent);
+		}
+		
+		
+	}());
+	// end:source ../src/utils/tree.js
 	
 	// source ../src/2.Routing.js
 	var RoutesLib = function() {
@@ -3071,12 +3190,16 @@
 		},
 		resolve: function(callback) {
 			var includes = this.includes,
-				length = includes == null ? 0 : includes.length;
+				length = includes == null
+					? 0
+					: includes.length
+					;
 	
 			if (length > 0 && this.response == null){
 				this.response = {};
 	
-				var resource, route;
+				var resource,
+					route;
 	
 				for(var i = 0, x; i < length; i++){
 					x = includes[i];
@@ -3094,20 +3217,29 @@
 					case 'ajax':
 	
 						var alias = route.alias || Routes.parseAlias(route),
-							obj = type === 'js' ? this.response : (this.response[type] || (this.response[type] = {}));
+							obj = type === 'js'
+								? this.response :
+								(this.response[type] || (this.response[type] = {}))
+								;
 	
 						if (alias) {
 							obj[alias] = resource.exports;
 							break;
-						} else {
-							console.warn('Resource Alias is Not defined', resource);
 						}
+						
+						console.warn('Resource Alias is Not defined', resource);
 						break;
 					}
 	
 				}
-			}
-			callback(this.response || emptyResponse);
+			} 
+			
+			var response = this.response || emptyResponse;
+			
+			if (this._use) 
+				return callback.apply(null, [response].concat(this._use));
+			
+			callback(response);
 		}
 	};
 	
@@ -3332,6 +3464,17 @@
 			server: function(){
 				if (cfg.server !== true) 
 					stub_freeze(this);
+				
+				return this;
+			},
+			
+			use: function(){
+				if (this.parent == null) {
+					console.error('<include.use> Parent resource is undefined');
+					return;
+				}
+				
+				this._use = tree_resolveUsage(this, arguments);
 				
 				return this;
 			},
@@ -7555,7 +7698,7 @@ function __eval(source, include) {
 			return _mask_ensureTmplFnOrig(value);
 		}
 		
-		if (document != null && domLib == null){
+		if (document != null && domLib == null) {
 			console.warn('jQuery / Zepto etc. was not loaded before compo.js, please use Compo.config.setDOMLibrary to define dom engine');
 		}
 		
@@ -8816,6 +8959,8 @@ function __eval(source, include) {
 				compos: null,
 				events: null,
 				
+				async: false,
+				
 				onRenderStart: null,
 				onRenderEnd: null,
 				render: null,
@@ -8993,10 +9138,12 @@ function __eval(source, include) {
 		
 				slotState: function(slotName, isActive){
 					Compo.slot.toggle(this, slotName, isActive);
+					return this;
 				},
 		
 				signalState: function(signalName, isActive){
 					Compo.signal.toggle(this, signalName, isActive);
+					return this;
 				},
 		
 				emitOut: function(signalName /* args */){
@@ -9008,6 +9155,7 @@ function __eval(source, include) {
 							? __array_slice.call(arguments, 1)
 							: null
 					);
+					return this;
 				},
 		
 				emitIn: function(signalName /* args */){
@@ -9019,6 +9167,7 @@ function __eval(source, include) {
 							? __array_slice.call(arguments, 1)
 							: null
 					);
+					return this;
 				}
 			};
 		
@@ -11541,7 +11690,7 @@ function __eval(source, include) {
 				this.locked = false;
 				
 				
-				if (this.property == null) {
+				if (this.property == null && this.getter == null) {
 		
 					switch (element.tagName) {
 						case 'INPUT':
@@ -12417,14 +12566,19 @@ function __eval(source, include) {
 			}
 		
 			__mask_registerUtil('bind', {
+				mode: 'partial',
 				current: null,
 				element: null,
 				nodeRenderStart: function(expr, model, ctx, element, controller){
 					
 					var current = expression_eval(expr, model, ctx, controller);
 					
-					this.current = current;
+					// though we apply value's to `this` context, but it is only for immediat use
+					// in .node() function, as `this` context is a static object that share all bind
+					// utils
 					this.element = document.createTextNode(current);
+					
+					return (this.current = current);
 				},
 				node: function(expr, model, ctx, element, controller){
 					bind(
@@ -12441,7 +12595,7 @@ function __eval(source, include) {
 				},
 				
 				attrRenderStart: function(expr, model, ctx, element, controller){
-					this.current = expression_eval(expr, model, ctx, controller);
+					return (this.current = expression_eval(expr, model, ctx, controller));
 				},
 				attr: function(expr, model, ctx, element, controller, attrName){
 					bind(
@@ -13793,6 +13947,21 @@ function __eval(source, include) {
 				
 				this.finishTimeout = setTimeout(this.finish, this.duration);
 			},
+			pause: function(){
+				
+				this
+					.element
+					.style
+					.setProperty(vendorPrfx + 'transition', 'none')
+					;
+				this
+					.element
+					.removeEventListener(getTransitionEndEvent(), this.transitionEnd, false);
+				
+				if (this.finishTimeout) 
+					clearTimeout(this.finishTimeout);
+					
+			},
 			finish: function(){
 				this.element.removeEventListener(getTransitionEndEvent(), this.transitionEnd, false);
 				
@@ -14130,6 +14299,8 @@ function __eval(source, include) {
 				
 				this.step = 1;
 				this.model.start(this.element, fn_proxy(this, this.nextStep));
+				
+				return this;
 			},
 			
 			stop: function(){
@@ -14137,7 +14308,8 @@ function __eval(source, include) {
 				
 				if (this.callback) 
 					this.callback(this);
-					
+				
+				this.model.pause();
 				this.element = null;
 				this.callback = null;
 				this.state = state_READY;
@@ -14163,7 +14335,7 @@ function __eval(source, include) {
 				return;
 			}
 	
-			animation.start(callback, element);
+			return animation.start(callback, element);
 		};
 	
 	}());
@@ -14301,19 +14473,11 @@ function __eval(source, include) {
 			: path.split('/');
 	}
 	
-	function path_join(parts) {
-		return '/' + parts.join('/');
+	function path_join(pathParts) {
+		return '/' + pathParts.join('/');
 	}
 	
-	function path_getPartsFromUrl(url){
-		var query = url.indexOf('?'),
-			path = query === -1
-				? url
-				: url.substring(0, query);
-		
-		
-		return path_split(path);
-	}
+	
 	// end:source ../src/utils/path.js
 	// source ../src/utils/query.js
 	function query_deserialize(query, delimiter) {
@@ -14328,7 +14492,10 @@ function __eval(source, include) {
 		for (; i < imax; i++) {
 			x = parts[i].split('=');
 	
-			obj[x[0]] = decodeURIComponent(x[1]);
+			obj[x[0]] = x[1] == null
+				? ''
+				: decodeURIComponent(x[1])
+				;
 	
 		}
 	
@@ -14347,7 +14514,33 @@ function __eval(source, include) {
 	
 		return query;
 	}
-	
+	////
+	//// @obsolete - use query_deserialize
+	////function query_split(query){
+	////	var parts = query.split('&'),
+	////		i = -1,
+	////		imax = parts.length,
+	////		search = {},
+	////		eqIndex,
+	////		key,
+	////		value
+	////		;
+	////	while(++i < imax){
+	////		key = parts[i];
+	////		eqIndex = key.indexOf('=');
+	////		if (eqIndex === -1) {
+	////			search[key] = '';
+	////			continue;
+	////		}
+	////		
+	////		value = decodeURIComponent(key.substring(eqIndex + 1));
+	////		key = key.substring(0, eqIndex);
+	////		
+	////		search[key] = value;
+	////	}
+	////	
+	////	return search;
+	////}
 	
 	// end:source ../src/utils/query.js
 	// source ../src/utils/rgx.js
@@ -14374,6 +14567,36 @@ function __eval(source, include) {
 	
 	
 	// end:source ../src/utils/rgx.js
+	// source ../src/utils/parts.js
+	
+	function parts_serialize(parts){
+		var path = path_join(parts.path);
+		
+		if (parts.query == null) 
+			return path;
+		
+		return path
+				+ '?'
+				+ query_serialize(parts.query, '&')
+			;
+	}
+	
+	function parts_deserialize(url){
+		var query = url.indexOf('?'),
+			path = query === -1
+				? url
+				: url.substring(0, query);
+		
+		
+		return {
+			path: path_split(path),
+			query: query === -1
+				? null
+				: query_deserialize(url.substring(query + 1), '&')
+		}
+	}
+	
+	// end:source ../src/utils/parts.js
 
 	// source ../src/route/Collection.js
 	var Routes = (function(){
@@ -14412,13 +14635,25 @@ function __eval(source, include) {
 			}
 			
 			
+			
 			var parts = definition.split('/'),
+				search,
+				searchIndex,
 				i = 0,
 				imax = parts.length,
 				x,
 				c0,
 				index,
 				c1;
+				
+			
+			var last = parts[imax - 1];
+			searchIndex = last.indexOf('?');
+			if (searchIndex > (imax === 1 ? -1 : 0)) {
+				// `?` cannt be at `0` position, when has url definition contains `path`
+				search = last.substring(searchIndex + 1);
+				parts[imax - 1] = last.substring(0, searchIndex);
+			}
 		
 			var matcher = '',
 				alias = null,
@@ -14429,7 +14664,7 @@ function __eval(source, include) {
 				isAlias,
 				rgx;
 		
-			var array = route.parts = [];
+			var array = route.path = [];
 			
 			for (; i < imax; i++) {
 				x = parts[i];
@@ -14489,6 +14724,39 @@ function __eval(source, include) {
 				
 			}
 		
+			if (search) {
+				var query = route.query = {};
+				
+				parts = search.split('&');
+				
+				i = -1;
+				imax = parts.length;
+				
+				var key, value, str, eqIndex;
+				while(++i < imax){
+					str = parts[i];
+					
+					eqIndex = str.indexOf('=');
+					if (eqIndex === -1) {
+						query[str] = '';
+						continue;
+					}
+					
+					key = str.substring(0, eqIndex);
+					value = str.substring(eqIndex + 1);
+					
+					if (value.charCodeAt(0) === 40) {
+						// (
+						value = new RegExp(rgx_aliasMatcher(value));
+					}
+					
+					query[key] = value;
+				}
+				
+				if (route.path.length === 0) {
+					route.strict = false;
+				}
+			}
 		}
 		
 		
@@ -14513,18 +14781,18 @@ function __eval(source, include) {
 				path = path.substring(0, queryIndex);
 			}
 		
-			var parts = path_split(path),
-				routeParts = route.parts,
-				routeLength = routeParts.length,
+			var pathArr = path_split(path),
+				routePath = route.path,
+				routeLength = routePath.length,
 				
-				imax = parts.length,
+				imax = pathArr.length,
 				i = 0,
 				part,
 				x;
 		
 			for (; i < imax; i++) {
-				part = parts[i];
-				x = i < routeLength ? routeParts[i] : null;
+				part = pathArr[i];
+				x = i < routeLength ? routePath[i] : null;
 				
 				if (x) {
 					
@@ -14535,7 +14803,6 @@ function __eval(source, include) {
 						current.params[x.alias] = part;
 						continue;
 					}
-					
 				}
 			}
 		
@@ -14548,7 +14815,8 @@ function __eval(source, include) {
 			
 		function route_match(url, routes, currentMethod){
 			
-			var parts = path_getPartsFromUrl(url);
+			var parts = parts_deserialize(url);
+			
 			
 			for (var i = 0, route, imax = routes.length; i < imax; i++){
 				route = routes[i];
@@ -14581,34 +14849,69 @@ function __eval(source, include) {
 				return route.match.test(
 					typeof parts === 'string'
 						? parts
-						: parts.join('/')
+						: parts_serialize(parts)
 				);
 			}
 			
+			
 			if (typeof parts === 'string') 
-				parts = path_getPartsFromUrl(parts);
-			
-			
-				
-			var routeParts = route.parts,
-				routeLength = routeParts.length;
+				parts = parts_deserialize(parts);
 		
-			
-			for (var i = 0, x, imax = parts.length; i < imax; i++){
 				
-				x = routeParts[i];
+			if (route.query) {
+				var query = parts.query,
+					key, value;
+				if (query == null) 
+					return false;
+				
+				for(key in route.query){
+					value = route.query[key];
+					
+					if (typeof value === 'string') {
+						
+						if (query[key] == null) 
+							return false;
+						
+						if (value && query[key] !== value) 
+							return false;
+						
+						continue;
+					}
+					
+					if (value.test && !value.test(query[key])) 
+						return false;
+				}
+			}
+			
+				
+			var routePath = route.path,
+				routeLength = routePath.length;
+			
+			
+			if (routeLength === 0) {
+				if (route.strict) 
+					return parts.path.length === 0;
+				
+				return true;
+			}
+			
+			
+			
+			for (var i = 0, x, imax = parts.path.length; i < imax; i++){
+				
+				x = routePath[i];
 				
 				if (i >= routeLength) 
 					return route.strict !== true;
 				
 				if (typeof x === 'string') {
-					if (parts[i] === x) 
+					if (parts.path[i] === x) 
 						continue;
 					
 					return false;
 				}
 				
-				if (x.matcher && x.matcher.test(parts[i]) === false) {
+				if (x.matcher && x.matcher.test(parts.path[i]) === false) {
 					return false;
 				}
 				
@@ -14622,7 +14925,7 @@ function __eval(source, include) {
 			}
 			
 			if (i < routeLength) 
-				return routeParts[i].optional === true;
+				return routePath[i].optional === true;
 				
 			
 			return true;
@@ -14650,7 +14953,8 @@ function __eval(source, include) {
 		}
 		
 		Route.prototype = {
-			parts: null,
+			path: null,
+			query: null,
 			value: null,
 			current: null
 		};
