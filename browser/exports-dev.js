@@ -130,13 +130,12 @@
 			};
 		
 		
-		function proto_override(proto, key, fn) {
-	        var __super = proto[key],
-				__proxy = __super == null
+		function proto_override(__super, fn) {
+	        var __proxy = __super == null
 					? function() {}
 					: function(args){
 					
-						if (_isArguments(args)) {
+						if (arguments.length === 1 && _isArguments(args)) {
 							return fn_apply(__super, this, args);
 						}
 						
@@ -173,7 +172,7 @@
 			
 			if (_overrides != null) {
 				for (var key in _overrides) {
-					prototype[key] = proto_override(prototype, key, _overrides[key]);
+					prototype[key] = proto_override(prototype[key], _overrides[key]);
 				}
 			}
 			
@@ -205,7 +204,7 @@
 			if (_overrides != null) {
 				var prototype = _class.prototype;
 				for (var key in _overrides) {
-					prototype[key] = proto_override(prototype, key, _overrides[key]);
+					prototype[key] = proto_override(prototype[key], _overrides[key]);
 				}
 			}
 			
@@ -289,9 +288,14 @@
 	// source ../src/util/json.js
 	var JSONHelper = (function() {
 		
-		var _date_toJSON = Date.prototype.toJSON;
+		var _date_toJSON = Date.prototype.toJSON,
+			_skipped;
 		
 		return {
+			skipToJSON: function(toJSON){
+				_skipped && console.error('@TODO: Not implemented: only one skipped value allowed');
+				_skipped = toJSON;
+			},
 			// Create from Complex Class Instance a lightweight json object 
 			toJSON: function() {
 				var obj = {},
@@ -319,6 +323,11 @@
 							
 							if (toJSON === _date_toJSON) {
 								// do not serialize Date
+								break;
+							}
+							
+							if (toJSON === _skipped) {
+								// skip to json - @TODO quick hack to skip MongoDB.ObjectID
 								break;
 							}
 							
@@ -353,7 +362,10 @@
 						return;
 					}
 	
-					array[i] = is_Function(x.toJSON) ? x.toJSON() : JSONHelper.toJSON.call(x);
+					array[i] = is_Function(x.toJSON)
+						? x.toJSON()
+						: JSONHelper.toJSON.call(x)
+						;
 	
 				}
 	
@@ -380,8 +392,8 @@
 				if ('Static' === key) {
 					if (target.Static != null) {
 						
-						for (key in target.Static) {
-							target.Static[key] = target.Static[key];
+						for (key in source.Static) {
+							target.Static[key] = source.Static[key];
 						}
 						
 						continue;
@@ -463,6 +475,120 @@
 		return ctx === void 0 || ctx === global;
 	}
 	// end:source ../src/util/object.js
+	// source ../src/util/patchObject.js
+	var obj_patch;
+	
+	(function(){
+		
+		function walk_mutator(obj, data, fn) {
+			for (var key in data) 
+				fn(obj_getProperty(obj, key), data[key], key);
+			
+		}
+		
+		function walk_modifier(obj, data, fn){
+			for(var key in data)
+				obj_setProperty(
+					obj,
+					key,
+					fn(obj_getProperty(obj, key), data[key], key)
+				);
+		}
+		
+		function fn_IoC(){
+			var fns = arguments;
+			return function(val, mix, prop){
+				for (var i = 0, fn, imax = fns.length; i < imax; i++){
+					fn = fns[i];
+					if (fn(val, mix, prop) === false) 
+						return;
+				}
+			}
+		}
+		
+		function arr_checkArray(val, mix, prop) {
+			if (arr_isArray(val) === false) {
+				// if DEBUG
+				console.warn('<patch> property is not an array', prop);
+				// endif
+				return false;
+			}
+		}
+		
+		function arr_push(val, mix, prop){
+			if (mix.hasOwnProperty('$each')) {
+				for (var i = 0, imax = mix.$each.length; i < imax; i++){
+					val.push(mix.$each[i]);
+				}
+				return;
+			}
+			val.push(mix);
+		}
+		
+		function arr_pop(val, mix, prop){
+			 val[mix > 0 ? 'pop' : 'shift']();
+		}
+		function arr_pull(val, mix, prop) {
+			return console
+				.error('<patch> pull Not Implemented');
+		
+			arr_remove(val, function(item){
+				return query_match(item, mix);
+			});
+		}
+		
+		function val_inc(val, mix, key){
+			return val + mix;
+		}
+		function val_set(val, mix, key){
+			return mix;
+		}
+		function val_unset(){
+			return void 0;
+		}
+		
+		function val_bit(val, mix){
+			if (mix.or) 
+				return val | mix.or;
+			
+			if (mix.and) 
+				return val & mix.and;
+			
+			return val;
+		}
+		
+		var fn_WALKER = 0,
+			fn_MODIFIER = 1
+			;
+			
+		var patches = {
+			'$push': [walk_mutator, fn_IoC(arr_checkArray, arr_push)],
+			'$pop': [walk_mutator, fn_IoC(arr_checkArray, arr_pop)],
+			'$pull': [walk_mutator, fn_IoC(arr_checkArray, arr_pull)],
+			
+			'$inc': [walk_modifier, val_inc],
+			'$set': [walk_modifier, val_set],
+			'$unset': [walk_modifier, val_unset],
+			'$bit': [walk_modifier, val_unset],
+		};
+		
+		obj_patch = function(obj, patch){
+			
+			for(var key in patch){
+				
+				var patcher = patches[key];
+				
+				if (patcher) 
+					patcher[fn_WALKER](obj, patch[key], patcher[fn_MODIFIER]);
+				else
+					console.error('Unknown or not implemented patcher', key);
+				
+			}
+			return obj;
+		};
+		
+	}());
+	// end:source ../src/util/patchObject.js
 	// source ../src/util/function.js
 	function fn_proxy(fn, ctx) {
 	
@@ -474,6 +600,8 @@
 	function fn_apply(fn, ctx, _arguments){
 		
 		switch (_arguments.length) {
+			case 0:
+				return fn.call(ctx);
 			case 1:
 				return fn.call(ctx, _arguments[0]);
 			case 2:
@@ -512,7 +640,7 @@
 		var args = _Array_slice.call(arguments, 1);
 		return function(){
 			if (arguments.length > 0) 
-				args = args.concat(arguments);
+				args = args.concat(_Array_slice.call(arguments));
 			
 			return fn_apply(fn, null, args);
 		};
@@ -822,75 +950,89 @@
 			
 			Ctor.prototype._props = data;
 			
-			obj_extend(Ctor.prototype, Serializable.prototype);
+			//- 
+			//obj_extend(Ctor.prototype, Serializable.prototype);
 			
 			return Ctor;
 		}
 		
-		if (data != null)
-			this.deserialize(data);
+		if (data != null) {
+			
+			if (this.deserialize) 
+				this.deserialize(data);
+			else
+				Serializable.deserialize(this, data);
+			
+		}
 		
 	}
 	
-	Serializable.prototype = {
-		constructor: Serializable,
+	Serializable.serialize = function(instance) {
+			
+		if (is_Function(instance.toJSON)) 
+			return instance.toJSON();
 		
-		serialize: function() {
-			
-			return JSON.stringify(this);
-		},
 		
-		deserialize: function(json) {
-			
-			if (is_String(json)) {
-				try {
-					json = JSON.parse(json);
-				}catch(error){
-					console.error('<json:deserialize>', json);
-					return this;
-				}
-			}
-			
-			if (is_Array(json) && is_Function(this.push)) {
-				this.length = 0;
-				for (var i = 0, imax = json.length; i < imax; i++){
-					this.push(json[i]);
-				}
-				return;
-			}
-			
-			var props = this._props,
-				key,
-				Mix;
-			
-			for (key in json) {
-				
-				if (props != null) {
-					Mix = props[key];
-					
-					if (Mix != null) {
-						
-						if (is_Function(Mix)) {
-							this[key] = new Mix(json[key]);
-							continue;
-						}
-						
-						var deserialize = Mix.deserialize;
-						
-						if (is_Function(deserialize)) {
-							this[key] = deserialize(json[key]);
-							continue;
-						}
-						
-					}
-				}
-				
-				this[key] = json[key];
-			}
-			
-			return this;
-		}
+		return JSONHelper.toJSON.call(instance);
 	};
+	
+	Serializable.deserialize = function(instance, json) {
+			
+		if (is_String(json)) {
+			try {
+				json = JSON.parse(json);
+			}catch(error){
+				console.error('<json:deserialize>', json);
+				return instance;
+			}
+		}
+		
+		if (is_Array(json) && is_Function(instance.push)) {
+			instance.length = 0;
+			for (var i = 0, imax = json.length; i < imax; i++){
+				instance.push(json[i]);
+			}
+			return instance;
+		}
+		
+		var props = instance._props,
+			key,
+			val,
+			Mix;
+		
+		for (key in json) {
+			
+			val = json[key];
+			
+			if (props != null) {
+				Mix = props[key];
+				
+				if (Mix != null) {
+					
+					if (is_Function(Mix)) {
+						instance[key] = val instanceof Mix
+							? val
+							: new Mix(val)
+							;
+						continue;
+					}
+					
+					var deserialize = Mix.deserialize;
+					
+					if (is_Function(deserialize)) {
+						instance[key] = deserialize(val);
+						continue;
+					}
+					
+				}
+			}
+			
+			instance[key] = val;
+		}
+		
+		return instance;
+	}
+	
 	
 	
 	// end:source ../src/business/Serializable.js
@@ -1061,6 +1203,7 @@
 	
 			var _done = this._done,
 				_always = this._always,
+				
 				imax, i;
 			
 			this._done = null;
@@ -1068,24 +1211,24 @@
 			
 			if (_done != null) {
 				imax = _done.length;
-				i = 0;
-				while (imax-- !== 0) {
-					fn_apply(_done[i++], this, arguments);
+				i = -1;
+				while ( ++i < imax ) {
+					fn_apply(_done[i], this, arguments);
 				}
 				_done.length = 0;
 			}
 	
 			if (_always != null) {
 				imax = _always.length;
-				i = 0;
-			
-				while (imax-- !== 0) {
-					_always[i++].call(this, this);
+				i = -1;
+				while ( ++i < imax ) {
+					_always[i].call(this, this);
 				}
 			}
 	
 			return this;
 		},
+		
 		reject: function() {
 			this._done = null;
 			this._rejected = arguments;
@@ -1099,32 +1242,40 @@
 	
 			if (_fail != null) {
 				imax = _fail.length;
-				i = 0;
-				while (imax-- !== 0) {
-					fn_apply(_fail[i++], this, arguments);
+				i = -1;
+				while ( ++i < imax ) {
+					fn_apply(_fail[i], this, arguments);
 				}
 			}
 	
 			if (_always != null) {
 				imax = _always.length;
-				i = 0;
-				while (imax-- !== 0) {
-					_always[i++].call(this, this);
+				i = -1;
+				while ( ++i < imax ) {
+					_always[i].call(this, this);
 				}
 			}
 	
 			return this;
 		},
-	
+		
+		resolveDelegate: function(){
+			return fn_proxy(this.resolve, this);
+		},
+		
+		rejectDelegate: function(){
+			return fn_proxy(this.reject, this);
+		},
+		
 		done: function(callback) {
 			if (this._resolved != null)
 				fn_apply(callback, this, this._resolved);
 			else
 				(this._done || (this._done = [])).push(callback);
 	
-	
 			return this;
 		},
+		
 		fail: function(callback) {
 			
 			if (this._rejected != null)
@@ -1132,11 +1283,10 @@
 			else
 				(this._fail || (this._fail = [])).push(callback);
 	
-	
 			return this;
 		},
+		
 		always: function(callback) {
-			
 		
 			if (this._rejected != null || this._resolved != null)
 				callback.call(this, this);
@@ -1318,10 +1468,9 @@
 		
 	}());
 	// end:source ../src/business/Validation.js
-	
-	
-	
-	
+
+
+
 	// source ../src/Class.js
 	var Class = function(data) {
 		var _base = data.Base,
@@ -1435,6 +1584,8 @@
 				}
 			}
 			
+			this['super'] = null;
+			
 			return this;
 		};
 	
@@ -1486,7 +1637,7 @@
 	Class.Serializable = Serializable;
 	Class.Deferred = Deferred;
 	Class.EventEmitter = EventEmitter;
-	
+	Class.Await = Await;
 	Class.validate = Validation.validate;
 	// end:source ../src/Class.Static.js
 	
@@ -1610,13 +1761,14 @@
 				},
 				
 				splice: function(index, count /* args */){
-					var i, imax, length, y;
 					
+					var length = this.length;
+					var i, imax, y;
 					
 					// clear range after length until index
-					if (index >= this.length) {
+					if (index >= length) {
 						count = 0;
-						for (i = this.length, imax = index; i < imax; i++){
+						for (i = length, imax = index; i < imax; i++){
 							this[i] = void 0;
 						}
 					}
@@ -1626,14 +1778,14 @@
 						rm_end = index + rm_count,
 						add_count = arguments.length - 2,
 						
-						new_length = this.length + add_count - rm_count;
+						new_length = length + add_count - rm_count;
 					
 					
 					// move block
 					
 					var block_start = rm_end,
-						block_end = this.length,
-						block_shift = new_length - this.length;
+						block_end = length,
+						block_shift = new_length - length;
 					
 					if (0 < block_shift) {
 						// move forward
@@ -1680,9 +1832,11 @@
 				},
 				
 				reverse: function(){
-					var array = _Array_slice.call(this, 0);
-						
-					for (var i = 0, imax = this.length; i < imax; i++){
+					var array = _Array_slice.call(this),
+						imax = this.length,
+						i = -1
+						;
+					while( ++i < imax) {
 						this[i] = array[imax - i - 1];
 					}
 					return this;
@@ -1692,10 +1846,13 @@
 					return _Array_slice.call(this, 0).toString()
 				},
 				
-				each: function(fn, cntx){
-					for (var i = 0, imax = this.length; i < imax; i++){
+				each: function(fn, ctx){
+					var imax = this.length,
+						i = -1
+						;
+					while( ++i < imax ) {
 						
-						fn.call(cntx || this, this[i], i);
+						fn.call(ctx || this, this[i], i);
 					}
 		            return this;
 				},
@@ -1858,7 +2015,132 @@
 		return Collection;
 	}());
 	// end:source ../src/collection/Collection.js
+
+	// source ../src/business/Await.js
+	var Await = (function(){
+		
+		return Class({
+			Base: Deferred,
+		
+			_wait: 0,
+			_timeout: null,
+			_result: null,
+		
+			delegate: function(name, errorable) {
+				return await_createDelegate(this, name, errorable);
+			},
+		
+			deferred: function(name) {
+				
+				var dfr = new Deferred,
+					delegate = await_createDelegate(this, name, true),
+					
+					args
+					;
+				
+				return dfr
+					.done(function(){
+						args = _Array_slice.call(arguments);
+						args.unshift(null);
+						
+						delegate.apply(null, args);
+					})
+					.fail(function(error){
+						
+						delegate(error);
+					})
+					;
+			},
+		
+			Static: {
+		
+				TIMEOUT: 2000
+			}
+		});
 	
+		
+		function await_createDelegate(await, name, errorable){
+			if (errorable == null) 
+				errorable = true;
+			
+			if (await._timeout)
+				clearTimeout(await._timeout);
+	
+			await.defer();
+			await._wait++;
+	
+			if (name){
+				if (!await._result)
+					await._result = {};
+				
+				if (name in await._result) 
+					console.warn('<await>', name, 'already awaiting');
+				
+				await._result[name] = null;
+			}
+			
+			var delegate = fn_createDelegate(await_listener, await, name, errorable)
+				;
+	
+			await._timeout = setTimeout(delegate, Await.TIMEOUT);
+	
+			return delegate;
+		}
+		
+		function await_listener(await, name, errorable /* .. args */ ) {
+			
+			if (arguments.length === 0) {
+				// timeout
+				await._wait = 0;
+				await.reject('408: Timeout');
+				return;
+			}
+			
+			if (await._wait === 0) 
+				return;
+			
+			if (name) {
+				var result = _Array_slice.call(arguments, 3);
+				
+				await._result[name] = {
+					error: errorable ? result.shift() : null,
+					arguments: result
+				};
+			} else if (errorable && arguments[3] != null) {
+				await._result.__error = arguments[3];
+			}
+			
+			if (--await._wait === 0) {
+				clearTimeout(await._timeout);
+				
+				var result = await._result,
+					error = result && result.__error
+					;
+				var val,
+					key;
+				
+				if (error == null) {
+					for(key in result){
+						
+						val = result[key];
+						error = val && val.error;
+						
+						if (error) 
+							break;
+					}
+				}
+				
+				if (error) {
+					await.reject(error, result);
+					return;
+				}
+				
+				await.resolve(result);
+			}
+		}
+	
+	}());
+	// end:source ../src/business/Await.js
 	// source ../src/store/Store.js
 	var StoreProto = {
 		
@@ -1879,10 +2161,6 @@
 	};
 	// end:source ../src/store/Store.js
 	// source ../src/store/Remote.js
-	/**
-	 *	Alpha - Test - End
-	 */
-	
 	Class.Remote = (function(){
 	
 		var str_CONTENT_TYPE = 'content-type',
@@ -1903,6 +2181,10 @@
 					;
 			},
 			
+			deserialize: function(json){
+				return Serializable.deserialize(this, json);
+			},
+			
 			fetch: function(data){
 				XHR.get(this._route.create(data || this), this);
 				return this;
@@ -1911,20 +2193,24 @@
 			save: function(callback){
 				
 				var self = this,
-					json = this.serialize(),
-					path = this._route.create(this),
-					method = this._route.hasAliases(this)
+					json = self.serialize(),
+					path = self._route.create(self),
+					method = self._route.hasAliases(self)
 						? 'put'
 						: 'post'
 					;
 				
-				this.defer();
-				XHR[method](path, json, resolveDelegate(this, callback, 'save'));
-				return this;
+				self.defer();
+				XHR[method](path, json, resolveDelegate(self, callback, 'save'));
+				return self;
 			},
 			
 			patch: function(patch){
-				obj_patch(patch);
+				obj_patch(this, patch);
+				
+				var path = this._route.create(this),
+					json = patch
+					;
 				
 				this.defer();
 				XHR.patch(path, json, resolveDelegate(this, callback));
@@ -1933,12 +2219,13 @@
 			
 			del: function(callback){
 				var self = this,
-					json = this.serialize(),
-					path = this._route.create(this);
+					json = self.serialize(),
+					path = self._route.create(self)
+					;
 					
-				this.defer();
-				XHR.del(path, json, resolveDelegate(this, callback));
-				return this;
+				self.defer();
+				XHR.del(path, json, resolveDelegate(self, callback));
+				return self;
 			},
 			
 			onSuccess: function(response){
@@ -2000,7 +2287,7 @@
 					if ('save' === action) {
 						self.deserialize(response);
 						
-						return self.resolve(self)
+						return self.resolve(self);
 					}
 					
 					self.resolve(response);
@@ -2033,7 +2320,9 @@
 				
 				return JSON.stringify(json);
 			},
-			
+			deserialize: function(json){
+				return Serializable.deserialize(this, json);
+			},
 			fetch: function(data){
 				
 				var path = this._route.create(data || this),
@@ -2127,8 +2416,7 @@
 	
 	}());
 	// end:source ../src/store/LocalStore.js
-	
-	
+
 	
 	// source ../src/fn/fn.js
 	(function(){
@@ -2364,6 +2652,20 @@
 		}
 		return target;
 	}
+	
+	function obj_getProperty(obj, property) {
+		var chain = property.split('.'),
+			length = chain.length,
+			i = 0;
+		for (; i < length; i++) {
+			if (obj == null) {
+				return null;
+			}
+	
+			obj = obj[chain[i]];
+		}
+		return obj;
+	}
 	// end:source ../src/utils/object.js
 	// source ../src/utils/array.js
 	function arr_invoke(arr, args, ctx) {
@@ -2515,10 +2817,31 @@
 		tree_resolveUsage = function(resource, usage){
 			var use = [],
 				imax = usage.length,
-				i = -1;
+				i = -1,
+				
+				obj, path, name, index
+				;
 			while( ++i < imax ) {
 				
-				use[i] = use_resolveExports(usage[i], resource.parent);
+				name = path = usage[i];
+				index = path.indexOf('.');
+				if ( index !== -1) {
+					name = path.substring(0, index);
+					path = path.substring(index + 1);
+				}
+				
+				obj = use_resolveExports(name, resource.parent);
+				
+				if (name !== path) 
+					obj = obj_getProperty(obj, path);
+				
+				// if DEBUG
+				(typeof obj === 'object' && obj == null)
+					&& console.warn('<include:use> Used resource has no exports', name, resource.url);
+				// endif
+				
+				
+				use[i] = obj;
 			}
 			
 			return use;
@@ -2531,7 +2854,7 @@
 				// if DEBUG
 				console.warn('<include:use> Not Found. Ensure to have it included before with correct alias', name);
 				// endif
-				return null;
+				return;
 			}
 			
 			
@@ -2544,16 +2867,12 @@
 				
 			while( ++i < imax) {
 				include = includes[i];
-				if (include.route.alias === name) {
-					exports = include.resource.exports;
-					// if DEBUG
-					console.warn('<include:use> Used resource has no exports');
-					// endif
-					return exports;
-				}
+				
+				if (include.route.alias === name) 
+					return include.resource.exports;
 			}
 			
-			return use_resolveExports(resource.parent);
+			return use_resolveExports(name, resource.parent);
 		}
 		
 		
@@ -3086,7 +3405,7 @@
 	
 	IncludeDeferred.prototype = { /**	state observer */
 	
-		on: function(state, callback, sender) {
+		on: function(state, callback, sender, mutator) {
 			if (this === sender && this.state === -1) {
 				callback(this);
 				return this;
@@ -3095,9 +3414,12 @@
 			// this === sender in case when script loads additional
 			// resources and there are already parents listeners
 			
-			var mutator = (this.state < 3 || this === sender)
-				? 'unshift'
-				: 'push';
+			if (mutator == null) {
+				mutator = (this.state < 3 || this === sender)
+					? 'unshift'
+					: 'push'
+					;
+			}
 			
 			state <= this.state ? callback(this) : this.callbacks[mutator]({
 				state: state,
@@ -3620,6 +3942,11 @@
 		}
 		
 		function loader_process(source, resource, loader, callback) {
+			if (loader.process == null) {
+				callback(resource, source);
+				return;
+			}
+			
 			var delegate = loader_completeDelegate(callback, resource),
 				syncResponse = loader.process(source, resource, delegate);
 			
@@ -3635,9 +3962,14 @@
 				return;
 			}
 			
-			XHR(resource, function(resource, response) {
+			function onLoad(resource, response){
 				loader_process(response, resource, loader, callback);
-			});
+			}
+			
+			if (loader.load) 
+				return loader.load(resource, onLoad);
+			
+			XHR(resource, onLoad);
 		}
 	
 		return {
@@ -3650,9 +3982,9 @@
 					return;
 				}
 				
-				loader.done(function() {
+				loader.on(4, function() {
 					tryLoad(resource, loader.exports, callback);
-				});
+				}, null, 'push');
 			},
 			exists: function(resource) {
 				if (!resource.url) {
@@ -7397,23 +7729,30 @@ function __eval(source, include) {
 	(function(mask) {
 	
 		function Sys() {
-			this.attr = {};
+			this.attr = {
+				'debugger': null,
+				'use': null,
+				'repeat': null,
+				'if': null,
+				'else': null,
+				'each': null,
+				'log': null,
+				'visible': null,
+				'model': null
+			};
+			
+			this.model = null;
+			this.modelRef = null;
+			this.nodes = null;
+			this.parent = null;
+			this.container = null;
+			this.template = null;
 		}
 	
 		mask.registerHandler('%', Sys);
 	
 		Sys.prototype = {
-			'debugger': null,
-			'use': null,
-			'repeat': null,
-			'if': null,
-			'else': null,
-			'each': null,
-			'log': null,
-			'visible': null,
-			'model': null,
 			
-			constructor: Sys,
 			renderStart: function(model, ctx, container) {
 				var attr = this.attr;
 	
@@ -7477,7 +7816,8 @@ function __eval(source, include) {
 					each(this, model, ctx, container);
 				}
 			},
-			render: null
+			render: null,
+			append: null
 		};
 	
 	
@@ -7486,7 +7826,7 @@ function __eval(source, include) {
 				Compo.ensureTemplate(compo);
 			}
 	
-			var prop = compo.attr.foreach || compo.attr.each,
+			var prop = compo.attr.each || compo.attr.foreach,
 				array = util_getProperty(model, prop),
 				nodes = compo.nodes,
 				item = null,
@@ -7518,9 +7858,8 @@ function __eval(source, include) {
 				compo.nodes[i] = x;
 			}
 	
-			for(var method in ListProto){
-				compo[method] = ListProto[method];
-			}
+			//= methods
+			compo.append = ListProto.append;
 		}
 	
 		function repeat(compo, model, cntx, container) {
@@ -7558,8 +7897,7 @@ function __eval(source, include) {
 	
 		var ListProto = {
 			append: function(model){
-				var item;
-				item = new Component();
+				var item = new Component();
 				item.nodes = this.template;
 				item.model = model;
 	
