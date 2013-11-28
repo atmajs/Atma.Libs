@@ -1613,6 +1613,413 @@
 		return _class;
 	};
 	// end:source ../src/Class.js
+	
+	// source ../src/business/Await.js
+	var Await = (function(){
+		
+		return Class({
+			Base: Deferred,
+		
+			_wait: 0,
+			_timeout: null,
+			_result: null,
+		
+			delegate: function(name, errorable) {
+				return await_createDelegate(this, name, errorable);
+			},
+		
+			deferred: function(name) {
+				
+				var dfr = new Deferred,
+					delegate = await_createDelegate(this, name, true),
+					
+					args
+					;
+				
+				return dfr
+					.done(function(){
+						args = _Array_slice.call(arguments);
+						args.unshift(null);
+						
+						delegate.apply(null, args);
+					})
+					.fail(function(error){
+						
+						delegate(error);
+					})
+					;
+			},
+		
+			Static: {
+		
+				TIMEOUT: 2000
+			}
+		});
+	
+		
+		function await_createDelegate(await, name, errorable){
+			if (errorable == null) 
+				errorable = true;
+			
+			if (await._timeout)
+				clearTimeout(await._timeout);
+	
+			await.defer();
+			await._wait++;
+	
+			if (name){
+				if (!await._result)
+					await._result = {};
+				
+				if (name in await._result) 
+					console.warn('<await>', name, 'already awaiting');
+				
+				await._result[name] = null;
+			}
+			
+			var delegate = fn_createDelegate(await_listener, await, name, errorable)
+				;
+	
+			await._timeout = setTimeout(delegate, Await.TIMEOUT);
+	
+			return delegate;
+		}
+		
+		function await_listener(await, name, errorable /* .. args */ ) {
+			
+			if (arguments.length === 0) {
+				// timeout
+				await._wait = 0;
+				await.reject('408: Timeout');
+				return;
+			}
+			
+			if (await._wait === 0) 
+				return;
+			
+			var result = await._result;
+			
+			if (name) {
+				var args = _Array_slice.call(arguments, 3);
+				
+				result[name] = {
+					error: errorable ? args.shift() : null,
+					arguments: args
+				};
+			} else if (errorable && arguments[3] != null) {
+				
+				if (result == null) 
+					result = await._result = {};
+				
+				result.__error = arguments[3];
+			}
+			
+			if (--await._wait === 0) {
+				clearTimeout(await._timeout);
+				
+				var error = result && result.__error
+					;
+				var val,
+					key;
+				
+				if (error == null) {
+					for(key in result){
+						
+						val = result[key];
+						error = val && val.error;
+						
+						if (error) 
+							break;
+					}
+				}
+				
+				if (error) {
+					await.reject(error, result);
+					return;
+				}
+				
+				await.resolve(result);
+			}
+		}
+	
+	}());
+	// end:source ../src/business/Await.js
+	// source ../src/store/Store.js
+	var StoreProto = {
+		
+		
+		// Abstract
+		
+		fetch: null,
+		save: null,
+		del: null,
+		onSuccess: null,
+		onError: null,
+		
+		Static: {
+			fetch: function(data){
+				return new this().fetch(data);
+			}
+		}
+	};
+	// end:source ../src/store/Store.js
+	// source ../src/store/Remote.js
+	Class.Remote = (function(){
+	
+		var str_CONTENT_TYPE = 'content-type',
+			str_JSON = 'json'
+			;
+			
+		var XHRRemote = function(route){
+			this._route = new Route(route);
+		};
+		
+		obj_inherit(XHRRemote, StoreProto, Serializable, Deferred, {
+			
+			serialize: function(){
+				
+				return is_Array(this)
+					? JSONHelper.arrayToJSON.call(this)
+					: JSONHelper.toJSON.call(this)
+					;
+			},
+			
+			deserialize: function(json){
+				return Serializable.deserialize(this, json);
+			},
+			
+			fetch: function(data){
+				XHR.get(this._route.create(data || this), this);
+				return this;
+			},
+			
+			save: function(callback){
+				
+				var self = this,
+					json = self.serialize(),
+					path = self._route.create(self),
+					method = self._route.hasAliases(self)
+						? 'put'
+						: 'post'
+					;
+				
+				self.defer();
+				XHR[method](path, json, resolveDelegate(self, callback, 'save'));
+				return self;
+			},
+			
+			patch: function(patch){
+				obj_patch(this, patch);
+				
+				var path = this._route.create(this),
+					json = patch
+					;
+				
+				this.defer();
+				XHR.patch(path, json, resolveDelegate(this, callback));
+				return this;
+			},
+			
+			del: function(callback){
+				var self = this,
+					json = self.serialize(),
+					path = self._route.create(self)
+					;
+					
+				self.defer();
+				XHR.del(path, json, resolveDelegate(self, callback));
+				return self;
+			},
+			
+			onSuccess: function(response){
+				parseFetched(this, response);
+			},
+			onError: function(errored, response, xhr){
+				reject(this, response, xhr);
+			}
+			
+			
+		});
+		
+		function parseFetched(self, response){
+			var json;
+				
+			try {
+				json = JSON.parse(response);	
+			} catch(error) {
+				
+				reject(self, error);
+				return;
+			}
+			
+			
+			self.deserialize(json);
+			self.resolve(self);
+		}
+		
+		function reject(self, response, xhr){
+			self.reject(response);
+		}
+		
+		function resolveDelegate(self, callback, action){
+			
+			return function(error, response, xhr){
+					
+					var isJSON = xhr
+						.getResponseHeader(str_CONTENT_TYPE)
+						.indexOf(str_JSON) !== -1
+						;
+						
+					if (isJSON) {
+						try {
+							response = JSON.parse(response);
+						} catch(error){
+							console.error('<XHR> invalid json response', response);
+							
+							return reject(self, response, xhr);
+						}
+					}
+					
+					// @obsolete -> use deferred
+					if (callback) 
+						callback(error, response);
+					
+					if (error) 
+						return reject(self, response, xhr);
+					
+					if ('save' === action) {
+						self.deserialize(response);
+						
+						return self.resolve(self);
+					}
+					
+					self.resolve(response);
+			};
+		}
+		
+		return function(route){
+			
+			return new XHRRemote(route);
+			
+		};
+		
+	}());
+	// end:source ../src/store/Remote.js
+	// source ../src/store/LocalStore.js
+	Class.LocalStore = (function(){
+		
+		var LocalStore = function(route){
+			this._route = new Route(route);
+		};
+		
+		obj_inherit(LocalStore, StoreProto, Serializable, Deferred, {
+			
+			serialize: function(){
+				
+				var json = is_Array(this)
+					? JSONHelper.arrayToJSON.call(this)
+					: JSONHelper.toJSON.call(this)
+					;
+				
+				return JSON.stringify(json);
+			},
+			deserialize: function(json){
+				return Serializable.deserialize(this, json);
+			},
+			fetch: function(data){
+				
+				var path = this._route.create(data || this),
+					object = localStorage.getItem(path);
+				
+				if (object == null) {
+					this.resolve(this);
+					return this;
+				}
+				
+				if (is_String(object)){
+					try {
+						object = JSON.parse(object);
+					} catch(e) {
+						this.onError(e);
+					}
+				}
+				
+				this.deserialize(object);
+				
+				return this.resolve(this);
+			},
+			
+			save: function(callback){
+				var path = this._route.create(this),
+					store = this.serialize();
+				
+				localStorage.setItem(path, store);
+				callback && callback();
+				return this;
+			},
+			
+			del: function(mix){
+				
+				if (mix == null && arguments.length !== 0) {
+					console.error('<localStore:del> - selector is specified, but is undefined');
+					return this;
+				}
+				
+				// Single
+				if (arr_isArray(this) === false) {
+					store_del(this._route, mix || this);
+					return this;
+				}
+				
+				// Collection
+				if (mix == null) {
+					
+					for (var i = 0, imax = this.length; i < imax; i++){
+						this[i] = null;
+					}
+					this.length = 0;
+					
+					store_del(this._route, this);
+					return this;
+				}
+				
+				var array = this.remove(mix);
+				if (array.length === 0) {
+					// was nothing removed
+					return this;
+				}
+				
+				return this.save();
+			},
+			
+			onError: function(error){
+				this.reject({
+					error: error
+				});
+			}
+			
+			
+		});
+		
+		function store_del(route, data){
+			var path = route.create(data);
+			
+			localStorage.removeItem(path);
+		}
+		
+		var Constructor = function(route){
+			
+			return new LocalStore(route);
+		};
+		
+		Constructor.prototype = LocalStore.prototype;
+		
+		
+		return Constructor;
+	
+	}());
+	// end:source ../src/store/LocalStore.js
+
 	// source ../src/Class.Static.js
 	/**
 	 * Can be used in Constructor for binding class's functions to class's context
@@ -2015,408 +2422,6 @@
 		return Collection;
 	}());
 	// end:source ../src/collection/Collection.js
-
-	// source ../src/business/Await.js
-	var Await = (function(){
-		
-		return Class({
-			Base: Deferred,
-		
-			_wait: 0,
-			_timeout: null,
-			_result: null,
-		
-			delegate: function(name, errorable) {
-				return await_createDelegate(this, name, errorable);
-			},
-		
-			deferred: function(name) {
-				
-				var dfr = new Deferred,
-					delegate = await_createDelegate(this, name, true),
-					
-					args
-					;
-				
-				return dfr
-					.done(function(){
-						args = _Array_slice.call(arguments);
-						args.unshift(null);
-						
-						delegate.apply(null, args);
-					})
-					.fail(function(error){
-						
-						delegate(error);
-					})
-					;
-			},
-		
-			Static: {
-		
-				TIMEOUT: 2000
-			}
-		});
-	
-		
-		function await_createDelegate(await, name, errorable){
-			if (errorable == null) 
-				errorable = true;
-			
-			if (await._timeout)
-				clearTimeout(await._timeout);
-	
-			await.defer();
-			await._wait++;
-	
-			if (name){
-				if (!await._result)
-					await._result = {};
-				
-				if (name in await._result) 
-					console.warn('<await>', name, 'already awaiting');
-				
-				await._result[name] = null;
-			}
-			
-			var delegate = fn_createDelegate(await_listener, await, name, errorable)
-				;
-	
-			await._timeout = setTimeout(delegate, Await.TIMEOUT);
-	
-			return delegate;
-		}
-		
-		function await_listener(await, name, errorable /* .. args */ ) {
-			
-			if (arguments.length === 0) {
-				// timeout
-				await._wait = 0;
-				await.reject('408: Timeout');
-				return;
-			}
-			
-			if (await._wait === 0) 
-				return;
-			
-			if (name) {
-				var result = _Array_slice.call(arguments, 3);
-				
-				await._result[name] = {
-					error: errorable ? result.shift() : null,
-					arguments: result
-				};
-			} else if (errorable && arguments[3] != null) {
-				await._result.__error = arguments[3];
-			}
-			
-			if (--await._wait === 0) {
-				clearTimeout(await._timeout);
-				
-				var result = await._result,
-					error = result && result.__error
-					;
-				var val,
-					key;
-				
-				if (error == null) {
-					for(key in result){
-						
-						val = result[key];
-						error = val && val.error;
-						
-						if (error) 
-							break;
-					}
-				}
-				
-				if (error) {
-					await.reject(error, result);
-					return;
-				}
-				
-				await.resolve(result);
-			}
-		}
-	
-	}());
-	// end:source ../src/business/Await.js
-	// source ../src/store/Store.js
-	var StoreProto = {
-		
-		
-		// Abstract
-		
-		fetch: null,
-		save: null,
-		del: null,
-		onSuccess: null,
-		onError: null,
-		
-		Static: {
-			fetch: function(data){
-				return new this().fetch(data);
-			}
-		}
-	};
-	// end:source ../src/store/Store.js
-	// source ../src/store/Remote.js
-	Class.Remote = (function(){
-	
-		var str_CONTENT_TYPE = 'content-type',
-			str_JSON = 'json'
-			;
-			
-		var XHRRemote = function(route){
-			this._route = new Route(route);
-		};
-		
-		obj_inherit(XHRRemote, StoreProto, Serializable, Deferred, {
-			
-			serialize: function(){
-				
-				return is_Array(this)
-					? JSONHelper.arrayToJSON.call(this)
-					: JSONHelper.toJSON.call(this)
-					;
-			},
-			
-			deserialize: function(json){
-				return Serializable.deserialize(this, json);
-			},
-			
-			fetch: function(data){
-				XHR.get(this._route.create(data || this), this);
-				return this;
-			},
-			
-			save: function(callback){
-				
-				var self = this,
-					json = self.serialize(),
-					path = self._route.create(self),
-					method = self._route.hasAliases(self)
-						? 'put'
-						: 'post'
-					;
-				
-				self.defer();
-				XHR[method](path, json, resolveDelegate(self, callback, 'save'));
-				return self;
-			},
-			
-			patch: function(patch){
-				obj_patch(this, patch);
-				
-				var path = this._route.create(this),
-					json = patch
-					;
-				
-				this.defer();
-				XHR.patch(path, json, resolveDelegate(this, callback));
-				return this;
-			},
-			
-			del: function(callback){
-				var self = this,
-					json = self.serialize(),
-					path = self._route.create(self)
-					;
-					
-				self.defer();
-				XHR.del(path, json, resolveDelegate(self, callback));
-				return self;
-			},
-			
-			onSuccess: function(response){
-				parseFetched(this, response);
-			},
-			onError: function(errored, response, xhr){
-				reject(this, response, xhr);
-			}
-			
-			
-		});
-		
-		function parseFetched(self, response){
-			var json;
-				
-			try {
-				json = JSON.parse(response);	
-			} catch(error) {
-				
-				reject(self, error);
-				return;
-			}
-			
-			
-			self.deserialize(json);
-			self.resolve(self);
-		}
-		
-		function reject(self, response, xhr){
-			self.reject(response);
-		}
-		
-		function resolveDelegate(self, callback, action){
-			
-			return function(error, response, xhr){
-					
-					var isJSON = xhr
-						.getResponseHeader(str_CONTENT_TYPE)
-						.indexOf(str_JSON) !== -1
-						;
-						
-					if (isJSON) {
-						try {
-							response = JSON.parse(response);
-						} catch(error){
-							console.error('<XHR> invalid json response', response);
-							
-							return reject(self, response, xhr);
-						}
-					}
-					
-					// @obsolete -> use deferred
-					if (callback) 
-						callback(error, response);
-					
-					if (error) 
-						return reject(self, response, xhr);
-					
-					if ('save' === action) {
-						self.deserialize(response);
-						
-						return self.resolve(self);
-					}
-					
-					self.resolve(response);
-			};
-		}
-		
-		return function(route){
-			
-			return new XHRRemote(route);
-			
-		};
-		
-	}());
-	// end:source ../src/store/Remote.js
-	// source ../src/store/LocalStore.js
-	Class.LocalStore = (function(){
-		
-		var LocalStore = function(route){
-			this._route = new Route(route);
-		};
-		
-		obj_inherit(LocalStore, StoreProto, Serializable, Deferred, {
-			
-			serialize: function(){
-				
-				var json = is_Array(this)
-					? JSONHelper.arrayToJSON.call(this)
-					: JSONHelper.toJSON.call(this)
-					;
-				
-				return JSON.stringify(json);
-			},
-			deserialize: function(json){
-				return Serializable.deserialize(this, json);
-			},
-			fetch: function(data){
-				
-				var path = this._route.create(data || this),
-					object = localStorage.getItem(path);
-				
-				if (object == null) {
-					this.resolve(this);
-					return this;
-				}
-				
-				if (is_String(object)){
-					try {
-						object = JSON.parse(object);
-					} catch(e) {
-						this.onError(e);
-					}
-				}
-				
-				this.deserialize(object);
-				
-				return this.resolve(this);
-			},
-			
-			save: function(callback){
-				var path = this._route.create(this),
-					store = this.serialize();
-				
-				localStorage.setItem(path, store);
-				callback && callback();
-				return this;
-			},
-			
-			del: function(mix){
-				
-				if (mix == null && arguments.length !== 0) {
-					console.error('<localStore:del> - selector is specified, but is undefined');
-					return this;
-				}
-				
-				// Single
-				if (arr_isArray(this) === false) {
-					store_del(this._route, mix || this);
-					return this;
-				}
-				
-				// Collection
-				if (mix == null) {
-					
-					for (var i = 0, imax = this.length; i < imax; i++){
-						this[i] = null;
-					}
-					this.length = 0;
-					
-					store_del(this._route, this);
-					return this;
-				}
-				
-				var array = this.remove(mix);
-				if (array.length === 0) {
-					// was nothing removed
-					return this;
-				}
-				
-				return this.save();
-			},
-			
-			onError: function(error){
-				this.reject({
-					error: error
-				});
-			}
-			
-			
-		});
-		
-		function store_del(route, data){
-			var path = route.create(data);
-			
-			localStorage.removeItem(path);
-		}
-		
-		var Constructor = function(route){
-			
-			return new LocalStore(route);
-		};
-		
-		Constructor.prototype = LocalStore.prototype;
-		
-		
-		return Constructor;
-	
-	}());
-	// end:source ../src/store/LocalStore.js
-
 	
 	// source ../src/fn/fn.js
 	(function(){
@@ -3194,8 +3199,8 @@
     				return;
     			}
     
-    			resource.readystatechanged(3);
-    
+    			if (resource.state !== 2.5) 
+    				resource.readystatechanged(3);
     			currentResource = null;
     			loadByEmbedding();
     		}
@@ -3246,7 +3251,8 @@
     			}
     		}
     
-    		resource.readystatechanged(3);
+    		if (resource.state !== 2.5) 
+    			resource.readystatechanged(3);
     		currentResource = null;
     		processByEval();
     
@@ -3268,31 +3274,14 @@
     	return {
     		load: function(resource, parent, forceEmbed) {
     
-    			//console.log('LOAD', resource.url, 'parent:',parent ? parent.url : '');
-    
-    			var added = false;
-    			if (parent) {
-    				for (var i = 0, length = stack.length; i < length; i++) {
-    					if (stack[i] === parent) {
-    						stack.splice(i, 0, resource);
-    						added = true;
-    						break;
-    					}
-    				}
-    			}
-    
-    			if (!added) {
-    				stack.push(resource);
-    			}
-    
-    			// was already loaded, with custom loader for example
+    			this.add(resource, parent);
     
     			if (!cfg.eval || forceEmbed) {
     				loadByEmbedding();
     				return;
     			}
     
-    
+    			// was already loaded, with custom loader for example
     			if (resource.source) {
     				resource.state = 2;
     				processByEval();
@@ -3310,6 +3299,30 @@
     				processByEval();
     			});
     		},
+    		
+    		add: function(resource, parent){
+    			
+    			if (resource.priority === 1) 
+    				return stack.unshift(resource);
+    			
+    			
+    			if (parent == null) 
+    				return stack.push(resource);
+    				
+    			
+    			var imax = stack.length,
+    				i = -1
+    				;
+    			// move close to parent
+    			while( ++i < imax){
+    				if (stack[i] === parent) 
+    					return stack.splice(i, 0, resource);
+    			}
+    			
+    			// was still not added
+    			stack.push(resource);
+    		},
+    		
     		/* Move resource in stack close to parent */
     		moveToParent: function(resource, parent) {
     			var length = stack.length,
@@ -3325,11 +3338,6 @@
     			}
     
     			if (resourceIndex === -1) {
-    				// this should be not the case, but anyway checked.
-    				
-    				// - resource can load resources in done cb, and then it will be
-    				// already not in stack
-    				//-console.warn('Resource is not in stack', resource);
     				return;
     			}
     
@@ -3341,10 +3349,6 @@
     			}
     
     			if (parentIndex === -1) {
-    				//// - should be already in stack
-    				////if (parent == null) {
-    				////	stack.unshift(resource);
-    				////}
     				return;
     			}
     
@@ -3361,19 +3365,24 @@
     		pause: function(){
     			_paused = true;
     		},
+    		
     		resume: function(){
     			_paused = false;
     			
-    			if (currentResource != null) {
+    			if (currentResource != null) 
     				return;
-    			}
     			
+    			this.touch();
+    		},
+    		
+    		touch: function(){
     			var fn = cfg.eval
     				? processByEval
-    				: loadByEmbedding;
-    				
+    				: loadByEmbedding
+    				;
     			fn();
     		},
+    		
     		complete: function(callback){
     			if (_paused === false && stack.length === 0) {
     				callback();
@@ -3394,6 +3403,7 @@
 	 * 0: Resource Created
 	 * 1: Loading
 	 * 2: Loaded - Evaluating
+	 * 2.5: Paused - Evaluating paused
 	 * 3: Evaluated - Childs Loading
 	 * 4: Childs Loaded - Completed
 	 */
@@ -3932,7 +3942,15 @@
 				}
 			}
 	
-			return (cfg.loader[extension] = new Resource('js', Routes.resolve(namespace, path), namespace));
+			return (cfg.loader[extension] = new Resource(
+				'js',
+				Routes.resolve(namespace, path),
+				namespace,
+				null,
+				null,
+				null,
+				1
+			));
 		}
 		
 		function loader_completeDelegate(callback, resource) {
@@ -4091,6 +4109,11 @@
 						break;
 				}
 			} else {
+				
+				if ('js' === type || 'embed' === type) {
+					ScriptStack.add(resource, resource.parent);
+				}
+				
 				CustomLoader.load(resource, onXHRCompleted);
 			}
 	
@@ -4108,7 +4131,8 @@
 				case 'js':
 				case 'embed':
 					resource.source = response;
-					ScriptStack.load(resource, resource.parent, resource.type === 'embed');
+					resource.state = 2;
+					ScriptStack.touch();
 					return;
 				case 'load':
 				case 'ajax':
@@ -4128,7 +4152,7 @@
 			resource.readystatechanged(4);
 		}
 	
-		var Resource = function(type, route, namespace, xpath, parent, id) {
+		var Resource = function(type, route, namespace, xpath, parent, id, priority) {
 			Include.call(this);
 			
 			this.childLoaded = fn_proxy(this.childLoaded, this);
@@ -4139,11 +4163,13 @@
 				this.url = url = path_resolveUrl(url, parent);
 			}
 	
-			this.route = route;
-			this.namespace = namespace;
+			
 			this.type = type;
 			this.xpath = xpath;
+			this.route = route;
 			this.parent = parent;
+			this.priority = priority;
+			this.namespace = namespace;
 	
 			if (id == null && url) {
 				id = (url[0] === '/' ? '' : '/') + url;
@@ -4186,7 +4212,7 @@
 				var resource = this,
 					includes = resource.includes;
 				if (includes && includes.length) {
-					if (resource.state < 3 /* && resource.url != null */ ) {
+					if (resource.state < 3) {
 						// resource still loading/include is in process, but one of sub resources are already done
 						return;
 					}
@@ -4233,6 +4259,16 @@
 				});
 	
 				return this;
+			},
+			
+			pause: function(){
+				this.state = 2.5;
+				
+				var that = this;
+				return function(){
+					
+					that.readystatechanged(3);
+				};
 			},
 			
 			getNestedOfType: function(type){
@@ -4391,12 +4427,44 @@ function __eval(source, include) {
 		var value = o,
 			props = chain.split('.'),
 			i = -1,
-			length = props.length;
+			imax = props.length;
 	
-		while (value != null && ++i < length) {
+		while (value != null && ++i < imax) {
 			value = value[props[i]];
 		}
 	
+		return value;
+	}
+	
+	function util_getPropertyEx(path, model, ctx, controller){
+		if (path === '.') 
+			return model;
+	
+		var props = path.split('.'),
+			value = model,
+			i = -1,
+			imax = props.length,
+			key = props[0]
+			;
+		
+		if ('$c' === key) {
+			value = controller;
+			i++;
+		}
+		
+		else if ('$a' === key) {
+			value = controller && controller.attr;
+			i++;
+		}
+		
+		else if ('$ctx' === key) {
+			value = ctx;
+			i++;
+		}
+		
+		while (value != null && ++i < imax) 
+			value = value[props[i]];
+		
 		return value;
 	}
 	
@@ -4424,15 +4492,20 @@ function __eval(source, include) {
 	 *
 	 */
 	
-	function util_interpolate(arr, type, model, cntx, element, controller, name) {
-		var length = arr.length,
-			i = 0,
+	function util_interpolate(arr, type, model, ctx, element, controller, name) {
+		var imax = arr.length,
+			i = -1,
 			array = null,
 			string = '',
 			even = true,
-			utility, value, index, key, handler;
+			
+			utility,
+			value,
+			index,
+			key,
+			handler;
 	
-		for (; i < length; i++) {
+		while ( ++i < imax ) {
 			if (even === true) {
 				if (array == null){
 					string += arr[i];
@@ -4445,7 +4518,8 @@ function __eval(source, include) {
 				index = key.indexOf(':');
 	
 				if (index === -1) {
-					value = util_getProperty(model, key);
+					value = util_getPropertyEx(key,  model, ctx, controller);
+					
 				} else {
 					utility = index > 0
 						? str_trim(key.substring(0, index))
@@ -4459,9 +4533,9 @@ function __eval(source, include) {
 					handler = custom_Utils[utility];
 					
 					value = fn_isFunction(handler)
-						? handler(key, model, cntx, element, controller, name, type)
-						: handler.process(key, model, cntx, element, controller, name, type);
-						
+						? handler(key, model, ctx, element, controller, name, type)
+						: handler.process(key, model, ctx, element, controller, name, type)
+						;
 				}
 	
 				if (value != null){
@@ -5186,79 +5260,125 @@ function __eval(source, include) {
 		
 		// end:source 2.ast.js
 		// source 3.util.js
-		function _throw(message, token) {
-			console.error('Expression parser:', message, token, template.substring(index));
-		}
+		var _throw,
 		
+			util_resolveRef
+			;
 		
-		function util_resolveRef(astRef, model, cntx, controller) {
-			var current = astRef,
-				key = astRef.body,
-				object, value;
-		
-			if (value == null && model != null) {
-				object = model;
-				value = model[key];
-			}
-		
-			if (value == null && cntx != null) {
-				object = cntx;
-				value = cntx[key];
-			}
-		
-			if (value == null && controller != null) {
-				do {
-					object = controller;
-					value = controller[key];
-				} while (value == null && (controller = controller.parent) != null);
-			}
-		
-			if (value != null) {
-				do {
-					if (current.type === type_FunctionRef) {
-						var args = [];
-						for (var i = 0, x, length = current.arguments.length; i < length; i++) {
-							x = current.arguments[i];
-							args[i] = expression_evaluate(x, model, cntx, controller);
-						}
-						value = value.apply(object, args);
+		(function(){
+			
+			util_resolveRef = function(astRef, model, ctx, controller) {
+				var current = astRef,
+					key = astRef.body,
+					
+					object,
+					value,
+					args,
+					i,
+					imax
+					;
+				
+				if ('$c' === key) {
+					value = controller;
+					
+					var next = current.next;
+					if (next != null
+						&& next.type === type_FunctionRef
+						&& value[next.body] == null
+						&& typeof Compo[next.body] === 'function') {
+						
+						imax = next.arguments.length;
+						i = -1;
+						args = [controller];
+						
+						while( ++i < imax )
+							args[i + 1] = expression_evaluate(next.arguments[i], model, ctx, controller);
+						
+						value = Compo[next.body].apply(null, args);
+						current = next.next;
+						
+						if (current == null) 
+							return value;
 					}
-		
-					if (value == null || current.next == null) {
-						break;
-					}
-		
-					current = current.next;
-					key = current.body;
-					object = value;
-					value = value[key];
-		
-					if (value == null) {
-						break;
-					}
-		
-				} while (true);
-			}
-		
-			if (value == null){
-				if (current == null || current.next != null){
-					_throw('Mask - Accessor error - ', key);
 				}
-			}
+				
+				
+				else if ('$a' === key) 
+					value = controller && controller.attr;
+				
+				else if ('$ctx' === key) 
+					value = ctx;
+				
+				else {
+					// dynamic resolver
+					
+					if (model != null) {
+						object = model;
+						value = model[key];
+					}
+					
+					// @TODO - deprecate this for predefined accessors '$c' ...	
+					if (value == null && ctx != null) {
+						object = ctx;
+						value = ctx[key];
+					}
+				
+					if (value == null && controller != null) {
+						do {
+							object = controller;
+							value = controller[key];
+						} while (value == null && (controller = controller.parent) != null);
+					}
+				}
+				
+			
+				if (value != null) {
+					do {
+						if (current.type === type_FunctionRef) {
+							
+							args = [];
+							i = -1;
+							imax = current.arguments.length;
+							
+							while( ++i < imax )
+								args[i] = expression_evaluate(current.arguments[i], model, ctx, controller);
+							
+							value = value.apply(object, args);
+						}
+			
+						if (value == null || current.next == null) {
+							break;
+						}
+			
+						current = current.next;
+						key = current.body;
+						object = value;
+						value = value[key];
+			
+						
+						if (value == null) 
+							break;
+			
+					} while (true);
+				}
+			
+				if (value == null){
+					if (current == null || current.next != null){
+						_throw('Mask - Accessor error - ', key);
+					}
+				}
+			
+				return value;
+			};
 		
-			return value;
+			
+			_throw = function(message, token) {
+				console.error('Expression parser:', message, token, template.substring(index));
+			};
+			
+			
+		}());
 		
-		
-		}
-		
-		function util_getValue(object, props, length) {
-			var i = -1,
-				value = object;
-			while (value != null && ++i < length) {
-				value = value[props[i]];
-			}
-			return value;
-		}
 		
 		// end:source 3.util.js
 		// source 4.parser.helper.js
@@ -5327,6 +5447,7 @@ function __eval(source, include) {
 				ref;
 		
 			if (c === 34 || c === 39) {
+				// ' | "
 				index++;
 				ref = parser_getString(c);
 				index++;
@@ -5334,20 +5455,27 @@ function __eval(source, include) {
 			}
 		
 			while (true) {
-		
+				
+				if (index === length) 
+					break;
+				
 				c = template.charCodeAt(index);
+				
+				if (c === 36) {
+					// $
+					index++;
+					continue;
+				}
+				
 				if (
 					c > 47 && // ()+-*,/
-		
-				c !== 58 && // :
-				c !== 60 && // <
-				c !== 61 && // =
-				c !== 62 && // >
-				c !== 63 && // ?
-		
-				c !== 124 && // |
-		
-				index < length) {
+					c !== 58 && // :
+					c !== 60 && // <
+					c !== 61 && // =
+					c !== 62 && // >
+					c !== 63 && // ?
+					c !== 124 // |
+					) {
 		
 					index++;
 					continue;
@@ -5452,7 +5580,7 @@ function __eval(source, include) {
 		
 			}
 		
-			if (code >= 65 && code <= 90 || code >= 97 && code <= 122 || code === 95 || code === 36) {
+			if ((code >= 65 && code <= 90) || code >= 97 && code <= 122 || code === 95 || code === 36) {
 				// A-Z a-z _ $
 				return go_ref;
 			}
@@ -7756,6 +7884,35 @@ function __eval(source, include) {
 			renderStart: function(model, ctx, container) {
 				var attr = this.attr;
 	
+				// foreach is deprecated
+				if (attr['each'] != null || attr['foreach'] != null) {
+					each(this, model, ctx, container);
+					return;
+				}
+				
+				if (attr['if'] != null) {
+					this.state = ExpressionUtil.eval(attr['if'], model, ctx, this.parent);
+					if (!this.state) {
+						this.nodes = null;
+					}
+					return;
+				}
+	
+				if (attr['else'] != null) {
+					var compos = this.parent.components,
+						prev = compos && compos[compos.length - 1];
+	
+					if (prev != null && prev.compoName === '%' && prev.attr['if'] != null) {
+	
+						if (prev.state) {
+							this.nodes = null;
+						}
+						return;
+					}
+					console.error('Previous Node should be "% if=\'condition\'"', prev, this.parent);
+					return;
+				}
+				
 				if (attr['use'] != null) {
 					var use = attr['use'];
 					this.model = util_getProperty(model, use);
@@ -7788,49 +7945,23 @@ function __eval(source, include) {
 					repeat(this, model, ctx, container);
 				}
 	
-				if (attr['if'] != null) {
-					this.state = ExpressionUtil.eval(attr['if'], model, ctx, this.parent);
-					if (!this.state) {
-						this.nodes = null;
-					}
-					return;
-				}
-	
-				if (attr['else'] != null) {
-					var compos = this.parent.components,
-						prev = compos && compos[compos.length - 1];
-	
-					if (prev != null && prev.compoName === '%' && prev.attr['if'] != null) {
-	
-						if (prev.state) {
-							this.nodes = null;
-						}
-						return;
-					}
-					console.error('Previous Node should be "% if=\'condition\'"', prev, this.parent);
-					return;
-				}
-	
-				// foreach is deprecated
-				if (attr['each'] != null || attr['foreach'] != null) {
-					each(this, model, ctx, container);
-				}
 			},
 			render: null,
+			renderEnd: null,
 			append: null
 		};
 	
 	
-		function each(compo, model, cntx, container){
-			if (compo.nodes == null && typeof Compo !== 'undefined'){
+		function each(compo, model, ctx, container){
+			
+			if (compo.nodes == null)
 				Compo.ensureTemplate(compo);
-			}
+			
 	
 			var prop = compo.attr.each || compo.attr.foreach,
-				array = util_getProperty(model, prop),
-				nodes = compo.nodes,
-				item = null,
-				indexAttr = compo.attr.index || 'index';
+				array = util_getPropertyEx(prop, model, ctx, compo),
+				nodes = compo.nodes
+				;
 	
 			if (array == null) {
 				var parent = compo;
@@ -7848,14 +7979,17 @@ function __eval(source, include) {
 			compo.container = container;
 			
 	
-			if (array == null || typeof array !== 'object' || array.length == null){
+			if (array == null)
 				return;
-			}
-	
-			for (var i = 0, x, length = array.length; i < length; i++) {
-				x = compo_init(nodes, array[i], i, container, compo);
-				x[indexAttr] = i;
-				compo.nodes[i] = x;
+			
+			var imax = array.length,
+				i = -1;
+				
+			if (imax == null) 
+				return;
+				
+			while (++i < imax) {
+				compo.nodes[i] = compo_init(nodes, array[i], i, container, compo);
 			}
 	
 			//= methods
@@ -7866,7 +8000,7 @@ function __eval(source, include) {
 			var repeat = compo.attr.repeat.split('..'),
 				index = +repeat[0],
 				length = +repeat[1],
-				template = compo.nodes,
+				nodes = compo.nodes,
 				x;
 	
 			// if DEBUG
@@ -7875,23 +8009,32 @@ function __eval(source, include) {
 	
 			compo.nodes = [];
 	
-			for (var i = 0; index < length; index++) {
-				x = compo_init(template, model, index, container, compo);
-				x._repeatIndex = index;
-	
-				compo.nodes[i++] = x;
+			var i = -1;
+			while (++i < length) {
+				compo.nodes[i] = compo_init(nodes, model, i, container, compo);
 			}
 		}
 	
-		function compo_init(nodes, model, modelRef, container, parent) {
-			var item = new Component();
-			item.nodes = nodes;
-			item.model = model;
-			item.container = container;
-			item.parent = parent;
-			item.modelRef = modelRef;
-	
-			return item;
+		function compo_init(nodes, model, index, container, parent) {
+			
+			return {
+				type: Dom.COMPONENT,
+				attr: {},
+				nodes: nodes,
+				model: model,
+				container: container,
+				parent: parent,
+				index: index
+			};
+			
+			//var item = new Component();
+			//item.nodes = nodes;
+			//item.model = model;
+			//item.container = container;
+			//item.parent = parent;
+			//item.modelRef = modelRef;
+			//
+			//return item;
 		}
 	
 	

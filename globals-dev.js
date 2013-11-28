@@ -1610,408 +1610,6 @@
 		return _class;
 	};
 	// end:source ../src/Class.js
-	// source ../src/Class.Static.js
-	/**
-	 * Can be used in Constructor for binding class's functions to class's context
-	 * for using, for example, as callbacks
-	 *
-	 * @obsolete - use 'Self' property instead
-	 */
-	Class.bind = function(cntx) {
-		var arr = arguments,
-			i = 1,
-			length = arguments.length,
-			key;
-	
-		for (; i < length; i++) {
-			key = arr[i];
-			cntx[key] = cntx[key].bind(cntx);
-		}
-		return cntx;
-	};
-	
-	
-	Class.Serializable = Serializable;
-	Class.Deferred = Deferred;
-	Class.EventEmitter = EventEmitter;
-	Class.Await = Await;
-	Class.validate = Validation.validate;
-	// end:source ../src/Class.Static.js
-	
-	// source ../src/collection/Collection.js
-	Class.Collection = (function(){
-		
-		// source ArrayProto.js
-		
-		var ArrayProto = (function(){
-		
-			function check(x, mix) {
-				if (mix == null)
-					return false;
-				
-				if (typeof mix === 'function') 
-					return mix(x);
-				
-				if (typeof mix === 'object'){
-					
-					if (x.constructor === mix.constructor && x.constructor !== Object) {
-						return x === mix;
-					}
-					
-					var value, matcher;
-					for (var key in mix) {
-						
-						value = x[key];
-						matcher = mix[key];
-						
-						if (typeof matcher === 'string') {
-							var c = matcher[0],
-								index = 1;
-							
-							if ('<' === c || '>' === c){
-								
-								if ('=' === matcher[1]){
-									c +='=';
-									index++;
-								}
-								
-								matcher = matcher.substring(index);
-								
-								switch (c) {
-									case '<':
-										if (value >= matcher)
-											return false;
-										continue;
-									case '<=':
-										if (value > matcher)
-											return false;
-										continue;
-									case '>':
-										if (value <= matcher)
-											return false;
-										continue;
-									case '>=':
-										if (value < matcher)
-											return false;
-										continue;
-								}
-							}
-						}
-						
-						// eqeq to match by type diffs.
-						if (value != matcher) 
-							return false;
-						
-					}
-					return true;
-				}
-				
-				console.warn('No valid matcher', mix);
-				return false;
-			}
-		
-			var ArrayProto = {
-				length: 0,
-				push: function(/*mix*/) { 
-					for (var i = 0, imax = arguments.length; i < imax; i++){
-						
-						this[this.length++] = create(this._ctor, arguments[i]);
-					}
-					
-					return this;
-				},
-				pop: function() {
-					var instance = this[--this.length];
-			
-					this[this.length] = null;
-					return instance;
-				},
-				shift: function(){
-					if (this.length === 0) 
-						return null;
-					
-					
-					var first = this[0],
-						imax = this.length - 1,
-						i = 0;
-					
-					for (; i < imax; i++){
-						this[i] = this[i + 1];
-					}
-					
-					this[imax] = null;
-					this.length--;
-					
-					return first;
-				},
-				unshift: function(mix){
-					this.length++;
-					
-					var imax = this.length;
-					
-					while (--imax) {
-						this[imax] = this[imax - 1];
-					}
-					
-					this[0] = create(this._ctor, mix);
-					return this;
-				},
-				
-				splice: function(index, count /* args */){
-					
-					var length = this.length;
-					var i, imax, y;
-					
-					// clear range after length until index
-					if (index >= length) {
-						count = 0;
-						for (i = length, imax = index; i < imax; i++){
-							this[i] = void 0;
-						}
-					}
-					
-					var	rm_count = count,
-						rm_start = index,
-						rm_end = index + rm_count,
-						add_count = arguments.length - 2,
-						
-						new_length = length + add_count - rm_count;
-					
-					
-					// move block
-					
-					var block_start = rm_end,
-						block_end = length,
-						block_shift = new_length - length;
-					
-					if (0 < block_shift) {
-						// move forward
-						
-						i = block_end;
-						while (--i >= block_start) {
-							
-							this[i + block_shift] = this[i];
-							
-						}
-		
-					}
-					
-					if (0 > block_shift) {
-						// move backwards
-						
-						i = block_start;				
-						while (i < block_end) {
-							this[i + block_shift] = this[i];
-							i++;
-						}
-					}
-					
-					// insert
-					
-					i = rm_start;
-					y = 2;
-					for (; y < arguments.length; y) {
-						this[i++] = create(this._ctor, arguments[y++]);
-					}
-					
-					
-					this.length = new_length;
-					return this;
-				},
-				
-				slice: function(){
-					return fn_apply(_Array_slice, this, arguments);
-				},
-				
-				sort: function(fn){
-					_Array_sort.call(this, fn);
-					return this;
-				},
-				
-				reverse: function(){
-					var array = _Array_slice.call(this),
-						imax = this.length,
-						i = -1
-						;
-					while( ++i < imax) {
-						this[i] = array[imax - i - 1];
-					}
-					return this;
-				},
-				
-				toString: function(){
-					return _Array_slice.call(this, 0).toString()
-				},
-				
-				each: function(fn, ctx){
-					var imax = this.length,
-						i = -1
-						;
-					while( ++i < imax ) {
-						
-						fn.call(ctx || this, this[i], i);
-					}
-		            return this;
-				},
-				
-				
-				where: function(mix){
-					
-					var collection = new this.constructor();
-					
-					for (var i = 0, x, imax = this.length; i < imax; i++){
-						x = this[i];
-						
-						if (check(x, mix)) {
-							collection[collection.length++] = x;
-						}
-					}
-					
-					return collection;
-				},
-				remove: function(mix){
-					var index = -1,
-						array = [];
-					for (var i = 0, imax = this.length; i < imax; i++){
-						
-						if (check(this[i], mix)) {
-							array.push(this[i]);
-							continue;
-						}
-						
-						this[++index] = this[i];
-					}
-					for (i = ++index; i < imax; i++) {
-						this[i] = null;
-					}
-					
-					this.length = index;
-					return array;
-				},
-				first: function(mix){
-					if (mix == null)
-						return this[0];
-					
-					var i = this.indexOf(mix);
-					return i !== -1
-						? this[i]
-						: null;
-						
-				},
-				last: function(mix){
-					if (mix == null)
-						return this[this.length - 1];
-					
-					var i = this.lastIndexOf(mix);
-					return i !== -1
-						? this[i]
-						: null;
-				},
-				indexOf: function(mix, index){
-					if (mix == null)
-						return -1;
-					
-					if (index != null) {
-						if (index < 0) 
-							index = 0;
-							
-						if (index >= this.length) 
-							return -1;
-						
-					}
-					else{
-						index = 0;
-					}
-					
-					
-					var imax = this.length;
-					for(; index < imax; index++) {
-						if (check(this[index], mix))
-							return index;
-					}
-					return -1;
-				},
-				lastIndexOf: function(mix, index){
-					if (mix == null)
-						return -1;
-					
-					if (index != null) {
-						if (index >= this.length) 
-							index = this.length - 1;
-						
-						if (index < 0) 
-							return -1;
-					}
-					else {
-						index = this.length - 1;
-					}
-					
-					
-					for (; index > -1; index--) {
-						if (check(this[index], mix))
-							return index;
-					}
-					
-					return -1;
-				}
-			};
-			
-			
-			return ArrayProto;
-		}());
-		
-		// end:source ArrayProto.js
-		
-		function create(Constructor, mix) {
-			
-			if (mix instanceof Constructor) 
-				return mix;
-			
-			return new Constructor(mix);
-		}
-		
-		var CollectionProto = {
-			toArray: function(){
-				var array = new Array(this.length);
-				for (var i = 0, imax = this.length; i < imax; i++){
-					array[i] = this[i];
-				}
-				
-				return array;
-			},
-			
-			toJSON: JSONHelper.arrayToJSON
-		};
-		
-		//////function overrideConstructor(baseConstructor, Child) {
-		//////	
-		//////	return function CollectionConstructor(){
-		//////		this.length = 0;
-		//////		this._constructor = Child;
-		//////		
-		//////		if (baseConstructor != null)
-		//////			return baseConstructor.apply(this, arguments);
-		//////		
-		//////		return this;
-		//////	};
-		//////	
-		//////}
-		
-		function Collection(Child, Proto) {
-			
-			//////Proto.Construct = overrideConstructor(Proto.Construct, Child);
-			
-			Proto._ctor = Child;
-			
-			
-			obj_inherit(Proto, CollectionProto, ArrayProto);
-			return Class(Proto);
-		}
-		
-		
-		return Collection;
-	}());
-	// end:source ../src/collection/Collection.js
 	
 	// source ../src/business/Await.js
 	var Await = (function(){
@@ -2096,22 +1694,27 @@
 			if (await._wait === 0) 
 				return;
 			
+			var result = await._result;
+			
 			if (name) {
-				var result = _Array_slice.call(arguments, 3);
+				var args = _Array_slice.call(arguments, 3);
 				
-				await._result[name] = {
-					error: errorable ? result.shift() : null,
-					arguments: result
+				result[name] = {
+					error: errorable ? args.shift() : null,
+					arguments: args
 				};
 			} else if (errorable && arguments[3] != null) {
-				await._result.__error = arguments[3];
+				
+				if (result == null) 
+					result = await._result = {};
+				
+				result.__error = arguments[3];
 			}
 			
 			if (--await._wait === 0) {
 				clearTimeout(await._timeout);
 				
-				var result = await._result,
-					error = result && result.__error
+				var error = result && result.__error
 					;
 				var val,
 					key;
@@ -3113,6 +2716,408 @@
 	
 	// end:source ../src/store/mongo/MongoStore.js
 
+	// source ../src/Class.Static.js
+	/**
+	 * Can be used in Constructor for binding class's functions to class's context
+	 * for using, for example, as callbacks
+	 *
+	 * @obsolete - use 'Self' property instead
+	 */
+	Class.bind = function(cntx) {
+		var arr = arguments,
+			i = 1,
+			length = arguments.length,
+			key;
+	
+		for (; i < length; i++) {
+			key = arr[i];
+			cntx[key] = cntx[key].bind(cntx);
+		}
+		return cntx;
+	};
+	
+	
+	Class.Serializable = Serializable;
+	Class.Deferred = Deferred;
+	Class.EventEmitter = EventEmitter;
+	Class.Await = Await;
+	Class.validate = Validation.validate;
+	// end:source ../src/Class.Static.js
+	
+	// source ../src/collection/Collection.js
+	Class.Collection = (function(){
+		
+		// source ArrayProto.js
+		
+		var ArrayProto = (function(){
+		
+			function check(x, mix) {
+				if (mix == null)
+					return false;
+				
+				if (typeof mix === 'function') 
+					return mix(x);
+				
+				if (typeof mix === 'object'){
+					
+					if (x.constructor === mix.constructor && x.constructor !== Object) {
+						return x === mix;
+					}
+					
+					var value, matcher;
+					for (var key in mix) {
+						
+						value = x[key];
+						matcher = mix[key];
+						
+						if (typeof matcher === 'string') {
+							var c = matcher[0],
+								index = 1;
+							
+							if ('<' === c || '>' === c){
+								
+								if ('=' === matcher[1]){
+									c +='=';
+									index++;
+								}
+								
+								matcher = matcher.substring(index);
+								
+								switch (c) {
+									case '<':
+										if (value >= matcher)
+											return false;
+										continue;
+									case '<=':
+										if (value > matcher)
+											return false;
+										continue;
+									case '>':
+										if (value <= matcher)
+											return false;
+										continue;
+									case '>=':
+										if (value < matcher)
+											return false;
+										continue;
+								}
+							}
+						}
+						
+						// eqeq to match by type diffs.
+						if (value != matcher) 
+							return false;
+						
+					}
+					return true;
+				}
+				
+				console.warn('No valid matcher', mix);
+				return false;
+			}
+		
+			var ArrayProto = {
+				length: 0,
+				push: function(/*mix*/) { 
+					for (var i = 0, imax = arguments.length; i < imax; i++){
+						
+						this[this.length++] = create(this._ctor, arguments[i]);
+					}
+					
+					return this;
+				},
+				pop: function() {
+					var instance = this[--this.length];
+			
+					this[this.length] = null;
+					return instance;
+				},
+				shift: function(){
+					if (this.length === 0) 
+						return null;
+					
+					
+					var first = this[0],
+						imax = this.length - 1,
+						i = 0;
+					
+					for (; i < imax; i++){
+						this[i] = this[i + 1];
+					}
+					
+					this[imax] = null;
+					this.length--;
+					
+					return first;
+				},
+				unshift: function(mix){
+					this.length++;
+					
+					var imax = this.length;
+					
+					while (--imax) {
+						this[imax] = this[imax - 1];
+					}
+					
+					this[0] = create(this._ctor, mix);
+					return this;
+				},
+				
+				splice: function(index, count /* args */){
+					
+					var length = this.length;
+					var i, imax, y;
+					
+					// clear range after length until index
+					if (index >= length) {
+						count = 0;
+						for (i = length, imax = index; i < imax; i++){
+							this[i] = void 0;
+						}
+					}
+					
+					var	rm_count = count,
+						rm_start = index,
+						rm_end = index + rm_count,
+						add_count = arguments.length - 2,
+						
+						new_length = length + add_count - rm_count;
+					
+					
+					// move block
+					
+					var block_start = rm_end,
+						block_end = length,
+						block_shift = new_length - length;
+					
+					if (0 < block_shift) {
+						// move forward
+						
+						i = block_end;
+						while (--i >= block_start) {
+							
+							this[i + block_shift] = this[i];
+							
+						}
+		
+					}
+					
+					if (0 > block_shift) {
+						// move backwards
+						
+						i = block_start;				
+						while (i < block_end) {
+							this[i + block_shift] = this[i];
+							i++;
+						}
+					}
+					
+					// insert
+					
+					i = rm_start;
+					y = 2;
+					for (; y < arguments.length; y) {
+						this[i++] = create(this._ctor, arguments[y++]);
+					}
+					
+					
+					this.length = new_length;
+					return this;
+				},
+				
+				slice: function(){
+					return fn_apply(_Array_slice, this, arguments);
+				},
+				
+				sort: function(fn){
+					_Array_sort.call(this, fn);
+					return this;
+				},
+				
+				reverse: function(){
+					var array = _Array_slice.call(this),
+						imax = this.length,
+						i = -1
+						;
+					while( ++i < imax) {
+						this[i] = array[imax - i - 1];
+					}
+					return this;
+				},
+				
+				toString: function(){
+					return _Array_slice.call(this, 0).toString()
+				},
+				
+				each: function(fn, ctx){
+					var imax = this.length,
+						i = -1
+						;
+					while( ++i < imax ) {
+						
+						fn.call(ctx || this, this[i], i);
+					}
+		            return this;
+				},
+				
+				
+				where: function(mix){
+					
+					var collection = new this.constructor();
+					
+					for (var i = 0, x, imax = this.length; i < imax; i++){
+						x = this[i];
+						
+						if (check(x, mix)) {
+							collection[collection.length++] = x;
+						}
+					}
+					
+					return collection;
+				},
+				remove: function(mix){
+					var index = -1,
+						array = [];
+					for (var i = 0, imax = this.length; i < imax; i++){
+						
+						if (check(this[i], mix)) {
+							array.push(this[i]);
+							continue;
+						}
+						
+						this[++index] = this[i];
+					}
+					for (i = ++index; i < imax; i++) {
+						this[i] = null;
+					}
+					
+					this.length = index;
+					return array;
+				},
+				first: function(mix){
+					if (mix == null)
+						return this[0];
+					
+					var i = this.indexOf(mix);
+					return i !== -1
+						? this[i]
+						: null;
+						
+				},
+				last: function(mix){
+					if (mix == null)
+						return this[this.length - 1];
+					
+					var i = this.lastIndexOf(mix);
+					return i !== -1
+						? this[i]
+						: null;
+				},
+				indexOf: function(mix, index){
+					if (mix == null)
+						return -1;
+					
+					if (index != null) {
+						if (index < 0) 
+							index = 0;
+							
+						if (index >= this.length) 
+							return -1;
+						
+					}
+					else{
+						index = 0;
+					}
+					
+					
+					var imax = this.length;
+					for(; index < imax; index++) {
+						if (check(this[index], mix))
+							return index;
+					}
+					return -1;
+				},
+				lastIndexOf: function(mix, index){
+					if (mix == null)
+						return -1;
+					
+					if (index != null) {
+						if (index >= this.length) 
+							index = this.length - 1;
+						
+						if (index < 0) 
+							return -1;
+					}
+					else {
+						index = this.length - 1;
+					}
+					
+					
+					for (; index > -1; index--) {
+						if (check(this[index], mix))
+							return index;
+					}
+					
+					return -1;
+				}
+			};
+			
+			
+			return ArrayProto;
+		}());
+		
+		// end:source ArrayProto.js
+		
+		function create(Constructor, mix) {
+			
+			if (mix instanceof Constructor) 
+				return mix;
+			
+			return new Constructor(mix);
+		}
+		
+		var CollectionProto = {
+			toArray: function(){
+				var array = new Array(this.length);
+				for (var i = 0, imax = this.length; i < imax; i++){
+					array[i] = this[i];
+				}
+				
+				return array;
+			},
+			
+			toJSON: JSONHelper.arrayToJSON
+		};
+		
+		//////function overrideConstructor(baseConstructor, Child) {
+		//////	
+		//////	return function CollectionConstructor(){
+		//////		this.length = 0;
+		//////		this._constructor = Child;
+		//////		
+		//////		if (baseConstructor != null)
+		//////			return baseConstructor.apply(this, arguments);
+		//////		
+		//////		return this;
+		//////	};
+		//////	
+		//////}
+		
+		function Collection(Child, Proto) {
+			
+			//////Proto.Construct = overrideConstructor(Proto.Construct, Child);
+			
+			Proto._ctor = Child;
+			
+			
+			obj_inherit(Proto, CollectionProto, ArrayProto);
+			return Class(Proto);
+		}
+		
+		
+		return Collection;
+	}());
+	// end:source ../src/collection/Collection.js
 	
 	// source ../src/fn/fn.js
 	(function(){
@@ -3889,8 +3894,8 @@
     				return;
     			}
     
-    			resource.readystatechanged(3);
-    
+    			if (resource.state !== 2.5) 
+    				resource.readystatechanged(3);
     			currentResource = null;
     			loadByEmbedding();
     		}
@@ -3941,7 +3946,8 @@
     			}
     		}
     
-    		resource.readystatechanged(3);
+    		if (resource.state !== 2.5) 
+    			resource.readystatechanged(3);
     		currentResource = null;
     		processByEval();
     
@@ -3963,31 +3969,14 @@
     	return {
     		load: function(resource, parent, forceEmbed) {
     
-    			//console.log('LOAD', resource.url, 'parent:',parent ? parent.url : '');
-    
-    			var added = false;
-    			if (parent) {
-    				for (var i = 0, length = stack.length; i < length; i++) {
-    					if (stack[i] === parent) {
-    						stack.splice(i, 0, resource);
-    						added = true;
-    						break;
-    					}
-    				}
-    			}
-    
-    			if (!added) {
-    				stack.push(resource);
-    			}
-    
-    			// was already loaded, with custom loader for example
+    			this.add(resource, parent);
     
     			if (!cfg.eval || forceEmbed) {
     				loadByEmbedding();
     				return;
     			}
     
-    
+    			// was already loaded, with custom loader for example
     			if (resource.source) {
     				resource.state = 2;
     				processByEval();
@@ -4005,6 +3994,30 @@
     				processByEval();
     			});
     		},
+    		
+    		add: function(resource, parent){
+    			
+    			if (resource.priority === 1) 
+    				return stack.unshift(resource);
+    			
+    			
+    			if (parent == null) 
+    				return stack.push(resource);
+    				
+    			
+    			var imax = stack.length,
+    				i = -1
+    				;
+    			// move close to parent
+    			while( ++i < imax){
+    				if (stack[i] === parent) 
+    					return stack.splice(i, 0, resource);
+    			}
+    			
+    			// was still not added
+    			stack.push(resource);
+    		},
+    		
     		/* Move resource in stack close to parent */
     		moveToParent: function(resource, parent) {
     			var length = stack.length,
@@ -4020,11 +4033,6 @@
     			}
     
     			if (resourceIndex === -1) {
-    				// this should be not the case, but anyway checked.
-    				
-    				// - resource can load resources in done cb, and then it will be
-    				// already not in stack
-    				//-console.warn('Resource is not in stack', resource);
     				return;
     			}
     
@@ -4036,10 +4044,6 @@
     			}
     
     			if (parentIndex === -1) {
-    				//// - should be already in stack
-    				////if (parent == null) {
-    				////	stack.unshift(resource);
-    				////}
     				return;
     			}
     
@@ -4056,19 +4060,24 @@
     		pause: function(){
     			_paused = true;
     		},
+    		
     		resume: function(){
     			_paused = false;
     			
-    			if (currentResource != null) {
+    			if (currentResource != null) 
     				return;
-    			}
     			
+    			this.touch();
+    		},
+    		
+    		touch: function(){
     			var fn = cfg.eval
     				? processByEval
-    				: loadByEmbedding;
-    				
+    				: loadByEmbedding
+    				;
     			fn();
     		},
+    		
     		complete: function(callback){
     			if (_paused === false && stack.length === 0) {
     				callback();
@@ -4089,6 +4098,7 @@
 	 * 0: Resource Created
 	 * 1: Loading
 	 * 2: Loaded - Evaluating
+	 * 2.5: Paused - Evaluating paused
 	 * 3: Evaluated - Childs Loading
 	 * 4: Childs Loaded - Completed
 	 */
@@ -4627,7 +4637,15 @@
 				}
 			}
 	
-			return (cfg.loader[extension] = new Resource('js', Routes.resolve(namespace, path), namespace));
+			return (cfg.loader[extension] = new Resource(
+				'js',
+				Routes.resolve(namespace, path),
+				namespace,
+				null,
+				null,
+				null,
+				1
+			));
 		}
 		
 		function loader_completeDelegate(callback, resource) {
@@ -4786,6 +4804,11 @@
 						break;
 				}
 			} else {
+				
+				if ('js' === type || 'embed' === type) {
+					ScriptStack.add(resource, resource.parent);
+				}
+				
 				CustomLoader.load(resource, onXHRCompleted);
 			}
 	
@@ -4803,7 +4826,8 @@
 				case 'js':
 				case 'embed':
 					resource.source = response;
-					ScriptStack.load(resource, resource.parent, resource.type === 'embed');
+					resource.state = 2;
+					ScriptStack.touch();
 					return;
 				case 'load':
 				case 'ajax':
@@ -4823,7 +4847,7 @@
 			resource.readystatechanged(4);
 		}
 	
-		var Resource = function(type, route, namespace, xpath, parent, id) {
+		var Resource = function(type, route, namespace, xpath, parent, id, priority) {
 			Include.call(this);
 			
 			this.childLoaded = fn_proxy(this.childLoaded, this);
@@ -4834,11 +4858,13 @@
 				this.url = url = path_resolveUrl(url, parent);
 			}
 	
-			this.route = route;
-			this.namespace = namespace;
+			
 			this.type = type;
 			this.xpath = xpath;
+			this.route = route;
 			this.parent = parent;
+			this.priority = priority;
+			this.namespace = namespace;
 	
 			if (id == null && url) {
 				id = (url[0] === '/' ? '' : '/') + url;
@@ -4881,7 +4907,7 @@
 				var resource = this,
 					includes = resource.includes;
 				if (includes && includes.length) {
-					if (resource.state < 3 /* && resource.url != null */ ) {
+					if (resource.state < 3) {
 						// resource still loading/include is in process, but one of sub resources are already done
 						return;
 					}
@@ -4928,6 +4954,16 @@
 				});
 	
 				return this;
+			},
+			
+			pause: function(){
+				this.state = 2.5;
+				
+				var that = this;
+				return function(){
+					
+					that.readystatechanged(3);
+				};
 			},
 			
 			getNestedOfType: function(type){
