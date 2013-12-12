@@ -1816,7 +1816,7 @@
 					;
 				
 				this.defer();
-				XHR.patch(path, json, resolveDelegate(this, callback));
+				XHR.patch(path, json, resolveDelegate(this));
 				return this;
 			},
 			
@@ -2580,7 +2580,11 @@
 	 *			will become "{domain}/apps/script/main.js" instead of "{domain}/script/main.js"
 	 */
 	
-	var bin = {},
+	var bin = {
+			js: {},
+			css: {},
+			load: {}
+		},
 		isWeb = !! (global.location && global.location.protocol && /^https?:/.test(global.location.protocol)),
 		reg_subFolder = /([^\/]+\/)?\.\.\//,
 		cfg = {
@@ -3596,7 +3600,7 @@
 					path: data.id
 				}, data.namespace, null, null, data.id);
 	
-				if (resource.state !== 4) {
+				if (resource.state < 3) {
 					console.error("<include> Resource should be loaded", data);
 				}
 	
@@ -3669,13 +3673,29 @@
 				return obj;
 			},
 			register: function(_bin) {
-				for (var key in _bin) {
-					for (var i = 0; i < _bin[key].length; i++) {
-						var id = _bin[key][i].id,
-							url = _bin[key][i].url,
-							namespace = _bin[key][i].namespace,
-							resource = new Resource();
-	
+				
+				var key,
+					info,
+					infos,
+					imax,
+					i;
+				
+				for (key in _bin) {
+					infos = _bin[key];
+					imax = infos.length;
+					i = -1;
+					
+					while ( ++i < imax ) {
+						
+						info = infos[i];
+						
+						var id = info.id,
+							url = info.url,
+							namespace = info.namespace,
+							parent = info.parent && incl_getResource(info.parent, 'js'),
+							resource = new Resource(),
+							state = info.state
+							;
 						
 						if (url) {
 							if (url[0] === '/') {
@@ -3684,10 +3704,15 @@
 							resource.location = path_getDir(url);
 						}
 						
-						resource.state = 4;
+						
+						resource.state = state == null
+							? (key === 'js' ? 3 : 4)
+							: state
+							;
 						resource.namespace = namespace;
 						resource.type = key;
 						resource.url = url || id;
+						resource.parent = parent;
 	
 						switch (key) {
 						case 'load':
@@ -3735,25 +3760,7 @@
 				return resource;
 			},
 	
-			getResource: function(url, type) {
-				var id = url;
-				
-				if (url.charCodeAt(0) !== 47) {
-					// /
-					id = '/' + id;
-				}
-	
-				if (type != null){
-					return bin[type][id];
-				}
-	
-				for (var key in bin) {
-					if (bin[key].hasOwnProperty(id)) {
-						return bin[key][id];
-					}
-				}
-				return null;
-			},
+			getResource: incl_getResource,
 			getResources: function(){
 				return bin;
 			},
@@ -3803,7 +3810,7 @@
 			use: function(){
 				if (this.parent == null) {
 					console.error('<include.use> Parent resource is undefined');
-					return;
+					return this;
 				}
 				
 				this._use = tree_resolveUsage(this, arguments);
@@ -3811,8 +3818,8 @@
 				return this;
 			},
 			
-			pauseStack: ScriptStack.pause,
-			resumeStack: ScriptStack.resume,
+			pauseStack: fn_proxy(ScriptStack.pause, ScriptStack),
+			resumeStack: fn_proxy(ScriptStack.resume, ScriptStack),
 			
 			allDone: ScriptStack.complete
 		});
@@ -3822,6 +3829,27 @@
 	
 		
 		// >> FUNCTIONS
+		
+		function incl_getResource(url, type) {
+			var id = url;
+			
+			if (url.charCodeAt(0) !== 47) {
+				// /
+				id = '/' + id;
+			}
+	
+			if (type != null){
+				return bin[type][id];
+			}
+	
+			for (var key in bin) {
+				if (bin[key].hasOwnProperty(id)) {
+					return bin[key][id];
+				}
+			}
+			return null;
+		}
+		
 		
 		function embedPlugin(source) {
 			eval(source);
@@ -4434,6 +4462,17 @@ function __eval(source, include) {
 		}
 	
 		return value;
+	}
+	
+	function obj_toDictionary(obj){
+		var array = [], i = 0;
+		for(var key in obj){
+			array[i++] = {
+				key: key,
+				value: obj[key]
+			};
+		}
+		return array;
 	}
 	
 	function util_getPropertyEx(path, model, ctx, controller){
@@ -5295,10 +5334,8 @@ function __eval(source, include) {
 							args[i + 1] = expression_evaluate(next.arguments[i], model, ctx, controller);
 						
 						value = Compo[next.body].apply(null, args);
-						current = next.next;
-						
-						if (current == null) 
-							return value;
+						current = next;
+						current.type = '';
 					}
 				}
 				
@@ -7275,26 +7312,29 @@ function __eval(source, include) {
 				// use or override custom attr handlers
 				// in Compo.handlers.attr object
 				// but only on a component, not a tag controller
-				if (node.tagName == null) {
+				if (node.tagName == null && node.compoName !== '%') {
 					var attrHandlers = node.handlers && node.handlers.attr,
 						attrFn,
+						val,
 						key;
 						
 					for (key in node.attr) {
 						
+						val = node.attr[key];
+						
+						if (val == null) 
+							continue;
+						
 						attrFn = null;
 						
-						if (attrHandlers != null && fn_isFunction(attrHandlers[key])) {
+						if (attrHandlers != null && fn_isFunction(attrHandlers[key])) 
 							attrFn = attrHandlers[key];
-						}
 						
-						if (attrFn == null && fn_isFunction(custom_Attributes[key])) {
+						if (attrFn == null && custom_Attributes[key] != null) 
 							attrFn = custom_Attributes[key];
-						}
 						
-						if (attrFn != null) {
-							attrFn(node, node.attr[key], model, ctx, elements[0], controller);
-						}
+						if (attrFn != null) 
+							attrFn(node, val, model, ctx, elements[0], controller);
 					}
 				}
 				
@@ -7962,14 +8002,24 @@ function __eval(source, include) {
 				array = util_getPropertyEx(prop, model, ctx, compo),
 				nodes = compo.nodes
 				;
-	
-			if (array == null) {
-				var parent = compo;
-				while (parent != null && array == null) {
-					array = util_getProperty(parent, prop);
-					parent = parent.parent;
-				}
-			}
+			
+			compo.nodes = null;
+			// - deprecate - use special accessors to reach compos
+			//if (array == null) {
+			//	var parent = compo;
+			//	while (parent != null && array == null) {
+			//		array = util_getProperty(parent, prop);
+			//		parent = parent.parent;
+			//	}
+			//}
+			
+			if (array == null)
+				return;
+			
+			// enumerate over an object as array of {key, value}s
+			if (typeof array.length !== 'number') 
+				array = obj_toDictionary(array);
+			
 			
 			compo.nodes = [];
 			compo.model = array;
@@ -7979,8 +8029,6 @@ function __eval(source, include) {
 			compo.container = container;
 			
 	
-			if (array == null)
-				return;
 			
 			var imax = array.length,
 				i = -1;
@@ -7989,7 +8037,14 @@ function __eval(source, include) {
 				return;
 				
 			while (++i < imax) {
-				compo.nodes[i] = compo_init(nodes, array[i], i, container, compo);
+				compo.nodes[i] = compo_init(
+					'%.each.item',
+					nodes,
+					array[i],
+					i,
+					container,
+					compo
+				);
 			}
 	
 			//= methods
@@ -8011,14 +8066,22 @@ function __eval(source, include) {
 	
 			var i = -1;
 			while (++i < length) {
-				compo.nodes[i] = compo_init(nodes, model, i, container, compo);
+				compo.nodes[i] = compo_init(
+					'%.repeat.item',
+					nodes,
+					model,
+					i,
+					container,
+					compo
+				);
 			}
 		}
 	
-		function compo_init(nodes, model, index, container, parent) {
+		function compo_init(name, nodes, model, index, container, parent) {
 			
 			return {
 				type: Dom.COMPONENT,
+				compoName: name,
 				attr: {},
 				nodes: nodes,
 				model: model,
@@ -8167,31 +8230,28 @@ function __eval(source, include) {
 		// source ../src/scope-vars.js
 		var domLib = global.jQuery || global.Zepto || global.$,
 			Dom = mask.Dom,
-			__array_slice = Array.prototype.slice,
+			_array_slice = Array.prototype.slice,
 			
 			_mask_ensureTmplFnOrig = mask.Utils.ensureTmplFn,
-			__Class;
+			_Class
+			
+			;
 		
 		function _mask_ensureTmplFn(value) {
-			if (typeof value !== 'string') {
-				return value;
-			}
-			return _mask_ensureTmplFnOrig(value);
+			return typeof value !== 'string'
+				? value
+				: _mask_ensureTmplFnOrig(value)
+				;
 		}
 		
 		if (document != null && domLib == null) {
-			console.warn('jQuery / Zepto etc. was not loaded before compo.js, please use Compo.config.setDOMLibrary to define dom engine');
+			console.warn('jQuery-Zepto-Kimbo etc. was not loaded before compo.js, please use Compo.config.setDOMLibrary to define dom engine');
 		}
 		
-		__Class = global.Class;
+		_Class = global.Class;
 		
-		if (__Class == null) {
-			
-			if (typeof exports !== 'undefined') {
-				__Class = exports.Class;
-			}
-			
-		}
+		if (_Class == null && typeof exports !== 'undefined') 
+			_Class = exports.Class;
 		
 		// end:source ../src/scope-vars.js
 	
@@ -8418,8 +8478,10 @@ function __eval(source, include) {
 					compo = Anchor.getByID(id)
 					;
 				
-				if (compo) 
+				if (compo) {
 					compo_dispose(compo);
+					compo_detachChild(compo);
+				}
 				return;
 			}
 			
@@ -8644,7 +8706,8 @@ function __eval(source, include) {
 		// end:source ../src/compo/events.deco.js
 		// source ../src/compo/pipes.js
 		var Pipes = (function() {
-		
+			
+			var _collection = {};
 		
 			mask.registerAttrHandler('x-pipe-signal', 'client', function(node, attrValue, model, cntx, element, controller) {
 		
@@ -8687,8 +8750,6 @@ function __eval(source, include) {
 				};
 			}
 		
-			var Collection = {};
-		
 		
 			function pipe_attach(pipeName, controller) {
 				if (controller.pipes[pipeName] == null) {
@@ -8696,21 +8757,19 @@ function __eval(source, include) {
 					return;
 				}
 		
-				if (Collection[pipeName] == null) {
-					Collection[pipeName] = [];
+				if (_collection[pipeName] == null) {
+					_collection[pipeName] = [];
 				}
-				Collection[pipeName].push(controller);
+				_collection[pipeName].push(controller);
 			}
 		
 			function pipe_detach(pipeName, controller) {
-				var pipe = Collection[pipeName],
+				var pipe = _collection[pipeName],
 					i = pipe.length;
 		
-				while (--i) {
-					if (pipe[i] === controller) {
+				while (--i > -1) {
+					if (pipe[i] === controller) 
 						pipe.splice(i, 1);
-						i++;
-					}
 				}
 		
 			}
@@ -8751,7 +8810,7 @@ function __eval(source, include) {
 			Pipe.prototype = {
 				constructor: Pipe,
 				emit: function(signal){
-					var controllers = Collection[this.pipeName],
+					var controllers = _collection[this.pipeName],
 						pipeName = this.pipeName,
 						args;
 					
@@ -8772,7 +8831,7 @@ function __eval(source, include) {
 					if (arguments.length === 2 && arr_isArray(arguments[1])) {
 						args = arguments[1];
 					} else if (arguments.length > 1) {
-						args = __array_slice.call(arguments, 1);
+						args = _array_slice.call(arguments, 1);
 					}
 					
 					var i = controllers.length,
@@ -8806,9 +8865,6 @@ function __eval(source, include) {
 				addController: controller_add,
 				removeController: controller_remove,
 		
-				////emit: function(pipeName, signal, args) {
-				////	Pipe(pipeName).emit(signal, args);
-				////},
 				pipe: Pipe
 			};
 		
@@ -8895,6 +8951,11 @@ function __eval(source, include) {
 		// source ../src/compo/Compo.js
 		var Compo = (function() {
 		
+			var hasInclude = !!(global.include
+				|| (typeof global.atma !== 'undefined' && global.atma.include)
+				|| (typeof exports !== 'undefined' && exports.include))
+				;
+		
 			function Compo(controller) {
 				if (this instanceof Compo){
 					// used in Class({Base: Compo})
@@ -8906,6 +8967,10 @@ function __eval(source, include) {
 				if (controller == null){
 					controller = {};
 				}
+				
+				if (hasInclude && global.include) 
+					controller.__resource = global.include.url;
+				
 		
 				if (controller.attr != null) {
 					
@@ -8954,20 +9019,62 @@ function __eval(source, include) {
 		
 			// source Compo.util.js
 			function compo_dispose(compo) {
-				if (compo.dispose != null) {
+				
+				if (compo.dispose != null) 
 					compo.dispose();
-				}
-			
+				
 				Anchor.removeCompo(compo);
 			
-				var i = 0,
-					compos = compo.components,
-					length = compos && compos.length;
+				var compos = compo.components,
+					i = (compos && compos.length) || 0;
 			
-				if (length) {
-					for (; i < length; i++) {
-						compo_dispose(compos[i]);
+				while ( --i > -1 ) {
+					compo_dispose(compos[i]);
+				}
+			}
+			
+			function compo_detachChild(childCompo){
+				
+				var parent = childCompo.parent;
+				if (parent == null) 
+					return;
+				
+				var arr = childCompo.$,
+					elements = parent.$ || parent.elements,
+					i;
+					
+				if (elements && arr) {
+					var jmax = arr.length,
+						el, j;
+					
+					i = elements.length;
+					while( --i > -1){
+						el = elements[i];
+						j = jmax;
+						
+						while(--j > -1){
+							if (el === arr[j]) {
+								
+								elements.splice(i, 1);
+								break;
+							}
+						}
 					}
+				}
+				
+				var compos = parent.components;
+				if (compos != null) {
+					
+					i = compos.length;
+					while(--i > -1){
+						if (compos[i] === childCompo) {
+							compos.splice(i, 1);
+							break;
+						}
+					}
+			
+					if (i === -1)
+						console.warn('Compo::remove - parent doesnt contains me', childCompo);
 				}
 			}
 			
@@ -9096,12 +9203,16 @@ function __eval(source, include) {
 				},
 				
 				createClass: function(classProto){
+					
 					if (classProto.attr != null) {
 						
 						for (var key in classProto.attr) {
 							classProto.attr[key] = _mask_ensureTmplFn(classProto.attr[key]);
 						}
 					}
+					
+					if (hasInclude && global.include) 
+						classProto.__resource = global.include.url;
 					
 					var slots = classProto.slots;
 					if (slots != null) {
@@ -9135,7 +9246,7 @@ function __eval(source, include) {
 						classProto.Extends = [Proto, Ext];
 					}
 					
-					return __Class(classProto);
+					return _Class(classProto);
 				},
 			
 				/* obsolete */
@@ -9208,22 +9319,7 @@ function __eval(source, include) {
 					return instance;
 				},
 			
-				dispose: function(compo) {
-					if (typeof compo.dispose === 'function') {
-						compo.dispose();
-					}
-			
-			
-					var i = 0,
-						compos = compo.components,
-						length = compos && compos.length;
-			
-					if (length) {
-						for (; i < length; i++) {
-							Compo.dispose(compos[i]);
-						}
-					}
-				},
+				dispose: compo_dispose,
 			
 				find: function(compo, selector){
 					return find_findSingle(compo, selector_parse(selector, Dom.CONTROLLER, 'down'));
@@ -9296,6 +9392,10 @@ function __eval(source, include) {
 					}
 					
 					return include.instance();
+				},
+				
+				plugin: function(source){
+					eval(source);
 				},
 				
 				Dom: {
@@ -9555,7 +9655,7 @@ function __eval(source, include) {
 					return find_findSingle(this, selector_parse(selector, Dom.CONTROLLER, 'up'));
 				},
 				on: function() {
-					var x = __array_slice.call(arguments);
+					var x = _array_slice.call(arguments);
 					if (arguments.length < 3) {
 						console.error('Invalid Arguments Exception @use .on(type,selector,fn)');
 						return this;
@@ -9576,44 +9676,13 @@ function __eval(source, include) {
 					return this;
 				},
 				remove: function() {
-					if (this.$ != null){
+					if (this.$ != null)
 						this.$.remove();
-						
-						var parents = this.parent && this.parent.elements;
-						if (parents != null) {
-							for (var i = 0, x, imax = parents.length; i < imax; i++){
-								x = parents[i];
-								
-								for (var j = 0, jmax = this.$.length; j < jmax; j++){
-									if (x === this.$[j]){
-										parents.splice(i, 1);
-										
-										i--;
-										imax--;
-									}
-									
-								}
-								
-							}
-						}
-			
-						this.$ = null;
-					}
-		
+					
+					compo_detachChild(this);
 					compo_dispose(this);
 		
-					var components = this.parent && this.parent.components;
-					if (components != null) {
-						var i = components.indexOf(this);
-		
-						if (i === -1){
-							console.warn('Compo::remove - parent doesnt contains me', this);
-							return this;
-						}
-		
-						components.splice(i, 1);
-					}
-					
+					this.$ = null;
 					return this;
 				},
 		
@@ -9633,7 +9702,7 @@ function __eval(source, include) {
 						signalName,
 						this,
 						arguments.length > 1
-							? __array_slice.call(arguments, 1)
+							? _array_slice.call(arguments, 1)
 							: null
 					);
 					return this;
@@ -9645,7 +9714,7 @@ function __eval(source, include) {
 						signalName,
 						this,
 						arguments.length > 1
-							? __array_slice.call(arguments, 1)
+							? _array_slice.call(arguments, 1)
 							: null
 					);
 					return this;
@@ -9706,17 +9775,15 @@ function __eval(source, include) {
 			// @param sender - event if sent from DOM Event or CONTROLLER instance
 			function _fire(controller, slot, sender, args, direction) {
 				
-				if (controller == null) {
+				if (controller == null) 
 					return false;
-				}
 				
 				var found = false,
 					fn = controller.slots != null && controller.slots[slot];
 					
-				if (typeof fn === 'string') {
+				if (typeof fn === 'string') 
 					fn = controller[fn];
-				}
-		
+				
 				if (typeof fn === 'function') {
 					found = true;
 					
@@ -9802,7 +9869,7 @@ function __eval(source, include) {
 				}
 		
 				return function(event) {
-					var args = arguments.length > 1 ? __array_slice.call(arguments, 1) : null;
+					var args = arguments.length > 1 ? _array_slice.call(arguments, 1) : null;
 					
 					_fire(controller, slot, event, args, -1);
 				};
@@ -9837,16 +9904,16 @@ function __eval(source, include) {
 					return;
 				}
 		
-				domLib() //
-				.add(controller.$.filter('[data-signals]')) //
-				.add(controller.$.find('[data-signals]')) //
-				.each(function(index, node) {
-					var signals = node.getAttribute('data-signals');
-		
-					if (signals != null && signals.indexOf(slot) !== -1) {
-						node[isActive === true ? 'removeAttribute' : 'setAttribute']('disabled', 'disabled');
-					}
-				});
+				domLib() 
+					.add(controller.$.filter('[data-signals]')) 
+					.add(controller.$.find('[data-signals]')) 
+					.each(function(index, node) {
+						var signals = node.getAttribute('data-signals');
+			
+						if (signals != null && signals.indexOf(slot) !== -1) {
+							node[isActive === true ? 'removeAttribute' : 'setAttribute']('disabled', 'disabled');
+						}
+					});
 			}
 		
 			function _toggle_all(controller, slot, isActive) {
@@ -9939,29 +10006,26 @@ function __eval(source, include) {
 		// source ../src/jcompo/jCompo.js
 		(function(){
 		
-			if (domLib == null || domLib.fn == null){
+			if (domLib == null || domLib.fn == null)
 				return;
-			}
-		
+			
 		
 			domLib.fn.compo = function(selector){
-				if (this.length === 0){
+				if (this.length === 0)
 					return null;
-				}
+				
 				var compo = Anchor.resolveCompo(this[0]);
 		
-				if (selector == null){
-					return compo;
-				}
-		
-				return find_findSingle(compo, selector_parse(selector, Dom.CONTROLLER, 'up'));
+				return selector == null
+					? compo
+					: find_findSingle(compo, selector_parse(selector, Dom.CONTROLLER, 'up'));
 			};
 		
 			domLib.fn.model = function(selector){
 				var compo = this.compo(selector);
-				if (compo == null){
+				if (compo == null)
 					return null;
-				}
+				
 				var model = compo.model;
 				while(model == null && compo.parent){
 					compo = compo.parent;
@@ -9976,15 +10040,15 @@ function __eval(source, include) {
 				var jQ_Methods = [
 					'append',
 					'prepend',
-					'insertAfter',
-					'insertBefore'
+					'before',
+					'after'
 				];
 				
 				arr_each([
 					'appendMask',
 					'prependMask',
-					'insertMaskBefore',
-					'insertMaskAfter'
+					'beforeMask',
+					'afterMask'
 				], function(method, index){
 					
 					domLib.fn[method] = function(template, model, controller, ctx){
@@ -11212,352 +11276,368 @@ function __eval(source, include) {
 		// end:source ../src/vars.js
 	
 		// source ../src/util/object.js
-		/**
-		 *	Resolve object, or if property do not exists - create
-		 */
-		function obj_ensure(obj, chain) {
-			for (var i = 0, length = chain.length - 1; i < length; i++) {
-				var key = chain[i];
 		
-				if (obj[key] == null) {
-					obj[key] = {};
-				}
+		var obj_getProperty,
+			obj_setProperty,
+			obj_addObserver,
+			obj_removeObserver,
+			obj_lockObservers,
+			obj_unlockObservers,
+			obj_extend,
+			obj_isDefined
+			;
 		
-				obj = obj[key];
-			}
-			return obj;
-		}
+		(function(){
 		
-		
-		function obj_getProperty(obj, property) {
+			obj_getProperty = function(obj, property) {
 				var chain = property.split('.'),
-				length = chain.length,
-				i = 0;
-			for (; i < length; i++) {
-				if (obj == null) {
-					return null;
+					imax = chain.length,
+					i = -1;
+				while ( ++i < imax ) {
+					if (obj == null) 
+						return null;
+					
+					obj = obj[chain[i]];
 				}
-		
-				obj = obj[chain[i]];
-			}
-			return obj;
-		}
-		
-		
-		function obj_setProperty(obj, property, value) {
-			var chain = property.split('.'),
-				length = chain.length,
-				i = 0,
-				key = null;
-		
-			for (; i < length - 1; i++) {
-				key = chain[i];
-				if (obj[key] == null) {
-					obj[key] = {};
-				}
-				obj = obj[key];
-			}
-		
-			obj[chain[i]] = value;
-		}
-		
-		/*
-		 * @TODO refactor - add observer to direct parent with path tracking
-		 *
-		 * "a.b.c.d" (add observer to "c" on "d" property change)
-		 * track if needed also "b" and "a"
-		 */ 
-		
-		function obj_addObserver(obj, property, callback) {
+				return obj;
+			};
 			
-			// closest observer
-			var parts = property.split('.'),
-				imax  = parts.length,
-				i = 0,
-		        x = obj;
-			while (imax--) {
-				x = x[parts[i++]];
-				if (x == null) 
-					break;
+			
+			obj_setProperty = function(obj, property, value) {
+				var chain = property.split('.'),
+					imax = chain.length - 1,
+					i = -1,
+					key;
+				while ( ++i < imax ) {
+					key = chain[i];
+					if (obj[key] == null) 
+						obj[key] = {};
+					
+					obj = obj[key];
+				}
+				obj[chain[i]] = value;
+			};
+		
+			obj_addObserver = function(obj, property, callback) {
 				
-				if (x.__observers != null) {
-					var prop = parts.slice(i).join('.');
-		            
-		            if (x.__observers[prop]) {
-		                
-		                x.__observers[prop].push(callback);
-		                
-		                listener_push(obj, property, callback);
-		                return;
-		            }
-				}
-			}
-			
-		    var listeners = listener_push(obj, property, callback);
-		    
-		    
-		    if (listeners.length === 1) {
-		        obj_attachProxy(obj, property, listeners, parts, true);
-		    }
-		    
-		    var value = obj_getProperty(obj, property);
-		    if (arr_isArray(value)) {
-		        arr_addObserver(value, callback);
-		    }
-		}
-		
-		function obj_attachProxy(obj, property, listeners, chain) {
-		    var length = chain.length,
-				parent = length > 1
-		            ? obj_ensure(obj, chain)
-		            : obj,
-				key = chain[length - 1],
-				currentValue = parent[key];
-		        
-		    if (length > 1) {
-		        obj_defineCrumbs(obj, chain);
-		    }
-		        
-		    if (key === 'length' && arr_isArray(parent)) {
-				// we cannot redefine array properties like 'length'
-				arr_addObserver(parent, callback);
-				return currentValue;
-			}
-		    
-			Object.defineProperty(parent, key, {
-				get: function() {
-					return currentValue;
-				},
-				set: function(x) {
-		            var i = 0,
-		                imax = listeners.length;
-		                
-					if (x === currentValue) 
-						return;
+				// closest observer
+				var parts = property.split('.'),
+					imax  = parts.length,
+					i = -1,
+					x = obj;
+				while ( ++i < imax ) {
+					x = x[parts[i]];
+					if (x == null) 
+						break;
 					
-					currentValue = x;
-		
-					if (arr_isArray(x)) {
-		                for (i = 0; i< imax; i++) {
-		                    arr_addObserver(x, listeners[i]);
-		                }
-					}
-		
-					if (listeners.__dirties != null) {
-						listeners.__dirties[property] = 1;
-						return;
-					}
-		
-					for (i = 0; i < imax; i++) {
-						listeners[i](x);
-					}
-				},
-		        configurable: true
-			});
-		
-		    
-		    return currentValue;
-		}
-		
-		function obj_defineCrumbs(obj, chain) {
-		    var rebinder = obj_crumbRebindDelegate(obj),
-		        path = '',
-		        key;
-		        
-		    for (var i = 0, imax = chain.length - 1; i < imax; i++) {
-		        key = chain[i];
-		        path += key + '.';
-		        
-		        obj_defineCrumb(path, obj, key, rebinder);
-		        
-		        obj = obj[key];
-		    }
-		}
-		
-		function obj_defineCrumb(path, obj, key, rebinder) {
-		        
-		    var value = obj[key],
-		        old;
-		    
-		    Object.defineProperty(obj, key, {
-				get: function() {
-					return value;
-				},
-				set: function(x) {
-					if (x === value) 
-						return;
-					
-					old = value;
-		            value = x;
-		            rebinder(path, old);
-				},
-		        configurable: true
-			});
-		}
-		
-		function obj_crumbRebindDelegate(obj) {
-		    return function(path, oldValue){
-		        
-		        var observers = obj.__observers;
-		        if (observers == null) 
-		            return;
-		        for (var property in observers) {
-		            if (property.indexOf(path) !== 0) 
-		                continue;
-		            
-		            var listeners = observers[property].slice(0),
-		                imax = listeners.length,
-		                i = 0;
-		            if (imax === 0) 
-		                continue;
-		            
-		            var val = obj_getProperty(obj, property),
-		                cb, oldProp;
-		            
-		            for (i = 0; i < imax; i++) {
-		                cb = listeners[i];
-		                obj_removeObserver(obj, property, cb);
-		                
-		                oldProp = property.substring(path.length);
-		                obj_removeObserver(oldValue, oldProp, cb);
-		            }
-		            for (i = 0; i < imax; i++){
-		                listeners[i](val);
-		            }
-		            for (i = 0; i < imax; i++){
-		                obj_addObserver(obj, property, listeners[i]);
-		            }
-		            
-		        }
-		    }
-		}
-		
-		function obj_lockObservers(obj) {
-			if (arr_isArray(obj)) {
-				arr_lockObservers(obj);
-				return;
-			}
-		
-			var obs = obj.__observers;
-			if (obs != null) {
-				obs.__dirties = {};
-			}
-		}
-		
-		function obj_unlockObservers(obj) {
-			if (arr_isArray(obj)) {
-				arr_unlockObservers(obj);
-				return;
-			}
-		
-			var obs = obj.__observers,
-				dirties = obs == null ? null : obs.__dirties;
-		
-			if (dirties != null) {
-				for (var prop in dirties) {
-					var callbacks = obj.__observers[prop],
-						value = obj_getProperty(obj, prop);
-		
-					if (callbacks != null) {
-						for(var i = 0, imax = callbacks.length; i < imax; i++){
-							callbacks[i](value);
+					if (x.__observers != null) {
+						var prop = parts.slice(i).join('.');
+						
+						if (x.__observers[prop]) {
+							x.__observers[prop].push(callback);
+							listener_push(obj, property, callback);
+							return;
 						}
 					}
 				}
-				obs.__dirties = null;
-			}
-		}
-		
-		
-		function obj_removeObserver(obj, property, callback) {
-			// nested observer
-			var parts = property.split('.'),
-				imax  = parts.length,
-				i = 0, x = obj;
-			while (imax--) {
-				x = x[parts[i++]];
-				if (x == null) {
-					break;
-				}
-				if (x.__observers != null) {
-					obj_removeObserver(x, parts.slice(i).join('.'), callback);
-					break;
-				}
-			}
-			
-			
-			if (obj.__observers == null || obj.__observers[property] == null) {
-				return;
-			}
-		
-			var currentValue = obj_getProperty(obj, property);
-			if (arguments.length === 2) {
 				
-				obj.__observers[property].length = 0;
-				return;
-			}
-		
-			arr_remove(obj.__observers[property], callback);
-		
-			if (arr_isArray(currentValue)) {
-				arr_removeObserver(currentValue, callback);
-			}
-		
-		}
-		
-		function obj_extend(obj, source) {
-			if (source == null) {
+				var listeners = listener_push(obj, property, callback);
+				
+				if (listeners.length === 1) 
+					obj_attachProxy(obj, property, listeners, parts, true);
+				
+				
+				var val = obj_getProperty(obj, property);
+				if (arr_isArray(val)) 
+					arr_addObserver(val, callback);
+				
+			};
+			
+			obj_removeObserver = function(obj, property, callback) {
+				// nested observer
+				var parts = property.split('.'),
+					imax  = parts.length,
+					i = -1,
+					x = obj;
+				while ( ++i < imax ) {
+					x = x[parts[i]];
+					if (x == null) 
+						break;
+					
+					if (x.__observers != null) {
+						obj_removeObserver(x, parts.slice(i).join('.'), callback);
+						break;
+					}
+				}
+				
+				
+				if (obj.__observers == null || obj.__observers[property] == null) {
+					return;
+				}
+			
+				var currentValue = obj_getProperty(obj, property);
+				if (arguments.length === 2) {
+					
+					obj.__observers[property].length = 0;
+					return;
+				}
+			
+				arr_remove(obj.__observers[property], callback);
+			
+				if (arr_isArray(currentValue)) 
+					arr_removeObserver(currentValue, callback);
+			};
+			
+			
+			obj_lockObservers = function(obj) {
+				if (arr_isArray(obj)) {
+					arr_lockObservers(obj);
+					return;
+				}
+			
+				var obs = obj.__observers;
+				if (obs != null) 
+					obs.__dirties = {};
+			};
+			
+			obj_unlockObservers = function(obj) {
+				if (arr_isArray(obj)) {
+					arr_unlockObservers(obj);
+					return;
+				}
+			
+				var obs = obj.__observers,
+					dirties = obs == null
+						? null
+						: obs.__dirties
+						;
+				if (dirties != null) {
+					for (var prop in dirties) {
+						var callbacks = obj.__observers[prop],
+							value = obj_getProperty(obj, prop);
+			
+						if (callbacks != null) {
+							for(var i = 0, imax = callbacks.length; i < imax; i++){
+								callbacks[i](value);
+							}
+						}
+					}
+					obs.__dirties = null;
+				}
+			};
+			
+			
+			obj_extend = function(obj, source) {
+				if (source == null) 
+					return obj;
+				
+				if (obj == null) 
+					obj = {};
+				
+				for (var key in source) {
+					obj[key] = source[key];
+				}
 				return obj;
-			}
-			if (obj == null) {
-				obj = {};
-			}
-			for (var key in source) {
-				obj[key] = source[key];
-			}
-			return obj;
-		}
-		
-		
-		function obj_isDefined(obj, path) {
-			if (obj == null) {
-				return false;
-			}
+			};
 			
-			var parts = path.split('.'),
-				imax = parts.length,
-				i = 0;
 			
-			while (imax--) {
-				
-				if ((obj = obj[parts[i++]]) == null) {
+			obj_isDefined = function(obj, path) {
+				if (obj == null) 
 					return false;
+				
+				var parts = path.split('.'),
+					imax = parts.length,
+					i = -1;
+				
+				while ( ++i < imax ) {
+					
+					if ((obj = obj[parts[i]]) == null) 
+						return false;
+				}
+				
+				return true;
+			};
+		
+			
+			//Resolve object, or if property do not exists - create
+			function obj_ensure(obj, chain) {
+				var i = -1,
+					imax = chain.length - 1,
+					key
+					;
+				while ( ++i < imax ) {
+					key = chain[i];
+			
+					if (obj[key] == null) 
+						obj[key] = {};
+					
+					obj = obj[key];
+				}
+				return obj;
+			};
+			
+			
+			function obj_attachProxy(obj, property, listeners, chain) {
+				var length = chain.length,
+					parent = length > 1
+						? obj_ensure(obj, chain)
+						: obj,
+					key = chain[length - 1],
+					currentValue = parent[key];
+					
+				if (length > 1) {
+					obj_defineCrumbs(obj, chain);
+				}
+					
+				if (key === 'length' && arr_isArray(parent)) {
+					// we cannot redefine array properties like 'length'
+					arr_addObserver(parent, function(array, method, args, result){
+						var imax = listeners.length,
+							i = -1
+							;
+						while ( ++i < imax ) {
+							listeners[i](array, method, args, result);
+						}
+					});
+					return currentValue;
+				}
+				
+				Object.defineProperty(parent, key, {
+					get: function() {
+						return currentValue;
+					},
+					set: function(x) {
+						var i = 0,
+							imax = listeners.length;
+							
+						if (x === currentValue) 
+							return;
+						
+						currentValue = x;
+			
+						if (arr_isArray(x)) {
+							for (i = 0; i< imax; i++) {
+								arr_addObserver(x, listeners[i]);
+							}
+						}
+			
+						if (listeners.__dirties != null) {
+							listeners.__dirties[property] = 1;
+							return;
+						}
+			
+						for (i = 0; i < imax; i++) {
+							listeners[i](x);
+						}
+					},
+					configurable: true
+				});
+			
+				
+				return currentValue;
+			}
+			
+			function obj_defineCrumbs(obj, chain) {
+				var rebinder = obj_crumbRebindDelegate(obj),
+					path = '',
+					key;
+					
+				for (var i = 0, imax = chain.length - 1; i < imax; i++) {
+					key = chain[i];
+					path += key + '.';
+					
+					obj_defineCrumb(path, obj, key, rebinder);
+					
+					obj = obj[key];
 				}
 			}
 			
-			return true;
-		}
+			function obj_defineCrumb(path, obj, key, rebinder) {
+					
+				var value = obj[key],
+					old;
+				
+				Object.defineProperty(obj, key, {
+					get: function() {
+						return value;
+					},
+					set: function(x) {
+						if (x === value) 
+							return;
+						
+						old = value;
+						value = x;
+						rebinder(path, old);
+					},
+					configurable: true
+				});
+			}
+			
+			function obj_crumbRebindDelegate(obj) {
+				return function(path, oldValue){
+					
+					var observers = obj.__observers;
+					if (observers == null) 
+						return;
+					for (var property in observers) {
+						if (property.indexOf(path) !== 0) 
+							continue;
+						
+						var listeners = observers[property].slice(0),
+							imax = listeners.length,
+							i = 0;
+						if (imax === 0) 
+							continue;
+						
+						var val = obj_getProperty(obj, property),
+							cb, oldProp;
+						
+						for (i = 0; i < imax; i++) {
+							cb = listeners[i];
+							obj_removeObserver(obj, property, cb);
+							
+							oldProp = property.substring(path.length);
+							obj_removeObserver(oldValue, oldProp, cb);
+						}
+						for (i = 0; i < imax; i++){
+							listeners[i](val);
+						}
+						for (i = 0; i < imax; i++){
+							obj_addObserver(obj, property, listeners[i]);
+						}
+						
+					}
+				}
+			}
+			
+				
+			function listener_push(obj, property, callback) {
+				if (obj.__observers == null) {
+					Object.defineProperty(obj, '__observers', {
+						value: {
+							__dirty: null
+						},
+						enumerable: false
+					});
+				}
+				var obs = obj.__observers;
+				if (obs[property] != null) {
+					obs[property].push(callback);
+				}
+				else{
+					obs[property] = [callback];
+				}
+				
+				return obs[property];
+			}
+			
+		}());
 		
 		
-		function listener_push(obj, property, callback) {
-		    if (obj.__observers == null) {
-		        Object.defineProperty(obj, '__observers', {
-		            value: {
-		                __dirty: null
-		            },
-		            enumerable: false
-		        });
-		    }
-		    var obs = obj.__observers;
-		    if (obs[property] != null) {
-		        obs[property].push(callback);
-		    }
-		    else{
-		        obs[property] = [callback];
-		    }
-		    
-		    return obs[property];
-		}
+		
+		
+		
+		
 		// end:source ../src/util/object.js
 		// source ../src/util/array.js
 		
@@ -13547,6 +13627,7 @@ function __eval(source, include) {
 						}
 			
 						ListItem.prototype = {
+							compoName: '%%.each.item',
 							constructor: ListProto,
 							renderEnd: function(elements) {
 								this.elements = elements;
@@ -15262,27 +15343,30 @@ function __eval(source, include) {
 				path = path.substring(0, queryIndex);
 			}
 		
-			var pathArr = path_split(path),
-				routePath = route.path,
-				routeLength = routePath.length,
-				
-				imax = pathArr.length,
-				i = 0,
-				part,
-				x;
-		
-			for (; i < imax; i++) {
-				part = pathArr[i];
-				x = i < routeLength ? routePath[i] : null;
-				
-				if (x) {
+			if (route.path != null) {
 					
-					if (typeof x === 'string') 
-						continue;
+				var pathArr = path_split(path),
+					routePath = route.path,
+					routeLength = routePath.length,
 					
-					if (x.alias) {
-						current.params[x.alias] = part;
-						continue;
+					imax = pathArr.length,
+					i = 0,
+					part,
+					x;
+			
+				for (; i < imax; i++) {
+					part = pathArr[i];
+					x = i < routeLength ? routePath[i] : null;
+					
+					if (x) {
+						
+						if (typeof x === 'string') 
+							continue;
+						
+						if (x.alias) {
+							current.params[x.alias] = part;
+							continue;
+						}
 					}
 				}
 			}
@@ -15303,11 +15387,6 @@ function __eval(source, include) {
 				route = routes[i];
 				
 				if (route_isMatch(parts, route, currentMethod)) {
-					if (route.parts == null) {
-								
-						route.current = { params: {} };
-						return route;
-					}
 					
 					route.current = route_parsePath(route, url);
 					return route;

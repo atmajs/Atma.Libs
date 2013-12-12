@@ -1813,7 +1813,7 @@
 					;
 				
 				this.defer();
-				XHR.patch(path, json, resolveDelegate(this, callback));
+				XHR.patch(path, json, resolveDelegate(this));
 				return this;
 			},
 			
@@ -3275,7 +3275,11 @@
 	 *			will become "{domain}/apps/script/main.js" instead of "{domain}/script/main.js"
 	 */
 	
-	var bin = {},
+	var bin = {
+			js: {},
+			css: {},
+			load: {}
+		},
 		isWeb = !! (global.location && global.location.protocol && /^https?:/.test(global.location.protocol)),
 		reg_subFolder = /([^\/]+\/)?\.\.\//,
 		cfg = {
@@ -4291,7 +4295,7 @@
 					path: data.id
 				}, data.namespace, null, null, data.id);
 	
-				if (resource.state !== 4) {
+				if (resource.state < 3) {
 					console.error("<include> Resource should be loaded", data);
 				}
 	
@@ -4364,13 +4368,29 @@
 				return obj;
 			},
 			register: function(_bin) {
-				for (var key in _bin) {
-					for (var i = 0; i < _bin[key].length; i++) {
-						var id = _bin[key][i].id,
-							url = _bin[key][i].url,
-							namespace = _bin[key][i].namespace,
-							resource = new Resource();
-	
+				
+				var key,
+					info,
+					infos,
+					imax,
+					i;
+				
+				for (key in _bin) {
+					infos = _bin[key];
+					imax = infos.length;
+					i = -1;
+					
+					while ( ++i < imax ) {
+						
+						info = infos[i];
+						
+						var id = info.id,
+							url = info.url,
+							namespace = info.namespace,
+							parent = info.parent && incl_getResource(info.parent, 'js'),
+							resource = new Resource(),
+							state = info.state
+							;
 						
 						if (url) {
 							if (url[0] === '/') {
@@ -4379,10 +4399,15 @@
 							resource.location = path_getDir(url);
 						}
 						
-						resource.state = 4;
+						
+						resource.state = state == null
+							? (key === 'js' ? 3 : 4)
+							: state
+							;
 						resource.namespace = namespace;
 						resource.type = key;
 						resource.url = url || id;
+						resource.parent = parent;
 	
 						switch (key) {
 						case 'load':
@@ -4430,25 +4455,7 @@
 				return resource;
 			},
 	
-			getResource: function(url, type) {
-				var id = url;
-				
-				if (url.charCodeAt(0) !== 47) {
-					// /
-					id = '/' + id;
-				}
-	
-				if (type != null){
-					return bin[type][id];
-				}
-	
-				for (var key in bin) {
-					if (bin[key].hasOwnProperty(id)) {
-						return bin[key][id];
-					}
-				}
-				return null;
-			},
+			getResource: incl_getResource,
 			getResources: function(){
 				return bin;
 			},
@@ -4498,7 +4505,7 @@
 			use: function(){
 				if (this.parent == null) {
 					console.error('<include.use> Parent resource is undefined');
-					return;
+					return this;
 				}
 				
 				this._use = tree_resolveUsage(this, arguments);
@@ -4506,8 +4513,8 @@
 				return this;
 			},
 			
-			pauseStack: ScriptStack.pause,
-			resumeStack: ScriptStack.resume,
+			pauseStack: fn_proxy(ScriptStack.pause, ScriptStack),
+			resumeStack: fn_proxy(ScriptStack.resume, ScriptStack),
 			
 			allDone: ScriptStack.complete
 		});
@@ -4517,6 +4524,27 @@
 	
 		
 		// >> FUNCTIONS
+		
+		function incl_getResource(url, type) {
+			var id = url;
+			
+			if (url.charCodeAt(0) !== 47) {
+				// /
+				id = '/' + id;
+			}
+	
+			if (type != null){
+				return bin[type][id];
+			}
+	
+			for (var key in bin) {
+				if (bin[key].hasOwnProperty(id)) {
+					return bin[key][id];
+				}
+			}
+			return null;
+		}
+		
 		
 		function embedPlugin(source) {
 			eval(source);
@@ -5510,12 +5538,44 @@ function __eval(source, include) {
 		var value = o,
 			props = chain.split('.'),
 			i = -1,
-			length = props.length;
+			imax = props.length;
 	
-		while (value != null && ++i < length) {
+		while (value != null && ++i < imax) {
 			value = value[props[i]];
 		}
 	
+		return value;
+	}
+	
+	function util_getPropertyEx(path, model, ctx, controller){
+		if (path === '.') 
+			return model;
+	
+		var props = path.split('.'),
+			value = model,
+			i = -1,
+			imax = props.length,
+			key = props[0]
+			;
+		
+		if ('$c' === key) {
+			value = controller;
+			i++;
+		}
+		
+		else if ('$a' === key) {
+			value = controller && controller.attr;
+			i++;
+		}
+		
+		else if ('$ctx' === key) {
+			value = ctx;
+			i++;
+		}
+		
+		while (value != null && ++i < imax) 
+			value = value[props[i]];
+		
 		return value;
 	}
 	
@@ -5543,15 +5603,20 @@ function __eval(source, include) {
 	 *
 	 */
 	
-	function util_interpolate(arr, type, model, cntx, element, controller, name) {
-		var length = arr.length,
-			i = 0,
+	function util_interpolate(arr, type, model, ctx, element, controller, name) {
+		var imax = arr.length,
+			i = -1,
 			array = null,
 			string = '',
 			even = true,
-			utility, value, index, key, handler;
+			
+			utility,
+			value,
+			index,
+			key,
+			handler;
 	
-		for (; i < length; i++) {
+		while ( ++i < imax ) {
 			if (even === true) {
 				if (array == null){
 					string += arr[i];
@@ -5564,7 +5629,8 @@ function __eval(source, include) {
 				index = key.indexOf(':');
 	
 				if (index === -1) {
-					value = util_getProperty(model, key);
+					value = util_getPropertyEx(key,  model, ctx, controller);
+					
 				} else {
 					utility = index > 0
 						? str_trim(key.substring(0, index))
@@ -5578,9 +5644,9 @@ function __eval(source, include) {
 					handler = custom_Utils[utility];
 					
 					value = fn_isFunction(handler)
-						? handler(key, model, cntx, element, controller, name, type)
-						: handler.process(key, model, cntx, element, controller, name, type);
-						
+						? handler(key, model, ctx, element, controller, name, type)
+						: handler.process(key, model, ctx, element, controller, name, type)
+						;
 				}
 	
 				if (value != null){
@@ -6373,79 +6439,123 @@ function __eval(source, include) {
 		
 		// end:source 2.ast.js
 		// source 3.util.js
-		function _throw(message, token) {
-			console.error('Expression parser:', message, token, template.substring(index));
-		}
+		var _throw,
 		
+			util_resolveRef
+			;
 		
-		function util_resolveRef(astRef, model, cntx, controller) {
-			var current = astRef,
-				key = astRef.body,
-				object, value;
-		
-			if (value == null && model != null) {
-				object = model;
-				value = model[key];
-			}
-		
-			if (value == null && cntx != null) {
-				object = cntx;
-				value = cntx[key];
-			}
-		
-			if (value == null && controller != null) {
-				do {
-					object = controller;
-					value = controller[key];
-				} while (value == null && (controller = controller.parent) != null);
-			}
-		
-			if (value != null) {
-				do {
-					if (current.type === type_FunctionRef) {
-						var args = [];
-						for (var i = 0, x, length = current.arguments.length; i < length; i++) {
-							x = current.arguments[i];
-							args[i] = expression_evaluate(x, model, cntx, controller);
-						}
-						value = value.apply(object, args);
+		(function(){
+			
+			util_resolveRef = function(astRef, model, ctx, controller) {
+				var current = astRef,
+					key = astRef.body,
+					
+					object,
+					value,
+					args,
+					i,
+					imax
+					;
+				
+				if ('$c' === key) {
+					value = controller;
+					
+					var next = current.next;
+					if (next != null
+						&& next.type === type_FunctionRef
+						&& value[next.body] == null
+						&& typeof Compo[next.body] === 'function') {
+						
+						imax = next.arguments.length;
+						i = -1;
+						args = [controller];
+						
+						while( ++i < imax )
+							args[i + 1] = expression_evaluate(next.arguments[i], model, ctx, controller);
+						
+						value = Compo[next.body].apply(null, args);
+						current = next;
+						current.type = '';
 					}
-		
-					if (value == null || current.next == null) {
-						break;
-					}
-		
-					current = current.next;
-					key = current.body;
-					object = value;
-					value = value[key];
-		
-					if (value == null) {
-						break;
-					}
-		
-				} while (true);
-			}
-		
-			if (value == null){
-				if (current == null || current.next != null){
-					_throw('Mask - Accessor error - ', key);
 				}
-			}
+				
+				
+				else if ('$a' === key) 
+					value = controller && controller.attr;
+				
+				else if ('$ctx' === key) 
+					value = ctx;
+				
+				else {
+					// dynamic resolver
+					
+					if (model != null) {
+						object = model;
+						value = model[key];
+					}
+					
+					// @TODO - deprecate this for predefined accessors '$c' ...	
+					if (value == null && ctx != null) {
+						object = ctx;
+						value = ctx[key];
+					}
+				
+					if (value == null && controller != null) {
+						do {
+							object = controller;
+							value = controller[key];
+						} while (value == null && (controller = controller.parent) != null);
+					}
+				}
+				
+			
+				if (value != null) {
+					do {
+						if (current.type === type_FunctionRef) {
+							
+							args = [];
+							i = -1;
+							imax = current.arguments.length;
+							
+							while( ++i < imax )
+								args[i] = expression_evaluate(current.arguments[i], model, ctx, controller);
+							
+							value = value.apply(object, args);
+						}
+			
+						if (value == null || current.next == null) {
+							break;
+						}
+			
+						current = current.next;
+						key = current.body;
+						object = value;
+						value = value[key];
+			
+						
+						if (value == null) 
+							break;
+			
+					} while (true);
+				}
+			
+				if (value == null){
+					if (current == null || current.next != null){
+						_throw('Mask - Accessor error - ', key);
+					}
+				}
+			
+				return value;
+			};
 		
-			return value;
+			
+			_throw = function(message, token) {
+				console.error('Expression parser:', message, token, template.substring(index));
+			};
+			
+			
+		}());
 		
-		
-		}
-		
-		function util_getValue(object, props, length) {
-			var i = -1,
-				value = object;
-			while (value != null && ++i < length) {
-				value = value[props[i]];
-			}
-			return value;
-		}
 		
 		// end:source 3.util.js
 		// source 4.parser.helper.js
@@ -6514,6 +6624,7 @@ function __eval(source, include) {
 				ref;
 		
 			if (c === 34 || c === 39) {
+				// ' | "
 				index++;
 				ref = parser_getString(c);
 				index++;
@@ -6521,20 +6632,27 @@ function __eval(source, include) {
 			}
 		
 			while (true) {
-		
+				
+				if (index === length) 
+					break;
+				
 				c = template.charCodeAt(index);
+				
+				if (c === 36) {
+					// $
+					index++;
+					continue;
+				}
+				
 				if (
 					c > 47 && // ()+-*,/
-		
-				c !== 58 && // :
-				c !== 60 && // <
-				c !== 61 && // =
-				c !== 62 && // >
-				c !== 63 && // ?
-		
-				c !== 124 && // |
-		
-				index < length) {
+					c !== 58 && // :
+					c !== 60 && // <
+					c !== 61 && // =
+					c !== 62 && // >
+					c !== 63 && // ?
+					c !== 124 // |
+					) {
 		
 					index++;
 					continue;
@@ -6639,7 +6757,7 @@ function __eval(source, include) {
 		
 			}
 		
-			if (code >= 65 && code <= 90 || code >= 97 && code <= 122 || code === 95 || code === 36) {
+			if ((code >= 65 && code <= 90) || code >= 97 && code <= 122 || code === 95 || code === 36) {
 				// A-Z a-z _ $
 				return go_ref;
 			}
@@ -8241,7 +8359,7 @@ function __eval(source, include) {
 			return _mask_ensureTmplFnOrig(value);
 		}
 		
-		if (document != null && domLib == null){
+		if (document != null && domLib == null) {
 			console.warn('jQuery / Zepto etc. was not loaded before compo.js, please use Compo.config.setDOMLibrary to define dom engine');
 		}
 		
@@ -9502,6 +9620,8 @@ function __eval(source, include) {
 				compos: null,
 				events: null,
 				
+				async: false,
+				
 				onRenderStart: null,
 				onRenderEnd: null,
 				render: null,
@@ -9679,10 +9799,12 @@ function __eval(source, include) {
 		
 				slotState: function(slotName, isActive){
 					Compo.slot.toggle(this, slotName, isActive);
+					return this;
 				},
 		
 				signalState: function(signalName, isActive){
 					Compo.signal.toggle(this, signalName, isActive);
+					return this;
 				},
 		
 				emitOut: function(signalName /* args */){
@@ -9694,6 +9816,7 @@ function __eval(source, include) {
 							? __array_slice.call(arguments, 1)
 							: null
 					);
+					return this;
 				},
 		
 				emitIn: function(signalName /* args */){
@@ -9705,6 +9828,7 @@ function __eval(source, include) {
 							? __array_slice.call(arguments, 1)
 							: null
 					);
+					return this;
 				}
 			};
 		
@@ -11468,7 +11592,7 @@ function __eval(source, include) {
 		
 		
 		
-		function html_stringify(document, model, cntx, component) {
+		function html_stringify(document, model, ctx, component) {
 		
 			component = html_prepairControllers(component);
 		
@@ -11481,7 +11605,8 @@ function __eval(source, include) {
 			var first = document.firstChild,
 				documentElement = trav_getDoc(first),
 				headerJson = {
-					model: cntx._model.stringify()
+					model: ctx._model.stringify(),
+					ID: ctx._id
 				},
 				headerInfo = {
 					type: 'm'
@@ -13683,26 +13808,62 @@ function __eval(source, include) {
 	(function(mask) {
 	
 		function Sys() {
-			this.attr = {};
+			this.attr = {
+				'debugger': null,
+				'use': null,
+				'repeat': null,
+				'if': null,
+				'else': null,
+				'each': null,
+				'log': null,
+				'visible': null,
+				'model': null
+			};
+			
+			this.model = null;
+			this.modelRef = null;
+			this.nodes = null;
+			this.parent = null;
+			this.container = null;
+			this.template = null;
 		}
 	
 		mask.registerHandler('%', Sys);
 	
 		Sys.prototype = {
-			'debugger': null,
-			'use': null,
-			'repeat': null,
-			'if': null,
-			'else': null,
-			'each': null,
-			'log': null,
-			'visible': null,
-			'model': null,
 			
-			constructor: Sys,
 			renderStart: function(model, ctx, container) {
 				var attr = this.attr;
 	
+				// foreach is deprecated
+				if (attr['each'] != null || attr['foreach'] != null) {
+					each(this, model, ctx, container);
+					return;
+				}
+				
+				if (attr['if'] != null) {
+					this.state = ExpressionUtil.eval(attr['if'], model, ctx, this.parent);
+					if (!this.state) {
+						this.nodes = null;
+					}
+					return;
+				}
+	
+				if (attr['else'] != null) {
+					var compos = this.parent.components,
+						prev = compos && compos[compos.length - 1];
+	
+					if (prev != null && prev.compoName === '%' && prev.attr['if'] != null) {
+	
+						if (prev.state) {
+							this.nodes = null;
+						}
+						return;
+					}
+					console.error('Previous Node should be "% if=\'condition\'"', prev, this.parent);
+					return;
+				}
+				
 				if (attr['use'] != null) {
 					var use = attr['use'];
 					this.model = util_getProperty(model, use);
@@ -13735,48 +13896,23 @@ function __eval(source, include) {
 					repeat(this, model, ctx, container);
 				}
 	
-				if (attr['if'] != null) {
-					this.state = ExpressionUtil.eval(attr['if'], model, ctx, this.parent);
-					if (!this.state) {
-						this.nodes = null;
-					}
-					return;
-				}
-	
-				if (attr['else'] != null) {
-					var compos = this.parent.components,
-						prev = compos && compos[compos.length - 1];
-	
-					if (prev != null && prev.compoName === '%' && prev.attr['if'] != null) {
-	
-						if (prev.state) {
-							this.nodes = null;
-						}
-						return;
-					}
-					console.error('Previous Node should be "% if=\'condition\'"', prev, this.parent);
-					return;
-				}
-	
-				// foreach is deprecated
-				if (attr['each'] != null || attr['foreach'] != null) {
-					each(this, model, ctx, container);
-				}
 			},
-			render: null
+			render: null,
+			renderEnd: null,
+			append: null
 		};
 	
 	
-		function each(compo, model, cntx, container){
-			if (compo.nodes == null && typeof Compo !== 'undefined'){
+		function each(compo, model, ctx, container){
+			
+			if (compo.nodes == null)
 				Compo.ensureTemplate(compo);
-			}
+			
 	
-			var prop = compo.attr.foreach || compo.attr.each,
-				array = util_getProperty(model, prop),
-				nodes = compo.nodes,
-				item = null,
-				indexAttr = compo.attr.index || 'index';
+			var prop = compo.attr.each || compo.attr.foreach,
+				array = util_getPropertyEx(prop, model, ctx, compo),
+				nodes = compo.nodes
+				;
 	
 			if (array == null) {
 				var parent = compo;
@@ -13794,26 +13930,35 @@ function __eval(source, include) {
 			compo.container = container;
 			
 	
-			if (array == null || typeof array !== 'object' || array.length == null){
+			if (array == null)
 				return;
+			
+			var imax = array.length,
+				i = -1;
+				
+			if (imax == null) 
+				return;
+				
+			while (++i < imax) {
+				compo.nodes[i] = compo_init(
+					'%.each.item',
+					nodes,
+					array[i],
+					i,
+					container,
+					compo
+				);
 			}
 	
-			for (var i = 0, x, length = array.length; i < length; i++) {
-				x = compo_init(nodes, array[i], i, container, compo);
-				x[indexAttr] = i;
-				compo.nodes[i] = x;
-			}
-	
-			for(var method in ListProto){
-				compo[method] = ListProto[method];
-			}
+			//= methods
+			compo.append = ListProto.append;
 		}
 	
 		function repeat(compo, model, cntx, container) {
 			var repeat = compo.attr.repeat.split('..'),
 				index = +repeat[0],
 				length = +repeat[1],
-				template = compo.nodes,
+				nodes = compo.nodes,
 				x;
 	
 			// if DEBUG
@@ -13822,30 +13967,46 @@ function __eval(source, include) {
 	
 			compo.nodes = [];
 	
-			for (var i = 0; index < length; index++) {
-				x = compo_init(template, model, index, container, compo);
-				x._repeatIndex = index;
-	
-				compo.nodes[i++] = x;
+			var i = -1;
+			while (++i < length) {
+				compo.nodes[i] = compo_init(
+					'%.repeat.item',
+					nodes,
+					model,
+					i,
+					container,
+					compo
+				);
 			}
 		}
 	
-		function compo_init(nodes, model, modelRef, container, parent) {
-			var item = new Component();
-			item.nodes = nodes;
-			item.model = model;
-			item.container = container;
-			item.parent = parent;
-			item.modelRef = modelRef;
-	
-			return item;
+		function compo_init(name, nodes, model, index, container, parent) {
+			
+			return {
+				type: Dom.COMPONENT,
+				compoName: name,
+				attr: {},
+				nodes: nodes,
+				model: model,
+				container: container,
+				parent: parent,
+				index: index
+			};
+			
+			//var item = new Component();
+			//item.nodes = nodes;
+			//item.model = model;
+			//item.container = container;
+			//item.parent = parent;
+			//item.modelRef = modelRef;
+			//
+			//return item;
 		}
 	
 	
 		var ListProto = {
 			append: function(model){
-				var item;
-				item = new Component();
+				var item = new Component();
 				item.nodes = this.template;
 				item.model = model;
 	
@@ -13985,352 +14146,368 @@ function __eval(source, include) {
 		// end:source ../src/vars.js
 	
 		// source ../src/util/object.js
-		/**
-		 *	Resolve object, or if property do not exists - create
-		 */
-		function obj_ensure(obj, chain) {
-			for (var i = 0, length = chain.length - 1; i < length; i++) {
-				var key = chain[i];
 		
-				if (obj[key] == null) {
-					obj[key] = {};
-				}
+		var obj_getProperty,
+			obj_setProperty,
+			obj_addObserver,
+			obj_removeObserver,
+			obj_lockObservers,
+			obj_unlockObservers,
+			obj_extend,
+			obj_isDefined
+			;
 		
-				obj = obj[key];
-			}
-			return obj;
-		}
+		(function(){
 		
-		
-		function obj_getProperty(obj, property) {
+			obj_getProperty = function(obj, property) {
 				var chain = property.split('.'),
-				length = chain.length,
-				i = 0;
-			for (; i < length; i++) {
-				if (obj == null) {
-					return null;
+					imax = chain.length,
+					i = -1;
+				while ( ++i < imax ) {
+					if (obj == null) 
+						return null;
+					
+					obj = obj[chain[i]];
 				}
-		
-				obj = obj[chain[i]];
-			}
-			return obj;
-		}
-		
-		
-		function obj_setProperty(obj, property, value) {
-			var chain = property.split('.'),
-				length = chain.length,
-				i = 0,
-				key = null;
-		
-			for (; i < length - 1; i++) {
-				key = chain[i];
-				if (obj[key] == null) {
-					obj[key] = {};
-				}
-				obj = obj[key];
-			}
-		
-			obj[chain[i]] = value;
-		}
-		
-		/*
-		 * @TODO refactor - add observer to direct parent with path tracking
-		 *
-		 * "a.b.c.d" (add observer to "c" on "d" property change)
-		 * track if needed also "b" and "a"
-		 */ 
-		
-		function obj_addObserver(obj, property, callback) {
+				return obj;
+			};
 			
-			// closest observer
-			var parts = property.split('.'),
-				imax  = parts.length,
-				i = 0,
-		        x = obj;
-			while (imax--) {
-				x = x[parts[i++]];
-				if (x == null) 
-					break;
+			
+			obj_setProperty = function(obj, property, value) {
+				var chain = property.split('.'),
+					imax = chain.length - 1,
+					i = -1,
+					key;
+				while ( ++i < imax ) {
+					key = chain[i];
+					if (obj[key] == null) 
+						obj[key] = {};
+					
+					obj = obj[key];
+				}
+				obj[chain[i]] = value;
+			};
+		
+			obj_addObserver = function(obj, property, callback) {
 				
-				if (x.__observers != null) {
-					var prop = parts.slice(i).join('.');
-		            
-		            if (x.__observers[prop]) {
-		                
-		                x.__observers[prop].push(callback);
-		                
-		                listener_push(obj, property, callback);
-		                return;
-		            }
-				}
-			}
-			
-		    var listeners = listener_push(obj, property, callback);
-		    
-		    
-		    if (listeners.length === 1) {
-		        obj_attachProxy(obj, property, listeners, parts, true);
-		    }
-		    
-		    var value = obj_getProperty(obj, property);
-		    if (arr_isArray(value)) {
-		        arr_addObserver(value, callback);
-		    }
-		}
-		
-		function obj_attachProxy(obj, property, listeners, chain) {
-		    var length = chain.length,
-				parent = length > 1
-		            ? obj_ensure(obj, chain)
-		            : obj,
-				key = chain[length - 1],
-				currentValue = parent[key];
-		        
-		    if (length > 1) {
-		        obj_defineCrumbs(obj, chain);
-		    }
-		        
-		    if (key === 'length' && arr_isArray(parent)) {
-				// we cannot redefine array properties like 'length'
-				arr_addObserver(parent, callback);
-				return currentValue;
-			}
-		    
-			Object.defineProperty(parent, key, {
-				get: function() {
-					return currentValue;
-				},
-				set: function(x) {
-		            var i = 0,
-		                imax = listeners.length;
-		                
-					if (x === currentValue) 
-						return;
+				// closest observer
+				var parts = property.split('.'),
+					imax  = parts.length,
+					i = -1,
+					x = obj;
+				while ( ++i < imax ) {
+					x = x[parts[i]];
+					if (x == null) 
+						break;
 					
-					currentValue = x;
-		
-					if (arr_isArray(x)) {
-		                for (i = 0; i< imax; i++) {
-		                    arr_addObserver(x, listeners[i]);
-		                }
-					}
-		
-					if (listeners.__dirties != null) {
-						listeners.__dirties[property] = 1;
-						return;
-					}
-		
-					for (i = 0; i < imax; i++) {
-						listeners[i](x);
-					}
-				},
-		        configurable: true
-			});
-		
-		    
-		    return currentValue;
-		}
-		
-		function obj_defineCrumbs(obj, chain) {
-		    var rebinder = obj_crumbRebindDelegate(obj),
-		        path = '',
-		        key;
-		        
-		    for (var i = 0, imax = chain.length - 1; i < imax; i++) {
-		        key = chain[i];
-		        path += key + '.';
-		        
-		        obj_defineCrumb(path, obj, key, rebinder);
-		        
-		        obj = obj[key];
-		    }
-		}
-		
-		function obj_defineCrumb(path, obj, key, rebinder) {
-		        
-		    var value = obj[key],
-		        old;
-		    
-		    Object.defineProperty(obj, key, {
-				get: function() {
-					return value;
-				},
-				set: function(x) {
-					if (x === value) 
-						return;
-					
-					old = value;
-		            value = x;
-		            rebinder(path, old);
-				},
-		        configurable: true
-			});
-		}
-		
-		function obj_crumbRebindDelegate(obj) {
-		    return function(path, oldValue){
-		        
-		        var observers = obj.__observers;
-		        if (observers == null) 
-		            return;
-		        for (var property in observers) {
-		            if (property.indexOf(path) !== 0) 
-		                continue;
-		            
-		            var listeners = observers[property].slice(0),
-		                imax = listeners.length,
-		                i = 0;
-		            if (imax === 0) 
-		                continue;
-		            
-		            var val = obj_getProperty(obj, property),
-		                cb, oldProp;
-		            
-		            for (i = 0; i < imax; i++) {
-		                cb = listeners[i];
-		                obj_removeObserver(obj, property, cb);
-		                
-		                oldProp = property.substring(path.length);
-		                obj_removeObserver(oldValue, oldProp, cb);
-		            }
-		            for (i = 0; i < imax; i++){
-		                listeners[i](val);
-		            }
-		            for (i = 0; i < imax; i++){
-		                obj_addObserver(obj, property, listeners[i]);
-		            }
-		            
-		        }
-		    }
-		}
-		
-		function obj_lockObservers(obj) {
-			if (arr_isArray(obj)) {
-				arr_lockObservers(obj);
-				return;
-			}
-		
-			var obs = obj.__observers;
-			if (obs != null) {
-				obs.__dirties = {};
-			}
-		}
-		
-		function obj_unlockObservers(obj) {
-			if (arr_isArray(obj)) {
-				arr_unlockObservers(obj);
-				return;
-			}
-		
-			var obs = obj.__observers,
-				dirties = obs == null ? null : obs.__dirties;
-		
-			if (dirties != null) {
-				for (var prop in dirties) {
-					var callbacks = obj.__observers[prop],
-						value = obj_getProperty(obj, prop);
-		
-					if (callbacks != null) {
-						for(var i = 0, imax = callbacks.length; i < imax; i++){
-							callbacks[i](value);
+					if (x.__observers != null) {
+						var prop = parts.slice(i).join('.');
+						
+						if (x.__observers[prop]) {
+							x.__observers[prop].push(callback);
+							listener_push(obj, property, callback);
+							return;
 						}
 					}
 				}
-				obs.__dirties = null;
-			}
-		}
-		
-		
-		function obj_removeObserver(obj, property, callback) {
-			// nested observer
-			var parts = property.split('.'),
-				imax  = parts.length,
-				i = 0, x = obj;
-			while (imax--) {
-				x = x[parts[i++]];
-				if (x == null) {
-					break;
-				}
-				if (x.__observers != null) {
-					obj_removeObserver(x, parts.slice(i).join('.'), callback);
-					break;
-				}
-			}
-			
-			
-			if (obj.__observers == null || obj.__observers[property] == null) {
-				return;
-			}
-		
-			var currentValue = obj_getProperty(obj, property);
-			if (arguments.length === 2) {
 				
-				obj.__observers[property].length = 0;
-				return;
-			}
-		
-			arr_remove(obj.__observers[property], callback);
-		
-			if (arr_isArray(currentValue)) {
-				arr_removeObserver(currentValue, callback);
-			}
-		
-		}
-		
-		function obj_extend(obj, source) {
-			if (source == null) {
+				var listeners = listener_push(obj, property, callback);
+				
+				if (listeners.length === 1) 
+					obj_attachProxy(obj, property, listeners, parts, true);
+				
+				
+				var val = obj_getProperty(obj, property);
+				if (arr_isArray(val)) 
+					arr_addObserver(val, callback);
+				
+			};
+			
+			obj_removeObserver = function(obj, property, callback) {
+				// nested observer
+				var parts = property.split('.'),
+					imax  = parts.length,
+					i = -1,
+					x = obj;
+				while ( ++i < imax ) {
+					x = x[parts[i]];
+					if (x == null) 
+						break;
+					
+					if (x.__observers != null) {
+						obj_removeObserver(x, parts.slice(i).join('.'), callback);
+						break;
+					}
+				}
+				
+				
+				if (obj.__observers == null || obj.__observers[property] == null) {
+					return;
+				}
+			
+				var currentValue = obj_getProperty(obj, property);
+				if (arguments.length === 2) {
+					
+					obj.__observers[property].length = 0;
+					return;
+				}
+			
+				arr_remove(obj.__observers[property], callback);
+			
+				if (arr_isArray(currentValue)) 
+					arr_removeObserver(currentValue, callback);
+			};
+			
+			
+			obj_lockObservers = function(obj) {
+				if (arr_isArray(obj)) {
+					arr_lockObservers(obj);
+					return;
+				}
+			
+				var obs = obj.__observers;
+				if (obs != null) 
+					obs.__dirties = {};
+			};
+			
+			obj_unlockObservers = function(obj) {
+				if (arr_isArray(obj)) {
+					arr_unlockObservers(obj);
+					return;
+				}
+			
+				var obs = obj.__observers,
+					dirties = obs == null
+						? null
+						: obs.__dirties
+						;
+				if (dirties != null) {
+					for (var prop in dirties) {
+						var callbacks = obj.__observers[prop],
+							value = obj_getProperty(obj, prop);
+			
+						if (callbacks != null) {
+							for(var i = 0, imax = callbacks.length; i < imax; i++){
+								callbacks[i](value);
+							}
+						}
+					}
+					obs.__dirties = null;
+				}
+			};
+			
+			
+			obj_extend = function(obj, source) {
+				if (source == null) 
+					return obj;
+				
+				if (obj == null) 
+					obj = {};
+				
+				for (var key in source) {
+					obj[key] = source[key];
+				}
 				return obj;
-			}
-			if (obj == null) {
-				obj = {};
-			}
-			for (var key in source) {
-				obj[key] = source[key];
-			}
-			return obj;
-		}
-		
-		
-		function obj_isDefined(obj, path) {
-			if (obj == null) {
-				return false;
-			}
+			};
 			
-			var parts = path.split('.'),
-				imax = parts.length,
-				i = 0;
 			
-			while (imax--) {
-				
-				if ((obj = obj[parts[i++]]) == null) {
+			obj_isDefined = function(obj, path) {
+				if (obj == null) 
 					return false;
+				
+				var parts = path.split('.'),
+					imax = parts.length,
+					i = -1;
+				
+				while ( ++i < imax ) {
+					
+					if ((obj = obj[parts[i]]) == null) 
+						return false;
+				}
+				
+				return true;
+			};
+		
+			
+			//Resolve object, or if property do not exists - create
+			function obj_ensure(obj, chain) {
+				var i = -1,
+					imax = chain.length - 1,
+					key
+					;
+				while ( ++i < imax ) {
+					key = chain[i];
+			
+					if (obj[key] == null) 
+						obj[key] = {};
+					
+					obj = obj[key];
+				}
+				return obj;
+			};
+			
+			
+			function obj_attachProxy(obj, property, listeners, chain) {
+				var length = chain.length,
+					parent = length > 1
+						? obj_ensure(obj, chain)
+						: obj,
+					key = chain[length - 1],
+					currentValue = parent[key];
+					
+				if (length > 1) {
+					obj_defineCrumbs(obj, chain);
+				}
+					
+				if (key === 'length' && arr_isArray(parent)) {
+					// we cannot redefine array properties like 'length'
+					arr_addObserver(parent, function(array, method, args, result){
+						var imax = listeners.length,
+							i = -1
+							;
+						while ( ++i < imax ) {
+							listeners[i](array, method, args, result);
+						}
+					});
+					return currentValue;
+				}
+				
+				Object.defineProperty(parent, key, {
+					get: function() {
+						return currentValue;
+					},
+					set: function(x) {
+						var i = 0,
+							imax = listeners.length;
+							
+						if (x === currentValue) 
+							return;
+						
+						currentValue = x;
+			
+						if (arr_isArray(x)) {
+							for (i = 0; i< imax; i++) {
+								arr_addObserver(x, listeners[i]);
+							}
+						}
+			
+						if (listeners.__dirties != null) {
+							listeners.__dirties[property] = 1;
+							return;
+						}
+			
+						for (i = 0; i < imax; i++) {
+							listeners[i](x);
+						}
+					},
+					configurable: true
+				});
+			
+				
+				return currentValue;
+			}
+			
+			function obj_defineCrumbs(obj, chain) {
+				var rebinder = obj_crumbRebindDelegate(obj),
+					path = '',
+					key;
+					
+				for (var i = 0, imax = chain.length - 1; i < imax; i++) {
+					key = chain[i];
+					path += key + '.';
+					
+					obj_defineCrumb(path, obj, key, rebinder);
+					
+					obj = obj[key];
 				}
 			}
 			
-			return true;
-		}
+			function obj_defineCrumb(path, obj, key, rebinder) {
+					
+				var value = obj[key],
+					old;
+				
+				Object.defineProperty(obj, key, {
+					get: function() {
+						return value;
+					},
+					set: function(x) {
+						if (x === value) 
+							return;
+						
+						old = value;
+						value = x;
+						rebinder(path, old);
+					},
+					configurable: true
+				});
+			}
+			
+			function obj_crumbRebindDelegate(obj) {
+				return function(path, oldValue){
+					
+					var observers = obj.__observers;
+					if (observers == null) 
+						return;
+					for (var property in observers) {
+						if (property.indexOf(path) !== 0) 
+							continue;
+						
+						var listeners = observers[property].slice(0),
+							imax = listeners.length,
+							i = 0;
+						if (imax === 0) 
+							continue;
+						
+						var val = obj_getProperty(obj, property),
+							cb, oldProp;
+						
+						for (i = 0; i < imax; i++) {
+							cb = listeners[i];
+							obj_removeObserver(obj, property, cb);
+							
+							oldProp = property.substring(path.length);
+							obj_removeObserver(oldValue, oldProp, cb);
+						}
+						for (i = 0; i < imax; i++){
+							listeners[i](val);
+						}
+						for (i = 0; i < imax; i++){
+							obj_addObserver(obj, property, listeners[i]);
+						}
+						
+					}
+				}
+			}
+			
+				
+			function listener_push(obj, property, callback) {
+				if (obj.__observers == null) {
+					Object.defineProperty(obj, '__observers', {
+						value: {
+							__dirty: null
+						},
+						enumerable: false
+					});
+				}
+				var obs = obj.__observers;
+				if (obs[property] != null) {
+					obs[property].push(callback);
+				}
+				else{
+					obs[property] = [callback];
+				}
+				
+				return obs[property];
+			}
+			
+		}());
 		
 		
-		function listener_push(obj, property, callback) {
-		    if (obj.__observers == null) {
-		        Object.defineProperty(obj, '__observers', {
-		            value: {
-		                __dirty: null
-		            },
-		            enumerable: false
-		        });
-		    }
-		    var obs = obj.__observers;
-		    if (obs[property] != null) {
-		        obs[property].push(callback);
-		    }
-		    else{
-		        obs[property] = [callback];
-		    }
-		    
-		    return obs[property];
-		}
+		
+		
+		
+		
 		// end:source ../src/util/object.js
 		// source ../src/util/array.js
 		
@@ -14944,7 +15121,7 @@ function __eval(source, include) {
 				this.locked = false;
 				
 				
-				if (this.property == null) {
+				if (this.property == null && this.getter == null) {
 		
 					switch (element.tagName) {
 						case 'INPUT':
@@ -15769,6 +15946,9 @@ function __eval(source, include) {
 					
 					var current = expression_eval(expr, model, ctx, controller);
 					
+					// though we apply value's to `this` context, but it is only for immediat use
+					// in .node() function, as `this` context is a static object that share all bind
+					// utils
 					this.element = document.createTextNode(current);
 					
 					return (this.current = current);
@@ -16877,27 +17057,30 @@ function __eval(source, include) {
 				path = path.substring(0, queryIndex);
 			}
 		
-			var pathArr = path_split(path),
-				routePath = route.path,
-				routeLength = routePath.length,
-				
-				imax = pathArr.length,
-				i = 0,
-				part,
-				x;
-		
-			for (; i < imax; i++) {
-				part = pathArr[i];
-				x = i < routeLength ? routePath[i] : null;
-				
-				if (x) {
+			if (route.path != null) {
 					
-					if (typeof x === 'string') 
-						continue;
+				var pathArr = path_split(path),
+					routePath = route.path,
+					routeLength = routePath.length,
 					
-					if (x.alias) {
-						current.params[x.alias] = part;
-						continue;
+					imax = pathArr.length,
+					i = 0,
+					part,
+					x;
+			
+				for (; i < imax; i++) {
+					part = pathArr[i];
+					x = i < routeLength ? routePath[i] : null;
+					
+					if (x) {
+						
+						if (typeof x === 'string') 
+							continue;
+						
+						if (x.alias) {
+							current.params[x.alias] = part;
+							continue;
+						}
 					}
 				}
 			}
@@ -16918,11 +17101,6 @@ function __eval(source, include) {
 				route = routes[i];
 				
 				if (route_isMatch(parts, route, currentMethod)) {
-					if (route.parts == null) {
-								
-						route.current = { params: {} };
-						return route;
-					}
 					
 					route.current = route_parsePath(route, url);
 					return route;
