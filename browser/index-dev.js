@@ -39,7 +39,14 @@
 	
 	// source ../src/vars.js
 	var _Array_slice = Array.prototype.slice,
-		_Array_sort = Array.prototype.sort;
+		_Array_sort = Array.prototype.sort,
+		
+		_cfg = {
+			ModelHost: null, // @default: Class.Model
+		};
+		
+	
+	var str_CLASS_IDENTITY = '__$class__';
 	// end:source ../src/vars.js
 	
 	// source ../src/util/is.js
@@ -63,6 +70,20 @@
 	
 	function is_notEmptyString(x) {
 		return typeof x === 'string' && x !== '';
+	}
+	
+	function is_rawObject(obj) {
+		if (obj == null) 
+			return false;
+		
+		if (typeof obj !== 'object')
+			return false;
+		
+		return obj.constructor === Object;
+	}
+	
+	function is_NullOrGlobal(ctx){
+		return ctx === void 0 || ctx === global;
 	}
 	// end:source ../src/util/is.js
 	// source ../src/util/array.js
@@ -100,29 +121,130 @@
 		};
 	}
 	// end:source ../src/util/array.js
-	// source ../src/util/proto.js
+	// source ../src/util/class.js
+	var class_register,
+		class_get,
+		
+		class_patch,
+		
+		class_stringify,
+		class_parse
+		
+		;
 	
-	
-	var class_inherit = (function() {
+	(function(){
 		
-		var PROTO = '__proto__';
+		class_register = function(namespace, class_){
+			
+			obj_setProperty(
+				_cfg.ModelHost || Class.Model,
+				namespace,
+				class_
+			);
+		};
 		
-		function proto_extend(proto, source) {
-			if (source == null) {
-				return;
-			}
-			if (typeof proto === 'function') {
-				proto = proto.prototype;
-			}
+		class_get = function(namespace){
+			
+			return obj_getProperty(
+				_cfg.ModelHost || Class.Model,
+				namespace
+			);
+		};
 		
-			if (typeof source === 'function') {
-				source = source.prototype;
+		class_patch = function(mix, Proto){
+			
+			var class_ = is_String(mix)
+				? class_get(mix)
+				: mix
+				;
+				
+			// if DEBUG
+			!is_Function(class_)
+				&& console.error('<class:patch> Not a Function', mix);
+			// endif
+				
+			Proto.Base = class_;
+			
+			class_ = Class(Proto);
+			
+			if (is_String(mix)) 
+				class_register(mix, class_);
+			
+			return class_;
+		};
+		
+		class_stringify = function(class_){
+			
+			return JSON.stringify(class_, stringify);
+		};
+		
+		class_parse = function(str){
+			
+			return JSON.parse(str, parse);
+		};
+		
+		
+		// private
+		
+		function stringify(key, val) {
+			
+			if (val == null || typeof val !== 'object') 
+				return val;
+			
+			var current = this,
+				obj = current[key]
+				;
+			
+			if (obj[str_CLASS_IDENTITY] && obj.toJSON) {
+				
+				return stringifyMetaJSON(obj[str_CLASS_IDENTITY], val)
+				
+				////val[str_CLASS_IDENTITY] = obj[str_CLASS_IDENTITY];
+				////return val;
 			}
 			
-			for (var key in source) {
-				proto[key] = source[key];
-			}
+			
+			return val;
 		}
+		
+		function stringifyMetaJSON(className, json){
+			var out = {};
+			out['json'] = json;
+			out[str_CLASS_IDENTITY] = className;
+			
+			return out;
+		}
+		
+		function parse(key, val) {
+			
+			var Ctor;
+			
+			if (val != null && typeof val === 'object' && val[str_CLASS_IDENTITY]) {
+				Ctor = Class(val[str_CLASS_IDENTITY]);
+			
+				if (typeof Ctor === 'function') {
+					
+					val = new Ctor(val.json);
+				} else {
+					
+					console.error('<class:parse> Class was not registered', val[str_CLASS_IDENTITY]);
+				}
+			}
+			
+			return val;
+		}
+		
+	}());
+	// end:source ../src/util/class.js
+	// source ../src/util/proto.js
+	var class_inherit,
+		class_inheritStatics,
+		class_extendProtoObjects
+		;
+	
+	(function(){
+		
+		var PROTO = '__proto__';
 		
 		var _toString = Object.prototype.toString,
 			_isArguments = function(args){
@@ -130,20 +252,110 @@
 			};
 		
 		
-		function proto_override(__super, fn) {
-	        var __proxy = __super == null
-					? function() {}
-					: function(args){
-					
-						if (arguments.length === 1 && _isArguments(args)) {
-							return fn_apply(__super, this, args);
-						}
+		class_inherit = PROTO in Object.prototype
+			? inherit
+			: inherit_protoLess
+			;
+		
+		class_inheritStatics = function(_class, mix){
+			if (mix == null) 
+				return;
+			
+			if (is_Function(mix)) {
+				for (var key in mix) {
+					if (is_Function(mix[key]) && mix.hasOwnProperty(key) && _class[key] == null) {
+						_class[key] = mix[key];
+					}
+				}
+				return;
+			}
+			
+			if (Array.isArray(mix)) {
+				var imax = mix.length,
+					i = -1;
+				
+				
+				while ( ++i < imax ) {
+					class_inheritStatics(_class, mix[i]);
+				}
+				return;
+			}
+			
+			if (mix.Static) {
+				mix = mix.Static;
+				for (var key in mix) {
+					if (mix.hasOwnProperty(key) && _class[key] == null) {
+						_class[key] = mix[key];
+					}
+				}
+				return;
+			}
+		};
+		
+		
+		class_extendProtoObjects = function(proto, _base, _extends){
+			var key,
+				protoValue;
+				
+			for (key in proto) {
+				protoValue = proto[key];
+				
+				if (!is_rawObject(protoValue))
+					continue;
+				
+				if (_base != null){
+					if (is_rawObject(_base.prototype[key])) 
+						obj_defaults(protoValue, _base.prototype[key]);
+				}
+				
+				if (_extends != null) {
+					arr_each(_extends, function(x){
+						x = proto_getProto(x);
 						
-						return fn_apply(__super, this, arguments);
-					};
+						if (is_rawObject(x[key])) 
+							obj_defaults(protoValue, x[key]);
+					});
+				}
+			}
+		}
+		
+		// PRIVATE
+		function proto_extend(proto, source) {
+			if (source == null) 
+				return;
+			
+			if (typeof proto === 'function') 
+				proto = proto.prototype;
+			
+			if (typeof source === 'function') 
+				source = source.prototype;
+			
+			for (var key in source) {
+				proto[key] = source[key];
+			}
+		}
+		
+		function proto_override(super_, fn) {
+	        var proxy;
+			
+			if (super_) {
+				proxy = function(mix){
+					
+					var args = arguments.length === 1 && _isArguments(mix)
+						? mix
+						: arguments
+						;
+					
+					return  fn_apply(super_, this, args);
+				}
+			} else{
+				
+				proxy = fn_doNothing;
+			}
+			
 	        
 	        return function(){
-	            this['super'] = __proxy;
+	            this['super'] = proxy;
 	            
 	            return fn_apply(fn, this, arguments);
 	        };
@@ -165,10 +377,8 @@
 				proto = proto[PROTO];
 			}
 	
-			if (_base != null) {
+			if (_base != null) 
 				proto[PROTO] = _base.prototype;
-			}
-	
 			
 			if (_overrides != null) {
 				for (var key in _overrides) {
@@ -183,15 +393,6 @@
 		// browser that doesnt support __proto__ 
 		function inherit_protoLess(_class, _base, _extends, original, _overrides) {
 			
-	
-			if (_extends != null) {
-				arr_each(_extends, function(x) {
-					
-					delete x.constructor;
-					proto_extend(_class, x);
-				});
-			}
-			
 			if (_base != null) {
 				var tmp = function() {};
 	
@@ -199,6 +400,14 @@
 	
 				_class.prototype = new tmp();
 				_class.prototype.constructor = _class;
+			}
+			
+			if (_extends != null) {
+				arr_each(_extends, function(x) {
+					
+					delete x.constructor;
+					proto_extend(_class, x);
+				});
 			}
 			
 			if (_overrides != null) {
@@ -211,269 +420,207 @@
 			
 			proto_extend(_class, original); 
 		}
-	
-		return '__proto__' in Object.prototype === true ? inherit : inherit_protoLess;
-	
+		
+			
+		function proto_getProto(mix) {
+			
+			return is_Function(mix)
+				? mix.prototype
+				: mix
+				;
+		}
+		
 	}());
-	
-	function proto_getProto(mix) {
-		if (typeof mix === 'function') {
-			return mix.prototype;
-		}
-		return mix;
-	}
-	
-	var class_inheritStatics = function(_class, mix){
-		if (mix == null) {
-			return;
-		}
-		
-		if (typeof mix === 'function') {
-			for (var key in mix) {
-				if (typeof mix[key] === 'function' && mix.hasOwnProperty(key) && _class[key] == null) {
-					_class[key] = mix[key];
-				}
-			}
-			return;
-		}
-		
-		if (Array.isArray(mix)) {
-			var imax = mix.length,
-				i = 0;
-			
-			// backwards for proper inhertance flow
-			while (imax-- !== 0) {
-				class_inheritStatics(_class, mix[i++]);
-			}
-			return;
-		}
-		
-		if (mix.Static) {
-			mix = mix.Static;
-			for (var key in mix) {
-				if (mix.hasOwnProperty(key) && _class[key] == null) {
-					_class[key] = mix[key];
-				}
-			}
-			return;
-		}
-	};
-	
-	function class_extendProtoObjects(proto, _base, _extends){
-		var key,
-			protoValue;
-			
-		for (key in proto) {
-			protoValue = proto[key];
-			
-			if (!obj_isRawObject(protoValue))
-				continue;
-			
-			if (_base != null){
-				if (obj_isRawObject(_base.prototype[key])) 
-					obj_defaults(protoValue, _base.prototype[key]);
-			}
-			
-			if (_extends != null) {
-				arr_each(_extends, function(x){
-					x = proto_getProto(x);
-					
-					if (obj_isRawObject(x[key])) 
-						obj_defaults(protoValue, x[key]);
-				});
-			}
-		}
-	}
 	// end:source ../src/util/proto.js
 	// source ../src/util/json.js
-	var JSONHelper = (function() {
+	// Create from Complex Class Instance a lightweight json object
+	
+	var json_proto_toJSON,
+		json_proto_arrayToJSON
+		;
 		
-		var _date_toJSON = Date.prototype.toJSON,
-			_skipped;
+	(function(){
 		
-		return {
-			skipToJSON: function(toJSON){
-				_skipped && console.error('@TODO: Not implemented: only one skipped value allowed');
-				_skipped = toJSON;
-			},
-			// Create from Complex Class Instance a lightweight json object 
-			toJSON: function() {
-				var obj = {},
-					key, val;
+		json_proto_toJSON = function(){
+			
+			var object = this,
+				json = {},
+				
+				key, val;
+			
+			for (key in object){
+				// _ (private)
+				if (key.charCodeAt(0) === 95)
+					continue;
 	
-				for (key in this) {
+				if ('Static' === key || 'Validate' === key)
+					continue;
 	
-					// _ (private)
-					if (key.charCodeAt(0) === 95)
+				val = object[key];
+	
+				if (val == null)
+					continue;
+	
+				switch (typeof val) {
+					case 'function':
 						continue;
-	
-					if ('Static' === key || 'Validate' === key)
-						continue;
-	
-					val = this[key];
-	
-					if (val == null)
-						continue;
-	
-					switch (typeof val) {
-						case 'function':
+					case 'object':
+						
+						var toJSON = val.toJSON;
+						if (toJSON == null) 
+							break;
+						
+						if (toJSON === json_proto_toJSON || toJSON === json_proto_arrayToJSON) {
+							json[key] = val.toJSON();
 							continue;
-						case 'object':
-							var toJSON = val.toJSON;
-							
-							if (toJSON === _date_toJSON) {
-								// do not serialize Date
-								break;
-							}
-							
-							if (toJSON === _skipped) {
-								// skip to json - @TODO quick hack to skip MongoDB.ObjectID
-								break;
-							}
-							
-							if (is_Function(toJSON)) {
-								obj[key] = val.toJSON();
-								continue;
-							}
-					}
-	
-					obj[key] = val;
+						}
+						
+						break;
 				}
 	
-				// make mongodb's _id property not private
-				if (this._id != null)
-					obj._id = this._id;
-	
-				return obj;
-			},
-	
-			arrayToJSON: function() {
-				var array = new Array(this.length),
-					i = 0,
-					imax = this.length,
-					x;
-	
-				for (; i < imax; i++) {
-	
-					x = this[i];
-	
-					if (typeof x !== 'object') {
-						array[i] = x;
-						return;
-					}
-	
-					array[i] = is_Function(x.toJSON)
-						? x.toJSON()
-						: JSONHelper.toJSON.call(x)
-						;
-	
-				}
-	
-				return array;
+				json[key] = val;
 			}
+			
+			// make mongodb's _id property not private
+			if (object._id != null)
+				json._id = object._id;
+			
+			return json;	
 		};
+		
+		json_proto_arrayToJSON =  function() {
+			var array = this,
+				imax = array.length,
+				i = 0,
+				output = new Array(imax),
+				
+				x;
 	
+			for (; i < imax; i++) {
+	
+				x = array[i];
+				
+				if (x != null && typeof x === 'object') {
+					
+					var toJSON = x.toJSON;
+					if (toJSON === json_proto_toJSON || toJSON === json_proto_arrayToJSON) {
+						
+						output[i] = x.toJSON();
+						continue;
+					}
+					
+					if (toJSON == null) {
+						
+						output[i] = json_proto_toJSON.call(x);
+						continue;
+					}
+				}
+				
+				output[i] = x;
+			}
+	
+			return output;
+		};
+		
 	}());
 	// end:source ../src/util/json.js
 	// source ../src/util/object.js
-	function obj_inherit(target /* source, ..*/ ) {
-		if (typeof target === 'function') {
-			target = target.prototype;
-		}
-		var i = 1,
-			imax = arguments.length,
-			source, key;
-		for (; i < imax; i++) {
 	
-			source = typeof arguments[i] === 'function' ? arguments[i].prototype : arguments[i];
+	var obj_inherit,
+		obj_getProperty,
+		obj_setProperty,
+		obj_defaults,
+		obj_extend
+		;
 	
-			for (key in source) {
-				
-				if ('Static' === key) {
-					if (target.Static != null) {
-						
-						for (key in source.Static) {
-							target.Static[key] = source.Static[key];
-						}
-						
-						continue;
-					}
-				}
-				
-				
-				target[key] = source[key];
-				
-			}
-		}
-		return target;
-	}
-	
-	
-	
-	function obj_getProperty(obj, property) {
-		var chain = property.split('.'),
-			length = chain.length,
-			i = 0;
-		for (; i < length; i++) {
-			if (obj == null) {
-				return null;
-			}
-	
-			obj = obj[chain[i]];
-		}
-		return obj;
-	}
-	
-	
-	function obj_setProperty(obj, property, value) {
-		var chain = property.split('.'),
-			length = chain.length,
-			i = 0,
-			key = null;
-	
-		for (; i < length - 1; i++) {
-			key = chain[i];
-			if (obj[key] == null) {
-				obj[key] = {};
-			}
-			obj = obj[key];
-		}
-	
-		obj[chain[i]] = value;
-	}
-	
-	function obj_isRawObject(value) {
-		if (value == null) 
-			return false;
+	(function(){
 		
-		if (typeof value !== 'object')
-			return false;
-		
-		return value.constructor === Object;
-	}
-	
-	function obj_defaults(value, _defaults) {
-		for (var key in _defaults) {
-			if (value[key] == null) {
-				value[key] = _defaults[key];
-			}
-		}
-		return value;
-	}
-	
-	function obj_extend(target, source) {
-		for (var key in source) {
-			if (source[key]) 
-				target[key] = source[key];
+		obj_inherit = function(target /* source, ..*/ ) {
+			if (is_Function(target)) 
+				target = target.prototype;
 			
+			var i = 1,
+				imax = arguments.length,
+				source, key;
+			for (; i < imax; i++) {
+		
+				source = is_Function(arguments[i])
+					? arguments[i].prototype
+					: arguments[i]
+					;
+		
+				for (key in source) {
+					
+					if ('Static' === key) {
+						if (target.Static != null) {
+							
+							for (key in source.Static) {
+								target.Static[key] = source.Static[key];
+							}
+							
+							continue;
+						}
+					}
+					
+					
+					target[key] = source[key];
+					
+				}
+			}
+			return target;
 		}
-		return target;
-	}
-	
-	
-	function obj_isNullOrGlobal(ctx){
-		return ctx === void 0 || ctx === global;
-	}
+		
+		
+		
+		obj_getProperty = function(obj, property) {
+			var chain = property.split('.'),
+				imax = chain.length,
+				i = -1;
+			while ( ++i < imax ) {
+				if (obj == null) 
+					return null;
+				
+				obj = obj[chain[i]];
+			}
+			return obj;
+		};
+		
+		
+		obj_setProperty = function(obj, property, value) {
+			var chain = property.split('.'),
+				imax = chain.length,
+				i = -1,
+				key;
+		
+			while ( ++i <  imax - 1) {
+				key = chain[i];
+				
+				if (obj[key] == null) 
+					obj[key] = {};
+				
+				obj = obj[key];
+			}
+		
+			obj[chain[i]] = value;
+		};
+		
+		obj_defaults = function(target, defaults) {
+			for (var key in defaults) {
+				if (target[key] == null) 
+					target[key] = defaults[key];
+			}
+			return target;
+		};
+		
+		obj_extend = function(target, source) {
+			for (var key in source) {
+				if (source[key] != null) 
+					target[key] = source[key];
+			}
+			return target;
+		};
+		
+	}());
 	// end:source ../src/util/object.js
 	// source ../src/util/patchObject.js
 	var obj_patch;
@@ -645,6 +792,8 @@
 			return fn_apply(fn, null, args);
 		};
 	}
+	
+	function fn_doNothing(){}
 	// end:source ../src/util/function.js
 	
 	
@@ -973,7 +1122,7 @@
 			return instance.toJSON();
 		
 		
-		return JSONHelper.toJSON.call(instance);
+		return json_proto_toJSON.call(instance);
 	};
 	
 	Serializable.deserialize = function(instance, json) {
@@ -1005,8 +1154,10 @@
 			val = json[key];
 			
 			if (props != null) {
-				Mix = props[key];
-				
+				Mix = props.hasOwnProperty(key) 
+					? props[key]
+					: null
+					;
 				if (Mix != null) {
 					
 					if (is_Function(Mix)) {
@@ -1472,7 +1623,25 @@
 
 
 	// source ../src/Class.js
-	var Class = function(data) {
+	var Class = function(mix) {
+		
+		var namespace,
+			data;
+		
+		if (is_String(mix)) {
+			namespace = mix;
+			
+			if (arguments.length === 1) 
+				return class_get(mix);
+			
+			
+			data = arguments[1];
+			data[str_CLASS_IDENTITY] = namespace;
+		} else {
+			data = mix;
+		}
+		
+		
 		var _base = data.Base,
 			_extends = data.Extends,
 			_static = data.Static,
@@ -1484,21 +1653,21 @@
 			
 			key;
 	
-		if (_base != null) {
+		if (_base != null) 
 			delete data.Base;
-		}
-		if (_extends != null) {
+		
+		if (_extends != null) 
 			delete data.Extends;
-		}
-		if (_static != null) {
+		
+		if (_static != null) 
 			delete data.Static;
-		}
-		if (_self != null) {
+		
+		if (_self != null) 
 			delete data.Self;
-		}
-		if (_construct != null) {
+		
+		if (_construct != null) 
 			delete data.Construct;
-		}
+		
 		
 		if (_store != null) {
 			
@@ -1513,22 +1682,20 @@
 			delete data.Store;
 		}
 		
-		if (_overrides != null) {
+		if (_overrides != null) 
 			delete data.Override;
-		}
 		
-		if (data.toJSON === void 0) {
-			data.toJSON = JSONHelper.toJSON;
-		}
-	
+		if (data.toJSON === void 0) 
+			data.toJSON = json_proto_toJSON;
+		
 	
 		if (_base == null && _extends == null && _self == null) {
-			if (_construct == null) {
-				_class = function() {};
-			} else {
-				_class = _construct;
-			}
-	
+			
+			_class = _construct == null
+				? function() {}
+				: _construct
+				;
+			
 			data.constructor = _class.prototype.constructor;
 	
 			if (_static != null) {
@@ -1538,8 +1705,11 @@
 			}
 	
 			_class.prototype = data;
+			
+			if (namespace != null) 
+				class_register(namespace, _class);
+			
 			return _class;
-	
 		}
 	
 		_class = function() {
@@ -1570,7 +1740,7 @@
 				fn_apply(_base, this, arguments);
 			}
 			
-			if (_self != null && obj_isNullOrGlobal(this) === false) {
+			if (_self != null && is_NullOrGlobal(this) === false) {
 				
 				for (var key in _self) {
 					this[key] = fn_proxy(_self[key], this);
@@ -1588,6 +1758,9 @@
 			
 			return this;
 		};
+		
+		if (namespace != null) 
+			class_register(namespace, _class);
 	
 		if (_static != null) {
 			for (key in _static) {
@@ -1595,13 +1768,12 @@
 			}
 		}
 		
-		if (_base != null) {
+		if (_base != null) 
 			class_inheritStatics(_class, _base);
-		}
 		
-		if (_extends != null) {
+		if (_extends != null) 
 			class_inheritStatics(_class, _extends);
-		}
+		
 	
 		class_extendProtoObjects(data, _base, _extends);
 		class_inherit(_class, _base, _extends, data, _overrides);
@@ -1623,7 +1795,8 @@
 			_wait: 0,
 			_timeout: null,
 			_result: null,
-		
+			_resolved: true,
+			
 			delegate: function(name, errorable) {
 				return await_createDelegate(this, name, errorable);
 			},
@@ -1779,8 +1952,8 @@
 			serialize: function(){
 				
 				return is_Array(this)
-					? JSONHelper.arrayToJSON.call(this)
-					: JSONHelper.toJSON.call(this)
+					? json_proto_arrayToJSON.call(this)
+					: json_proto_toJSON.call(this)
 					;
 			},
 			
@@ -1808,15 +1981,16 @@
 				return self;
 			},
 			
-			patch: function(patch){
-				obj_patch(this, patch);
-				
-				var path = this._route.create(this),
-					json = patch
-					;
+			patch: function(json){
+				obj_patch(this, json);
 				
 				this.defer();
-				XHR.patch(path, json, resolveDelegate(this));
+				
+				XHR.patch(
+					this._route.create(this),
+					json,
+					resolveDelegate(this)
+				);
 				return this;
 			},
 			
@@ -1865,9 +2039,8 @@
 			
 			return function(error, response, xhr){
 					
-					var isJSON = xhr
-						.getResponseHeader(str_CONTENT_TYPE)
-						.indexOf(str_JSON) !== -1
+					var header = xhr.getResponseHeader(str_CONTENT_TYPE),
+						isJSON = header != null &&  header.indexOf(str_JSON) !== -1
 						;
 						
 					if (isJSON) {
@@ -1917,8 +2090,8 @@
 			serialize: function(){
 				
 				var json = is_Array(this)
-					? JSONHelper.arrayToJSON.call(this)
-					: JSONHelper.toJSON.call(this)
+					? json_proto_arrayToJSON.call(this)
+					: json_proto_toJSON.call(this)
 					;
 				
 				return JSON.stringify(json);
@@ -2040,12 +2213,38 @@
 		return cntx;
 	};
 	
+	Class.cfg = function(mix, value){
+		
+		if (is_String(mix)) {
+			
+			if (arguments.length === 1) 
+				return _cfg[mix];
+			
+			_cfg[mix] = value;
+			return;
+		}
+		
+		if (is_Object(mix)) {
+			
+			for(var key in mix){
+				
+				Class.cfg(key, mix[key]);
+			}
+		}
+	};
 	
+	
+	
+	Class.Model = {};
 	Class.Serializable = Serializable;
 	Class.Deferred = Deferred;
 	Class.EventEmitter = EventEmitter;
 	Class.Await = Await;
 	Class.validate = Validation.validate;
+	
+	Class.stringify = class_stringify;
+	Class.parse = class_parse;
+	Class.patch = class_patch;
 	// end:source ../src/Class.Static.js
 	
 	// source ../src/collection/Collection.js
@@ -2390,32 +2589,28 @@
 				return array;
 			},
 			
-			toJSON: JSONHelper.arrayToJSON
+			toJSON: json_proto_arrayToJSON
 		};
 		
-		//////function overrideConstructor(baseConstructor, Child) {
-		//////	
-		//////	return function CollectionConstructor(){
-		//////		this.length = 0;
-		//////		this._constructor = Child;
-		//////		
-		//////		if (baseConstructor != null)
-		//////			return baseConstructor.apply(this, arguments);
-		//////		
-		//////		return this;
-		//////	};
-		//////	
-		//////}
-		
-		function Collection(Child, Proto) {
+		function Collection(/* (ClassName, Child, Proto) (Child, Proto) */) {
+			var length = arguments.length,
+				Proto = arguments[length - 1],
+				Child = arguments[length - 2],
+				
+				className
+				;
 			
-			//////Proto.Construct = overrideConstructor(Proto.Construct, Child);
+			if (length > 2) 
+				className = arguments[0];
+			
 			
 			Proto._ctor = Child;
-			
-			
 			obj_inherit(Proto, CollectionProto, ArrayProto);
-			return Class(Proto);
+			
+			return className == null
+				? Class(Proto)
+				: Class(className, Proto)
+				;
 		}
 		
 		
@@ -8255,6 +8450,44 @@ function __eval(source, include) {
 		
 		// end:source ../src/scope-vars.js
 	
+		// source ../src/util/is.js
+		function is_Function(x) {
+			return typeof x === 'function';
+		}
+		
+		function is_Object(x) {
+			return x != null
+				&& typeof x === 'object';
+		}
+		
+		function is_Array(arr) {
+			return arr != null
+				&& typeof arr === 'object'
+				&& typeof arr.length === 'number'
+				&& typeof arr.splice === 'function'
+				;
+		}
+		
+		function is_String(x) {
+			return typeof x === 'string';
+		}
+		
+		function is_notEmptyString(x) {
+			return typeof x === 'string'
+				&& x !== '';
+		}
+		
+		function is_rawObject(obj) {
+			if (obj == null) 
+				return false;
+			
+			if (typeof obj !== 'object')
+				return false;
+			
+			return obj.constructor === Object;
+		}
+		
+		// end:source ../src/util/is.js
 		// source ../src/util/polyfill.js
 		if (!Array.prototype.indexOf) {
 			Array.prototype.indexOf = function(x){
@@ -8268,258 +8501,329 @@ function __eval(source, include) {
 		}
 		// end:source ../src/util/polyfill.js
 		// source ../src/util/object.js
-		function obj_extend(target, source){
-			if (target == null){
-				target = {};
-			}
-			if (source == null){
+		var obj_extend,
+			obj_copy
+			;
+		(function(){
+			
+			
+			obj_extend = function(target, source){
+				if (target == null)
+					target = {};
+				
+				if (source == null)
+					return target;
+				
+				for(var key in source){
+					target[key] = source[key];
+				}
+			
 				return target;
-			}
-		
-			for(var key in source){
-				target[key] = source[key];
-			}
-		
-			return target;
-		}
-		
-		function obj_copy(object) {
-			var copy = {};
-		
-			for (var key in object) {
-				copy[key] = object[key];
-			}
-		
-			return copy;
-		}
+			};
+			
+			obj_copy = function(object) {
+				var copy = {},
+					key;
+			
+				for (key in object) {
+					copy[key] = object[key];
+				}
+			
+				return copy;
+			};
+			
+			
+		}());
 		
 		// end:source ../src/util/object.js
 		// source ../src/util/array.js
+		
+		var arr_each,
+			arr_remove
+			;
+		
+		(function(){
+		
+			arr_each = function(array, fn){
+				var imax = array.length,
+					i = -1;
+				while ( ++i < imax ){
+					fn(array[i], i);
+				}
+			};
 			
-		function arr_each(array, fn){
-			for(var i = 0, length = array.length; i < length; i++){
-				fn(array[i], i);
-			}
-		}
+			arr_remove = function(array, child){
+				if (array == null){
+					console.error('Can not remove myself from parent', child);
+					return;
+				}
+			
+				var index = array.indexOf(child);
+			
+				if (index === -1){
+					console.error('Can not remove myself from parent', child, index);
+					return;
+				}
+			
+				array.splice(index, 1);
+			};
+			
+			
+		}());
 		
-		function arr_remove(array, child){
-			if (array == null){
-				console.error('Can not remove myself from parent', child);
-				return;
-			}
-		
-			var index = array.indexOf(child);
-		
-			if (index === -1){
-				console.error('Can not remove myself from parent', child, index);
-				return;
-			}
-		
-			array.splice(index, 1);
-		}
-		
-		function arr_isArray(arr){
-			return arr != null
-				&& typeof arr === 'object'
-				&& typeof arr.length === 'number'
-				&& typeof arr.splice === 'function'
-				;
-		}
 		// end:source ../src/util/array.js
 		// source ../src/util/function.js
-		function fn_proxy(fn, context) {
+		var fn_proxy,
+			fn_apply
+			;
+		
+		(function(){
+		
+			fn_proxy = function(fn, ctx) {
 			
-			return function(){
-				return fn.apply(context, arguments);
+				return function() {
+					return fn_apply(fn, ctx, arguments);
+				};
 			};
 			
-		}
+			fn_apply = function(fn, ctx, arguments_){
+				
+				switch (arguments_.length) {
+					case 0:
+						return fn.call(ctx);
+					case 1:
+						return fn.call(ctx, arguments_[0]);
+					case 2:
+						return fn.call(ctx,
+							arguments_[0],
+							arguments_[1]);
+					case 3:
+						return fn.call(ctx,
+							arguments_[0],
+							arguments_[1],
+							arguments_[2]);
+					case 4:
+						return fn.call(ctx,
+							arguments_[0],
+							arguments_[1],
+							arguments_[2],
+							arguments_[3]);
+				};
+				
+				return fn.apply(ctx, arguments_);
+			};
+			
+		}());
 		
-		function fn_isFunction(fn){
-			return typeof fn === 'function';
-		}
 		// end:source ../src/util/function.js
 		// source ../src/util/selector.js
-		function selector_parse(selector, type, direction) {
-			if (selector == null){
-				console.warn('selector is null for type', type);
-			}
+		var selector_parse,
+			selector_match
+			;
 		
-			if (typeof selector === 'object'){
-				return selector;
-			}
-		
-			var key, prop, nextKey;
-		
-			if (key == null) {
-				switch (selector[0]) {
-				case '#':
-					key = 'id';
-					selector = selector.substring(1);
-					prop = 'attr';
-					break;
-				case '.':
-					key = 'class';
-					selector = sel_hasClassDelegate(selector.substring(1));
-					prop = 'attr';
-					break;
-				default:
-					key = type === Dom.SET ? 'tagName' : 'compoName';
-					break;
-				}
-			}
-		
-			if (direction === 'up') {
-				nextKey = 'parent';
-			} else {
-				nextKey = type === Dom.SET ? 'nodes' : 'components';
-			}
-		
-			return {
-				key: key,
-				prop: prop,
-				selector: selector,
-				nextKey: nextKey
-			};
-		}
-		
-		function selector_match(node, selector, type) {
-			if (typeof selector === 'string') {
-				if (type == null) {
-					type = Dom[node.compoName ? 'CONTROLLER' : 'SET'];
-				}
-				selector = selector_parse(selector, type);
-			}
-		
-			var obj = selector.prop ? node[selector.prop] : node;
-			if (obj == null) {
-				return false;
-			}
-		
-			if (typeof selector.selector === 'function') {
-				return selector.selector(obj[selector.key]);
-			}
+		(function(){
 			
-			if (selector.selector.test != null) {
-				if (selector.selector.test(obj[selector.key])) {
-					return true;
-				}
-			}
-			
-			else {
-				// == - to match int and string
-				if (obj[selector.key] == selector.selector) {
-					return true;
-				}
-			}
-		
-			return false;
-		}
-		
-		
-		
-		function sel_hasClassDelegate(matchClass) {
-			return function(className){
-				return sel_hasClass(className, matchClass);
-			};
-		}
-		
-		// [perf] http://jsperf.com/match-classname-indexof-vs-regexp/2
-		function sel_hasClass(className, matchClass, index) {
-			if (typeof className !== 'string')
-				return false;
-			
-			if (index == null) 
-				index = 0;
+			selector_parse = function(selector, type, direction) {
+				if (selector == null)
+					console.error('<compo>selector is undefined', type);
 				
-			index = className.indexOf(matchClass, index);
-		
-			if (index === -1)
-				return false;
-		
-			if (index > 0 && className.charCodeAt(index - 1) > 32)
-				return sel_hasClass(className, matchClass, index + 1);
-		
-			var class_Length = className.length,
-				match_Length = matchClass.length;
+				if (typeof selector === 'object')
+					return selector;
 				
-			if (index < class_Length - match_Length && className.charCodeAt(index + match_Length) > 32)
-				return sel_hasClass(className, matchClass, index + 1);
-		
-			return true;
-		}
+			
+				var key, prop, nextKey;
+			
+				if (key == null) {
+					switch (selector[0]) {
+					case '#':
+						key = 'id';
+						selector = selector.substring(1);
+						prop = 'attr';
+						break;
+					case '.':
+						key = 'class';
+						selector = sel_hasClassDelegate(selector.substring(1));
+						prop = 'attr';
+						break;
+					default:
+						key = type === Dom.SET ? 'tagName' : 'compoName';
+						break;
+					}
+				}
+			
+				if (direction === 'up') {
+					nextKey = 'parent';
+				} else {
+					nextKey = type === Dom.SET ? 'nodes' : 'components';
+				}
+			
+				return {
+					key: key,
+					prop: prop,
+					selector: selector,
+					nextKey: nextKey
+				};
+			};
+			
+			selector_match = function(node, selector, type) {
+				
+				if (is_String(selector)) {
+					
+					if (type == null) 
+						type = Dom[node.compoName ? 'CONTROLLER' : 'SET'];
+					
+					selector = selector_parse(selector, type);
+				}
+			
+				var obj = selector.prop ? node[selector.prop] : node;
+				if (obj == null) 
+					return false;
+				
+				if (is_Function(selector.selector)) 
+					return selector.selector(obj[selector.key]);
+				
+				// regexp
+				if (selector.selector.test != null) 
+					return selector.selector.test(obj[selector.key]);
+				
+				//! == - to match int and string
+				return obj[selector.key] == selector.selector;
+			}
+			
+			// PRIVATE
+			
+			function sel_hasClassDelegate(matchClass) {
+				return function(className){
+					return sel_hasClass(className, matchClass);
+				};
+			}
+			
+			// [perf] http://jsperf.com/match-classname-indexof-vs-regexp/2
+			function sel_hasClass(className, matchClass, index) {
+				if (typeof className !== 'string')
+					return false;
+				
+				if (index == null) 
+					index = 0;
+					
+				index = className.indexOf(matchClass, index);
+			
+				if (index === -1)
+					return false;
+			
+				if (index > 0 && className.charCodeAt(index - 1) > 32)
+					return sel_hasClass(className, matchClass, index + 1);
+			
+				var class_Length = className.length,
+					match_Length = matchClass.length;
+					
+				if (index < class_Length - match_Length && className.charCodeAt(index + match_Length) > 32)
+					return sel_hasClass(className, matchClass, index + 1);
+			
+				return true;
+			}
+			
+		}());
 		
 		// end:source ../src/util/selector.js
 		// source ../src/util/traverse.js
-		function find_findSingle(node, matcher) {
-			if (node instanceof Array) {
-				for (var i = 0, x, length = node.length; i < length; i++) {
-					x = node[i];
-					var r = find_findSingle(x, matcher);
-					if (r != null) {
-						return r;
-					}
-				}
-				return null;
-			}
+		var find_findSingle;
 		
-			if (selector_match(node, matcher) === true) {
-				return node;
+		(function(){
+		
+			
+			find_findSingle = function(node, matcher) {
+				
+				if (is_Array(node)) {
+					
+					var imax = node.length,
+						i = -1,
+						result;
+					
+					while( ++i < imax ){
+						
+						result = find_findSingle(node[i], matcher);
+						
+						if (result != null) 
+							return result;
+					}
+					
+					return null;
+				}
+			
+				if (selector_match(node, matcher))
+					return node;
+				
+				node = node[matcher.nextKey];
+				
+				return node == null
+					? null
+					: find_findSingle(node, matcher)
+					;
 			}
-			return (node = node[matcher.nextKey]) && find_findSingle(node, matcher);
-		}
+			
+			
+		}());
 		
 		// end:source ../src/util/traverse.js
-		// source ../src/util/manipulate.js
-		function node_tryDispose(node){
-			if (node.hasAttribute('x-compo-id')) {
-				
-				var id = node.getAttribute('x-compo-id'),
-					compo = Anchor.getByID(id)
-					;
-				
-				if (compo) {
-					compo_dispose(compo);
-					compo_detachChild(compo);
-				}
-				return;
-			}
-			
-			node_tryDisposeChildren(node);
-		}
-		
-		function node_tryDisposeChildren(node){
-			var child = node.firstChild;
-			while(child != null) {
-				if (child.nodeType === 1) {
-					node_tryDispose(child);
-				}
-				
-				child = child.nextSibling;
-			}
-		}
-		// end:source ../src/util/manipulate.js
 		// source ../src/util/dom.js
-		function dom_addEventListener(element, event, listener) {
+		var dom_addEventListener,
 			
-			if (EventDecorator != null) {
-				event = EventDecorator(event);
-			}
+			node_tryDispose,
+			node_tryDisposeChildren
+			;
 			
-			// allows custom events - in x-signal, for example
-			if (domLib != null) {
-				domLib(element).on(event, listener);
-				return;
-			}
+		(function(){
+		
+			dom_addEventListener = function(element, event, listener) {
 			
-			if (element.addEventListener != null) {
-				element.addEventListener(event, listener, false);
-				return;
-			}
-			if (element.attachEvent) {
-				element.attachEvent("on" + event, listener);
-			}
-		}
+				if (EventDecorator != null) 
+					event = EventDecorator(event);
+				
+				// allows custom events - in x-signal, for example
+				if (domLib != null) 
+					return domLib(element).on(event, listener);
+					
+				
+				if (element.addEventListener != null) 
+					return element.addEventListener(event, listener, false);
+				
+				if (element.attachEvent) 
+					element.attachEvent('on' + event, listener);
+				
+			};
+		
+			node_tryDispose = function(node){
+				if (node.hasAttribute('x-compo-id')) {
+					
+					var id = node.getAttribute('x-compo-id'),
+						compo = Anchor.getByID(id)
+						;
+					
+					if (compo) {
+						compo_dispose(compo);
+						compo_detachChild(compo);
+					}
+					return;
+				}
+				
+				node_tryDisposeChildren(node);
+			};
+			
+			node_tryDisposeChildren = function(node){
+				
+				var child = node.firstChild;
+				while(child != null) {
+					
+					if (child.nodeType === 1) 
+						node_tryDispose(child);
+					
+					
+					child = child.nextSibling;
+				}
+			};
+			
+		}());
 		
 		// end:source ../src/util/dom.js
 		// source ../src/util/domLib.js
@@ -8527,20 +8831,31 @@ function __eval(source, include) {
 		 *	Combine .filter + .find
 		 */
 		
-		function domLib_find($set, selector) {
-			return $set.filter(selector).add($set.find(selector));
-		}
+		var domLib_find,
+			domLib_on
+			;
 		
-		function domLib_on($set, type, selector, fn) {
+		(function(){
+				
+			domLib_find = function($set, selector) {
+				return $set.filter(selector).add($set.find(selector));
+			};
+			
+			domLib_on = function($set, type, selector, fn) {
+			
+				if (selector == null) 
+					return $set.on(type, fn);
+				
+				$set
+					.on(type, selector, fn)
+					.filter(selector)
+					.on(type, fn);
+					
+				return $set;
+			};
+			
+		}());
 		
-			if (selector == null) {
-				return $set.on(type, fn);
-			}
-		
-			$set.on(type, selector, fn);
-			$set.filter(selector).on(type, fn);
-			return $set;
-		}
 		
 		// end:source ../src/util/domLib.js
 	
@@ -8711,16 +9026,20 @@ function __eval(source, include) {
 		
 			mask.registerAttrHandler('x-pipe-signal', 'client', function(node, attrValue, model, cntx, element, controller) {
 		
-				var arr = attrValue.split(';');
-				for (var i = 0, x, length = arr.length; i < length; i++) {
+				var arr = attrValue.split(';'),
+					imax = arr.length,
+					i = -1,
+					x;
+				while ( ++i < imax ) {
 					x = arr[i].trim();
-					if (x === '') {
+					if (x === '') 
 						continue;
-					}
-		
-					var event = x.substring(0, x.indexOf(':')),
-						handler = x.substring(x.indexOf(':') + 1).trim(),
+					
+					var i_colon = x.indexOf(':'),
+						event = x.substring(0, i_colon),
+						handler = x.substring(i_colon + 1).trim(),
 						dot = handler.indexOf('.'),
+						
 						pipe, signal;
 		
 					if (dot === -1) {
@@ -8828,11 +9147,12 @@ function __eval(source, include) {
 					 * - switch to use plain arguments
 					 */
 					
-					if (arguments.length === 2 && arr_isArray(arguments[1])) {
+					if (arguments.length === 2 && is_Array(arguments[1])) 
 						args = arguments[1];
-					} else if (arguments.length > 1) {
+						
+					else if (arguments.length > 1) 
 						args = _array_slice.call(arguments, 1);
-					}
+					
 					
 					var i = controllers.length,
 						controller, slots, slot, called;
@@ -8841,19 +9161,19 @@ function __eval(source, include) {
 						controller = controllers[i];
 						slots = controller.pipes[pipeName];
 		
-						if (slots == null) {
+						if (slots == null) 
 							continue;
-						}
-		
+						
 						slot = slots[signal];
-						if (typeof slot === 'function') {
+						if (is_Function(slot)) {
 							slot.apply(controller, args);
 							called = true;
 						}
 					}
 		
 					// if DEBUG
-					called !== true && console.warn('No piped slot found for a signal', signal, pipeName);
+					if (!called)
+						console.warn('Pipe `%s` has not slots for `%s`', pipeName, signal);
 					// endif
 				}
 			};
@@ -9018,158 +9338,163 @@ function __eval(source, include) {
 			}
 		
 			// source Compo.util.js
-			function compo_dispose(compo) {
-				
-				if (compo.dispose != null) 
-					compo.dispose();
-				
-				Anchor.removeCompo(compo);
+			var compo_dispose,
+				compo_detachChild,
+				compo_ensureTemplate,
+				compo_attachDisposer,
+				compo_createConstructor
+				;
 			
-				var compos = compo.components,
-					i = (compos && compos.length) || 0;
-			
-				while ( --i > -1 ) {
-					compo_dispose(compos[i]);
-				}
-			}
-			
-			function compo_detachChild(childCompo){
+			(function(){
 				
-				var parent = childCompo.parent;
-				if (parent == null) 
-					return;
-				
-				var arr = childCompo.$,
-					elements = parent.$ || parent.elements,
-					i;
+				compo_dispose = function(compo) {
 					
-				if (elements && arr) {
-					var jmax = arr.length,
-						el, j;
+					if (compo.dispose != null) 
+						compo.dispose();
 					
-					i = elements.length;
-					while( --i > -1){
-						el = elements[i];
-						j = jmax;
+					Anchor.removeCompo(compo);
+				
+					var compos = compo.components,
+						i = (compos && compos.length) || 0;
+				
+					while ( --i > -1 ) {
+						compo_dispose(compos[i]);
+					}
+				};
+				
+				compo_detachChild = function(childCompo){
+					
+					var parent = childCompo.parent;
+					if (parent == null) 
+						return;
+					
+					var arr = childCompo.$,
+						elements = parent.$ || parent.elements,
+						i;
 						
-						while(--j > -1){
-							if (el === arr[j]) {
-								
-								elements.splice(i, 1);
-								break;
+					if (elements && arr) {
+						var jmax = arr.length,
+							el, j;
+						
+						i = elements.length;
+						while( --i > -1){
+							el = elements[i];
+							j = jmax;
+							
+							while(--j > -1){
+								if (el === arr[j]) {
+									
+									elements.splice(i, 1);
+									break;
+								}
 							}
 						}
 					}
-				}
-				
-				var compos = parent.components;
-				if (compos != null) {
 					
-					i = compos.length;
-					while(--i > -1){
-						if (compos[i] === childCompo) {
-							compos.splice(i, 1);
-							break;
-						}
-					}
-			
-					if (i === -1)
-						console.warn('Compo::remove - parent doesnt contains me', childCompo);
-				}
-			}
-			
-			function compo_ensureTemplate(compo) {
-				if (compo.nodes != null) {
-					return;
-				}
-				
-				if (compo.attr.template != null) {
-					compo.template = compo.attr.template;
-					
-					delete compo.attr.template;
-				}
-				
-				var template = compo.template;
-				
-				if (typeof template == null) {
-					return;
-				}
-				
-			
-				if (typeof template === 'string') {
-					if (template[0] === '#') {
-						var node = document.getElementById(template.substring(1));
-						if (node == null) {
-							console.error('Template holder not found by id:', template);
-							return;
-						}
-						template = node.innerHTML;
-					}
-					template = mask.parse(template);
-				}
-			
-				if (typeof template === 'object') {
-					compo.nodes = template;
-				}
-			}
-			
-			function compo_containerArray() {
-				var arr = [];
-				arr.appendChild = function(child) {
-					this.push(child);
-				};
-				return arr;
-			}
-			
-			function compo_attachDisposer(controller, disposer) {
-			
-				if (typeof controller.dispose === 'function') {
-					var previous = controller.dispose;
-					controller.dispose = function(){
-						disposer.call(this);
-						previous.call(this);
-					};
-			
-					return;
-				}
-			
-				controller.dispose = disposer;
-			}
-			
-			
-			function compo_createConstructor(ctor, proto) {
-				var compos = proto.compos,
-					pipes = proto.pipes,
-					attr = proto.attr;
-					
-				if (compos == null && pipes == null && proto.attr == null) {
-					return ctor;
-				}
-			
-				/* extend compos / attr to keep
-				 * original prototyped values untouched
-				 */
-				return function CompoBase(){
-			
+					var compos = parent.components;
 					if (compos != null) {
-						// use this.compos instead of compos from upper scope
-						// : in case compos from proto was extended after
-						this.compos = obj_copy(this.compos);
-					}
-			
-					if (pipes != null) {
-						Pipes.addController(this);
-					}
-					
-					if (attr != null) {
-						this.attr = obj_copy(this.attr);
-					}
-			
-					if (typeof ctor === 'function') {
-						ctor.call(this);
+						
+						i = compos.length;
+						while(--i > -1){
+							if (compos[i] === childCompo) {
+								compos.splice(i, 1);
+								break;
+							}
+						}
+				
+						if (i === -1)
+							console.warn('<compo:remove> - i`m not in parents collection', childCompo);
 					}
 				};
-			}
+				
+				
+				
+				compo_ensureTemplate = function(compo) {
+					if (compo.nodes != null) 
+						return;
+					
+					// obsolete
+					if (compo.attr.template != null) {
+						compo.template = compo.attr.template;
+						
+						delete compo.attr.template;
+					}
+					
+					var template = compo.template;
+					if (template == null) 
+						return;
+					
+					if (is_String(template)) {
+						if (template.charCodeAt(0) === 35 && /^#[\w\d_-]+$/.test(template)) {
+							// #
+							var node = document.getElementById(template.substring(1));
+							if (node == null) {
+								console.error('<compo> Template holder not found by id:', template);
+								return;
+							}
+							template = node.innerHTML;
+						}
+						
+						template = mask.parse(template);
+					}
+				
+					if (typeof template === 'object') 
+						compo.nodes = template;
+				};
+				
+					
+				compo_attachDisposer = function(compo, disposer) {
+				
+					if (compo.dispose == null) {
+						compo.dispose = disposer;
+						return;
+					}
+					
+					var prev = compo.dispose;
+					compo.dispose = function(){
+						disposer.call(this);
+						prev.call(this);
+					};
+				};
+				
+					
+				
+				compo_createConstructor = function(Ctor, proto) {
+					var compos = proto.compos,
+						pipes = proto.pipes,
+						attr = proto.attr;
+						
+					if (compos == null
+							&& pipes == null
+							&& proto.attr == null) {
+						
+						return Ctor;
+					}
+				
+					/* extend compos / attr to keep
+					 * original prototyped values untouched
+					 */
+					return function CompoBase(){
+				
+						if (compos != null) {
+							// use this.compos instead of compos from upper scope
+							// : in case compos from proto was extended after
+							this.compos = obj_copy(this.compos);
+						}
+				
+						if (pipes != null) 
+							Pipes.addController(this);
+						
+						if (attr != null) 
+							this.attr = obj_copy(this.attr);
+						
+						if (is_Function(Ctor)) 
+							Ctor.call(this);
+					};
+				};
+			
+				
+			}());
 			
 			// end:source Compo.util.js
 			// source Compo.static.js
@@ -9240,7 +9565,7 @@ function __eval(source, include) {
 					var Ext = classProto.Extends;
 					if (Ext == null) {
 						classProto.Extends = Proto
-					} else if (arr_isArray(Ext)) {
+					} else if (is_Array(Ext)) {
 						Ext.unshift(Proto)
 					} else {
 						classProto.Extends = [Proto, Ext];
@@ -9250,34 +9575,40 @@ function __eval(source, include) {
 				},
 			
 				/* obsolete */
-				render: function(compo, model, cntx, container) {
+				render: function(compo, model, ctx, container) {
 			
 					compo_ensureTemplate(compo);
 			
 					var elements = [];
 			
-					mask.render(compo.tagName == null ? compo.nodes : compo, model, cntx, container, compo, elements);
+					mask.render(
+						compo.tagName == null ? compo.nodes : compo,
+						model,
+						ctx,
+						container,
+						compo,
+						elements
+					);
 			
 					compo.$ = domLib(elements);
 			
-					if (compo.events != null) {
+					if (compo.events != null) 
 						Events_.on(compo, compo.events);
-					}
-					if (compo.compos != null) {
+					
+					if (compo.compos != null) 
 						Children_.select(compo, compo.compos);
-					}
-			
+					
 					return compo;
 				},
 			
-				initialize: function(compo, model, cntx, container, parent) {
+				initialize: function(compo, model, ctx, container, parent) {
 					
 					var compoName;
 			
 					if (container == null){
-						if (cntx && cntx.nodeType != null){
-							container = cntx;
-							cntx = null;
+						if (ctx && ctx.nodeType != null){
+							container = ctx;
+							ctx = null;
 						}else if (model && model.nodeType != null){
 							container = model;
 							model = null;
@@ -9299,15 +9630,14 @@ function __eval(source, include) {
 						tagName: compoName
 					};
 			
-					if (parent == null && container != null){
+					if (parent == null && container != null)
 						parent = Anchor.resolveCompo(container);
-					}
-			
-					if (parent == null){
+					
+					if (parent == null)
 						parent = new Dom.Component();
-					}
+					
 			
-					var dom = mask.render(node, model, cntx, null, parent),
+					var dom = mask.render(node, model, ctx, null, parent),
 						instance = parent.components[parent.components.length - 1];
 			
 					if (container != null){
@@ -9319,8 +9649,7 @@ function __eval(source, include) {
 					return instance;
 				},
 			
-				dispose: compo_dispose,
-			
+				
 				find: function(compo, selector){
 					return find_findSingle(compo, selector_parse(selector, Dom.CONTROLLER, 'down'));
 				},
@@ -9328,7 +9657,10 @@ function __eval(source, include) {
 					return find_findSingle(compo, selector_parse(selector, Dom.CONTROLLER, 'up'));
 				},
 			
+				dispose: compo_dispose,
+				
 				ensureTemplate: compo_ensureTemplate,
+				
 				attachDisposer: compo_attachDisposer,
 			
 				config: {
@@ -9336,15 +9668,17 @@ function __eval(source, include) {
 						'$': function(compo, selector) {
 							var r = domLib_find(compo.$, selector)
 							// if DEBUG
-							r.length === 0 && console.error('Compo Selector - element not found -', selector, compo);
+							if (r.length === 0) 
+								console.error('<compo-selector> - element not found -', selector, compo);
 							// endif
 							return r;
 						},
 						'compo': function(compo, selector) {
 							var r = Compo.find(compo, selector);
-							if (r == null) {
-								console.error('Compo Selector - component not found -', selector, compo);
-							}
+							// if DEBUG
+							if (r == null) 
+								console.error('<compo-selector> - component not found -', selector, compo);
+							// endif
 							return r;
 						}
 					},
@@ -9558,7 +9892,7 @@ function __eval(source, include) {
 						compo_ensureTemplate(this);
 					}
 					
-					if (fn_isFunction(this.onRenderStart)){
+					if (is_Function(this.onRenderStart)){
 						this.onRenderStart(model, ctx, container);
 					}
 		
@@ -9584,7 +9918,7 @@ function __eval(source, include) {
 						Children_.select(this, this.compos);
 					}
 		
-					if (fn_isFunction(this.onRenderEnd)){
+					if (is_Function(this.onRenderEnd)){
 						this.onRenderEnd(elements, model, ctx, container);
 					}
 				},
@@ -9668,7 +10002,7 @@ function __eval(source, include) {
 		
 					if (this.events == null) {
 						this.events = [x];
-					} else if (arr_isArray(this.events)) {
+					} else if (is_Array(this.events)) {
 						this.events.push(x);
 					} else {
 						this.events = [x, this.events];
@@ -9739,17 +10073,22 @@ function __eval(source, include) {
 			mask.registerAttrHandler('x-signal', 'client', function(node, attrValue, model, cntx, element, controller) {
 		
 				var arr = attrValue.split(';'),
-					signals = '';
-				for (var i = 0, x, length = arr.length; i < length; i++) {
+					signals = '',
+					imax = arr.length,
+					i = -1,
+					x;
+				
+				while ( ++i < imax ) {
 					x = arr[i].trim();
-					if (x === '') {
+					if (x === '') 
 						continue;
-					}
+					
 		
-					var event = x.substring(0, x.indexOf(':')),
-						handler = x.substring(x.indexOf(':') + 1).trim(),
-						Handler = _createListener(controller, handler);
-		
+					var i_colon = x.indexOf(':'),
+						event = x.substring(0, i_colon),
+						handler = x.substring(i_colon + 1).trim(),
+						Handler = _createListener(controller, handler)
+						;
 		
 					// if DEBUG
 					!event && console.error('Signal: event type is not set', attrValue);
@@ -9766,9 +10105,8 @@ function __eval(source, include) {
 					// endif
 				}
 		
-				if (signals !== '') {
+				if (signals !== '') 
 					element.setAttribute('data-signals', signals);
-				}
 		
 			});
 		
@@ -9969,6 +10307,7 @@ function __eval(source, include) {
 					enable: function(controller, slot) {
 						_toggle_all(controller, slot, true);
 					},
+					
 					disable: function(controller, slot) {
 						_toggle_all(controller, slot, false);
 					}
