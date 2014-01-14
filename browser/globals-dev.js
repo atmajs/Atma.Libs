@@ -1,43 +1,62 @@
 (function(globals){
 	
 	
-	// source ../src/umd.js
+	// source /src/license.txt
+/*!
+ * ClassJS v1.0.44
+ * Part of the Atma.js Project
+ * http://atmajs.com/
+ *
+ * MIT license
+ * http://opensource.org/licenses/MIT
+ *
+ * (c) 2012, 2014 Atma.js and other contributors
+ */
+// end:source /src/license.txt
+// source /src/umd.js
 (function(root, factory){
 	"use strict";
 
-	var _isCommonJS = false,
-		_global,
-		_exports;
-	
-	if (typeof exports !== 'undefined' && (root == null || root === exports || root === global)){
-		// raw nodejs module
-        _global = global;
-		_isCommonJS = true;
-    }
-	
-	if (_global == null) {
-		_global = typeof window === 'undefined'
+	var _global = typeof window === 'undefined' || window.navigator == null
 			? global
 			: window
-			;
-	}
+			,
+		_isCommonJS = false
+		_exports
+		;
+
+    
+	if (typeof exports !== 'undefined' && (root == null || root === exports || root === _global)){
+		// raw commonjs module
+		_isCommonJS = true;
+        root = exports;
+    }
 	
-	if (_exports == null) {
-		_exports = root || _global;
-	}
+    _exports = root || _global;
+    
+
+    function construct(){
+
+        return factory(_global, _exports);
+    };
+
+    
+    if (typeof define === 'function' && define.amd) {
+        return define(construct);
+    }
+    
+	// Browser OR Node
+    construct();
 	
-	
-	factory(_global, _exports);
-	
-	if (_isCommonJS) {
+	if (_isCommonJS) 
 		module.exports = _exports.Class;
-	}
+	
 	
 }(this, function(global, exports){
 	"use strict";
-// end:source ../src/umd.js
+// end:source /src/umd.js
 	
-	// source ../src/vars.js
+	// source /src/vars.js
 	var _Array_slice = Array.prototype.slice,
 		_Array_sort = Array.prototype.sort,
 		
@@ -47,9 +66,9 @@
 		
 	
 	var str_CLASS_IDENTITY = '__$class__';
-	// end:source ../src/vars.js
+	// end:source /src/vars.js
 	
-	// source ../src/util/is.js
+	// source /src/util/is.js
 	function is_Function(x) {
 		return typeof x === 'function';
 	}
@@ -85,8 +104,8 @@
 	function is_NullOrGlobal(ctx){
 		return ctx === void 0 || ctx === global;
 	}
-	// end:source ../src/util/is.js
-	// source ../src/util/array.js
+	// end:source /src/util/is.js
+	// source /src/util/array.js
 	function arr_each(array, callback) {
 		
 		if (arr_isArray(array)) {
@@ -120,8 +139,8 @@
 			return array.length !== void 0 && typeof array.slice === 'function';
 		};
 	}
-	// end:source ../src/util/array.js
-	// source ../src/util/class.js
+	// end:source /src/util/array.js
+	// source /src/util/class.js
 	var class_register,
 		class_get,
 		
@@ -235,8 +254,8 @@
 		}
 		
 	}());
-	// end:source ../src/util/class.js
-	// source ../src/util/proto.js
+	// end:source /src/util/class.js
+	// source /src/util/proto.js
 	var class_inherit,
 		class_inheritStatics,
 		class_extendProtoObjects
@@ -330,8 +349,11 @@
 			if (typeof source === 'function') 
 				source = source.prototype;
 			
-			for (var key in source) {
-				proto[key] = source[key];
+			var key, val;
+			for (key in source) {
+				val = source[key];
+				if (val != null) 
+					proto[key] = val;
 			}
 		}
 		
@@ -431,8 +453,8 @@
 		}
 		
 	}());
-	// end:source ../src/util/proto.js
-	// source ../src/util/json.js
+	// end:source /src/util/proto.js
+	// source /src/util/json.js
 	// Create from Complex Class Instance a lightweight json object
 	
 	var json_proto_toJSON,
@@ -523,8 +545,8 @@
 		};
 		
 	}());
-	// end:source ../src/util/json.js
-	// source ../src/util/object.js
+	// end:source /src/util/json.js
+	// source /src/util/object.js
 	
 	var obj_inherit,
 		obj_getProperty,
@@ -621,8 +643,8 @@
 		};
 		
 	}());
-	// end:source ../src/util/object.js
-	// source ../src/util/patchObject.js
+	// end:source /src/util/object.js
+	// source /src/util/patchObject.js
 	var obj_patch;
 	
 	(function(){
@@ -735,8 +757,8 @@
 		};
 		
 	}());
-	// end:source ../src/util/patchObject.js
-	// source ../src/util/function.js
+	// end:source /src/util/patchObject.js
+	// source /src/util/function.js
 	function fn_proxy(fn, ctx) {
 	
 		return function() {
@@ -794,10 +816,10 @@
 	}
 	
 	function fn_doNothing(){}
-	// end:source ../src/util/function.js
+	// end:source /src/util/function.js
 	
 	
-	// source ../src/xhr/XHR.js
+	// source /src/xhr/XHR.js
 	var XHR = {};
 	
 	(function(){
@@ -1086,9 +1108,9 @@
 	});
 	
 	
-	// end:source ../src/xhr/XHR.js
+	// end:source /src/xhr/XHR.js
 	
-	// source ../src/business/Serializable.js
+	// source /src/business/Serializable.js
 	function Serializable(data) {
 		
 		if (this === Class || this == null || this === global) {
@@ -1186,8 +1208,8 @@
 	
 	
 	
-	// end:source ../src/business/Serializable.js
-	// source ../src/business/Route.js
+	// end:source /src/business/Serializable.js
+	// source /src/business/Route.js
 	/**
 	 *	var route = new Route('/user/:id');
 	 *
@@ -1330,8 +1352,8 @@
 		
 		return Route;
 	}());
-	// end:source ../src/business/Route.js
-	// source ../src/business/Deferred.js
+	// end:source /src/business/Route.js
+	// source /src/business/Deferred.js
 	function Deferred(){}
 	
 	Deferred.prototype = {
@@ -1448,8 +1470,8 @@
 		},
 	};
 	
-	// end:source ../src/business/Deferred.js
-	// source ../src/business/EventEmitter.js
+	// end:source /src/business/Deferred.js
+	// source /src/business/EventEmitter.js
 	var EventEmitter = (function(){
 	 
 		function Emitter() {
@@ -1541,8 +1563,8 @@
 	    
 	}());
 	
-	// end:source ../src/business/EventEmitter.js
-	// source ../src/business/Validation.js
+	// end:source /src/business/EventEmitter.js
+	// source /src/business/Validation.js
 	var Validation = (function(){
 		
 		
@@ -1618,11 +1640,11 @@
 		};
 		
 	}());
-	// end:source ../src/business/Validation.js
+	// end:source /src/business/Validation.js
 
 
 
-	// source ../src/Class.js
+	// source /src/Class.js
 	var Class = function(mix) {
 		
 		var namespace,
@@ -1784,9 +1806,9 @@
 	
 		return _class;
 	};
-	// end:source ../src/Class.js
+	// end:source /src/Class.js
 	
-	// source ../src/business/Await.js
+	// source /src/business/Await.js
 	var Await = (function(){
 		
 		return Class({
@@ -1916,8 +1938,8 @@
 		}
 	
 	}());
-	// end:source ../src/business/Await.js
-	// source ../src/store/Store.js
+	// end:source /src/business/Await.js
+	// source /src/store/Store.js
 	var StoreProto = {
 		
 		
@@ -1935,8 +1957,8 @@
 			}
 		}
 	};
-	// end:source ../src/store/Store.js
-	// source ../src/store/Remote.js
+	// end:source /src/store/Store.js
+	// source /src/store/Remote.js
 	Class.Remote = (function(){
 	
 		var str_CONTENT_TYPE = 'content-type',
@@ -2077,8 +2099,8 @@
 		};
 		
 	}());
-	// end:source ../src/store/Remote.js
-	// source ../src/store/LocalStore.js
+	// end:source /src/store/Remote.js
+	// source /src/store/LocalStore.js
 	Class.LocalStore = (function(){
 		
 		var LocalStore = function(route){
@@ -2191,9 +2213,9 @@
 		return Constructor;
 	
 	}());
-	// end:source ../src/store/LocalStore.js
+	// end:source /src/store/LocalStore.js
 
-	// source ../src/Class.Static.js
+	// source /src/Class.Static.js
 	/**
 	 * Can be used in Constructor for binding class's functions to class's context
 	 * for using, for example, as callbacks
@@ -2245,9 +2267,9 @@
 	Class.stringify = class_stringify;
 	Class.parse = class_parse;
 	Class.patch = class_patch;
-	// end:source ../src/Class.Static.js
+	// end:source /src/Class.Static.js
 	
-	// source ../src/collection/Collection.js
+	// source /src/collection/Collection.js
 	Class.Collection = (function(){
 		
 		// source ArrayProto.js
@@ -2616,9 +2638,9 @@
 		
 		return Collection;
 	}());
-	// end:source ../src/collection/Collection.js
+	// end:source /src/collection/Collection.js
 	
-	// source ../src/fn/fn.js
+	// source /src/fn/fn.js
 	(function(){
 		
 		// source memoize.js
@@ -2731,7 +2753,7 @@
 		};
 		
 	}());
-	// end:source ../src/fn/fn.js
+	// end:source /src/fn/fn.js
 	
 	exports.Class = Class;
 	
@@ -4563,22 +4585,34 @@ function __eval(source, include) {
 	*/
 	
 }
-// end:source ../src/global-vars.js// source ../src/umd-head.js
+// end:source ../src/global-vars.js// source /src/license.txt
+/*!
+ * MaskJS v0.8.12
+ * Part of the Atma.js Project
+ * http://atmajs.com/
+ *
+ * MIT license
+ * http://opensource.org/licenses/MIT
+ *
+ * (c) 2012, 2014 Atma.js and other contributors
+ */
+// end:source /src/license.txt
+// source /src/umd-head.js
 (function (root, factory) {
     'use strict';
     
-    var _global, _exports, _document;
+    var _global = typeof window === 'undefined' || window.navigator == null
+		? global
+		: window,
+		
+		_exports, _document;
 
     
-	if (typeof exports !== 'undefined' && (root == null || root === exports || root === global)){
-		// raw nodejs module
+	if (typeof exports !== 'undefined' && (root == null || root === exports || root === _global)){
+		// raw commonjs module
         root = exports;
-    	_global = global;
     }
 	
-	if (_global == null) {
-		_global = typeof window === 'undefined' || window.document == null ? global : window;
-	}
     
     _document = _global.document;
 	_exports = root || _global;
@@ -4586,7 +4620,7 @@ function __eval(source, include) {
 
     function construct(){
 
-        factory(_global, _exports, _document);
+        return factory(_global, _exports, _document);
     };
 
     
@@ -4595,16 +4629,16 @@ function __eval(source, include) {
     }
     
 	// Browser OR Node
-    construct();
+    return construct();
 
 }(this, function (global, exports, document) {
     'use strict';
 
-// end:source ../src/umd-head.js
+// end:source /src/umd-head.js
 
 
 
-	// source ../src/scope-vars.js
+	// source /src/scope-vars.js
 	var regexpWhitespace = /\s/g,
 		regexpEscapedChar = {
 			"'": /\\'/g,
@@ -4624,19 +4658,15 @@ function __eval(source, include) {
 			allowCache: true
 		};
 	
-	// end:source ../src/scope-vars.js
-	// source ../src/util/util.js
+	// end:source /src/scope-vars.js
+	// source /src/util/util.js
 	function util_extend(target, source) {
 	
 		if (target == null) {
 			target = {};
 		}
 		for (var key in source) {
-			// if !SAFE
-			if (hasOwnProp.call(source, key) === false) {
-				continue;
-			}
-			// endif
+	
 			target[key] = source[key];
 		}
 		return target;
@@ -4793,8 +4823,8 @@ function __eval(source, include) {
 		return array == null ? string : array;
 	}
 	
-	// end:source ../src/util/util.js
-    // source ../src/util/attr.js
+	// end:source /src/util/util.js
+    // source /src/util/attr.js
     function attr_extend(target, source) {
         if (target == null) 
             target = {};
@@ -4814,8 +4844,8 @@ function __eval(source, include) {
         
         return target;
     }
-    // end:source ../src/util/attr.js
-	// source ../src/util/template.js
+    // end:source /src/util/attr.js
+	// source /src/util/template.js
 	function Template(template) {
 		this.template = template;
 		this.index = 0;
@@ -4887,8 +4917,8 @@ function __eval(source, include) {
 	
 	};
 	
-	// end:source ../src/util/template.js
-	// source ../src/util/string.js
+	// end:source /src/util/template.js
+	// source /src/util/string.js
 	function str_trim(str) {
 	
 		var length = str.length,
@@ -4917,13 +4947,13 @@ function __eval(source, include) {
 			? str
 			: str.substring(i, j + 1);
 	}
-	// end:source ../src/util/string.js
-	// source ../src/util/function.js
+	// end:source /src/util/string.js
+	// source /src/util/function.js
 	function fn_isFunction(x) {
 		return typeof x === 'function';
 	}
-	// end:source ../src/util/function.js
-	// source ../src/util/condition.js
+	// end:source /src/util/function.js
+	// source /src/util/condition.js
 	/**
 	 *	ConditionUtil
 	 *
@@ -5244,8 +5274,8 @@ function __eval(source, include) {
 		};
 	}());
 	
-	// end:source ../src/util/condition.js
-	// source ../src/expression/exports.js
+	// end:source /src/util/condition.js
+	// source /src/expression/exports.js
 	/**
 	 * ExpressionUtil
 	 *
@@ -6419,8 +6449,8 @@ function __eval(source, include) {
 	
 	}());
 	
-	// end:source ../src/expression/exports.js
-	// source ../src/custom.js
+	// end:source /src/expression/exports.js
+	// source /src/custom.js
 	var custom_Utils = {
 		condition: ConditionUtil.condition,
 		expression: function(value, model, cntx, element, controller){
@@ -6469,8 +6499,8 @@ function __eval(source, include) {
 		// use on server to define reserved tags and its meta info
 		custom_Tags_defs = {};
 	
-	// end:source ../src/custom.js
-	// source ../src/dom/dom.js
+	// end:source /src/custom.js
+	// source /src/dom/dom.js
 	
 	var Dom = {
 		NODE: 1,
@@ -6545,8 +6575,8 @@ function __eval(source, include) {
 		modelRef: null
 	};
 	
-	// end:source ../src/dom/dom.js
-	// source ../src/parse/parser.js
+	// end:source /src/dom/dom.js
+	// source /src/parse/parser.js
 	var Parser = (function(Node, TextNode, Fragment, Component) {
 	
 		var interp_START = '~',
@@ -7072,8 +7102,8 @@ function __eval(source, include) {
 		};
 	}(Node, TextNode, Fragment, Component));
 	
-	// end:source ../src/parse/parser.js
-	// source ../src/build/builder.dom.js
+	// end:source /src/parse/parser.js
+	// source /src/build/builder.dom.js
 	var _controllerID = 0;
 	
 	var builder_build = (function(custom_Attributes, Component){
@@ -7560,8 +7590,8 @@ function __eval(source, include) {
 		
 		
 	}(custom_Attributes, Component));
-	// end:source ../src/build/builder.dom.js
-	// source ../src/mask.js
+	// end:source /src/build/builder.dom.js
+	// source /src/mask.js
 	
 	/**
 	 *  mask
@@ -7748,14 +7778,17 @@ function __eval(source, include) {
 			},
 			
 			registerUtility: function (utilityName, fn) {
+				// if DEBUG
 				console.warn('@registerUtility - deprecated - use registerUtil(utilName, mix)', utilityName);
-				
+				// endif
 				this.registerUtility = this.registerUtil;
 				this.registerUtility(utilityName, fn);
 			},
 			
 			getUtility: function(util){
+				// if DEBUG
 				console.warn('@getUtility - deprecated - use getUtil(utilName)', util);
+				// endif
 				this.getUtility = this.getUtil;
 				
 				return this.getUtility();
@@ -7878,11 +7911,11 @@ function __eval(source, include) {
 	 **/
 	Mask.renderDom = Mask.render;
 	
-	// end:source ../src/mask.js
+	// end:source /src/mask.js
 
 
 
-	// source ../src/formatter/stringify.lib.js
+	// source /src/formatter/stringify.lib.js
 	(function(mask){
 	
 	
@@ -8084,11 +8117,11 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
-	// end:source ../src/formatter/stringify.lib.js
+	// end:source /src/formatter/stringify.lib.js
 
 	/* Handlers */
 
-	// source ../src/handlers/sys.js
+	// source /src/handlers/sys.js
 	(function(mask) {
 	
 		function Sys() {
@@ -8199,14 +8232,14 @@ function __eval(source, include) {
 				;
 			
 			compo.nodes = null;
-			// - deprecate - use special accessors to reach compos
-			//if (array == null) {
-			//	var parent = compo;
-			//	while (parent != null && array == null) {
-			//		array = util_getProperty(parent, prop);
-			//		parent = parent.parent;
-			//	}
-			//}
+			//// - deprecate - use special accessors to reach compos
+			////if (array == null) {
+			////	var parent = compo;
+			////	while (parent != null && array == null) {
+			////		array = util_getProperty(parent, prop);
+			////		parent = parent.parent;
+			////	}
+			////}
 			
 			if (array == null)
 				return;
@@ -8308,8 +8341,8 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
-	// end:source ../src/handlers/sys.js
-	// source ../src/handlers/utils.js
+	// end:source /src/handlers/sys.js
+	// source /src/handlers/utils.js
 	(function(mask) {
 	
 		/**
@@ -8416,21 +8449,57 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
-	// end:source ../src/handlers/utils.js
+	// end:source /src/handlers/utils.js
 
-	// source ../src/libs/compo.js
+	// source /src/libs/compo.js
 	
 	var Compo = exports.Compo = (function(mask){
 		'use strict';
 		// source ../src/scope-vars.js
-		var domLib = global.jQuery || global.Zepto || global.$,
-			Dom = mask.Dom,
+		var Dom = mask.Dom,
+		
 			_array_slice = Array.prototype.slice,
-			
 			_mask_ensureTmplFnOrig = mask.Utils.ensureTmplFn,
-			_Class
 			
+			domLib,
+			Class	
 			;
+		
+		(function(){
+			
+			var scope = [global.atma, exports, global];
+			
+			function resolve() {
+				
+				var args = arguments,
+					j = scope.length,
+					
+					obj, r, i;
+				
+				while (--j > -1) {
+					obj = scope[j];
+					if (obj == null) 
+						continue;
+					
+					i = args.length;
+					while (--i > -1){
+						r = obj[args[i]];
+						if (r != null) 
+							return r;
+					}
+				}
+			}
+			
+			domLib = resolve('jQuery', 'Zepto', '$');
+			Class = resolve('Class');
+		}());
+		
+		// if DEBUG
+		if (document != null && domLib == null) {
+			
+			console.warn('jQuery-Zepto-Kimbo etc. was not loaded before MaskJS:Compo, please use Compo.config.setDOMLibrary to define dom engine');
+		}
+		// endif
 		
 		function _mask_ensureTmplFn(value) {
 			return typeof value !== 'string'
@@ -8438,16 +8507,6 @@ function __eval(source, include) {
 				: _mask_ensureTmplFnOrig(value)
 				;
 		}
-		
-		if (document != null && domLib == null) {
-			console.warn('jQuery-Zepto-Kimbo etc. was not loaded before compo.js, please use Compo.config.setDOMLibrary to define dom engine');
-		}
-		
-		_Class = global.Class;
-		
-		if (_Class == null && typeof exports !== 'undefined') 
-			_Class = exports.Class;
-		
 		// end:source ../src/scope-vars.js
 	
 		// source ../src/util/is.js
@@ -9571,7 +9630,7 @@ function __eval(source, include) {
 						classProto.Extends = [Proto, Ext];
 					}
 					
-					return _Class(classProto);
+					return Class(classProto);
 				},
 			
 				/* obsolete */
@@ -10507,8 +10566,8 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
-	// end:source ../src/libs/compo.js
-	// source ../src/libs/jmask.js
+	// end:source /src/libs/compo.js
+	// source /src/libs/jmask.js
 	
 	var jmask = exports.jmask = (function(mask){
 		'use strict';
@@ -11594,8 +11653,8 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
-	// end:source ../src/libs/jmask.js
-	// source ../src/libs/mask.binding.js
+	// end:source /src/libs/jmask.js
+	// source /src/libs/mask.binding.js
 	
 	(function(mask, Compo){
 		'use strict'
@@ -14208,13 +14267,13 @@ function __eval(source, include) {
 	
 	}(Mask, Compo));
 	
-	// end:source ../src/libs/mask.binding.js
+	// end:source /src/libs/mask.binding.js
 
 
 	Mask.Compo = Compo;
 	Mask.jmask = jmask;
 
-	exports.mask = Mask;
+	return (exports.mask = Mask);
 }));
 /* jshint -W053 */
 

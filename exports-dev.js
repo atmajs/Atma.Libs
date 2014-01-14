@@ -1,43 +1,62 @@
 (function(globals){
 	
 	
-	// source ../src/umd.js
+	// source /src/license.txt
+/*!
+ * ClassJS v1.0.44
+ * Part of the Atma.js Project
+ * http://atmajs.com/
+ *
+ * MIT license
+ * http://opensource.org/licenses/MIT
+ *
+ * (c) 2012, 2014 Atma.js and other contributors
+ */
+// end:source /src/license.txt
+// source /src/umd.js
 (function(root, factory){
 	"use strict";
 
-	var _isCommonJS = false,
-		_global,
-		_exports;
-	
-	if (typeof exports !== 'undefined' && (root == null || root === exports || root === global)){
-		// raw nodejs module
-        _global = global;
-		_isCommonJS = true;
-    }
-	
-	if (_global == null) {
-		_global = typeof window === 'undefined'
+	var _global = typeof window === 'undefined' || window.navigator == null
 			? global
 			: window
-			;
-	}
+			,
+		_isCommonJS = false
+		_exports
+		;
+
+    
+	if (typeof exports !== 'undefined' && (root == null || root === exports || root === _global)){
+		// raw commonjs module
+		_isCommonJS = true;
+        root = exports;
+    }
 	
-	if (_exports == null) {
-		_exports = root || _global;
-	}
+    _exports = root || _global;
+    
+
+    function construct(){
+
+        return factory(_global, _exports);
+    };
+
+    
+    if (typeof define === 'function' && define.amd) {
+        return define(construct);
+    }
+    
+	// Browser OR Node
+    construct();
 	
-	
-	factory(_global, _exports);
-	
-	if (_isCommonJS) {
+	if (_isCommonJS) 
 		module.exports = _exports.Class;
-	}
+	
 	
 }(this, function(global, exports){
 	"use strict";
-// end:source ../src/umd.js
+// end:source /src/umd.js
 	
-	// source ../src/vars.js
+	// source /src/vars.js
 	var _Array_slice = Array.prototype.slice,
 		_Array_sort = Array.prototype.sort,
 		
@@ -47,8 +66,8 @@
 		
 	
 	var str_CLASS_IDENTITY = '__$class__';
-	// end:source ../src/vars.js
-	// source ../src/util/is.js
+	// end:source /src/vars.js
+	// source /src/util/is.js
 	function is_Function(x) {
 		return typeof x === 'function';
 	}
@@ -84,8 +103,8 @@
 	function is_NullOrGlobal(ctx){
 		return ctx === void 0 || ctx === global;
 	}
-	// end:source ../src/util/is.js
-	// source ../src/util/array.js
+	// end:source /src/util/is.js
+	// source /src/util/array.js
 	function arr_each(array, callback) {
 		
 		if (arr_isArray(array)) {
@@ -119,8 +138,8 @@
 			return array.length !== void 0 && typeof array.slice === 'function';
 		};
 	}
-	// end:source ../src/util/array.js
-	// source ../src/util/class.js
+	// end:source /src/util/array.js
+	// source /src/util/class.js
 	var class_register,
 		class_get,
 		
@@ -234,8 +253,8 @@
 		}
 		
 	}());
-	// end:source ../src/util/class.js
-	// source ../src/util/proto.js
+	// end:source /src/util/class.js
+	// source /src/util/proto.js
 	var class_inherit,
 		class_inheritStatics,
 		class_extendProtoObjects
@@ -329,8 +348,11 @@
 			if (typeof source === 'function') 
 				source = source.prototype;
 			
-			for (var key in source) {
-				proto[key] = source[key];
+			var key, val;
+			for (key in source) {
+				val = source[key];
+				if (val != null) 
+					proto[key] = val;
 			}
 		}
 		
@@ -430,8 +452,8 @@
 		}
 		
 	}());
-	// end:source ../src/util/proto.js
-	// source ../src/util/json.js
+	// end:source /src/util/proto.js
+	// source /src/util/json.js
 	// Create from Complex Class Instance a lightweight json object
 	
 	var json_proto_toJSON,
@@ -522,8 +544,8 @@
 		};
 		
 	}());
-	// end:source ../src/util/json.js
-	// source ../src/util/object.js
+	// end:source /src/util/json.js
+	// source /src/util/object.js
 	
 	var obj_inherit,
 		obj_getProperty,
@@ -620,8 +642,8 @@
 		};
 		
 	}());
-	// end:source ../src/util/object.js
-	// source ../src/util/patchObject.js
+	// end:source /src/util/object.js
+	// source /src/util/patchObject.js
 	var obj_patch;
 	
 	(function(){
@@ -734,8 +756,8 @@
 		};
 		
 	}());
-	// end:source ../src/util/patchObject.js
-	// source ../src/util/function.js
+	// end:source /src/util/patchObject.js
+	// source /src/util/function.js
 	function fn_proxy(fn, ctx) {
 	
 		return function() {
@@ -793,10 +815,10 @@
 	}
 	
 	function fn_doNothing(){}
-	// end:source ../src/util/function.js
+	// end:source /src/util/function.js
 	
 	
-	// source ../src/xhr/XHR.js
+	// source /src/xhr/XHR.js
 	var XHR = {};
 	
 	(function(){
@@ -1085,9 +1107,9 @@
 	});
 	
 	
-	// end:source ../src/xhr/XHR.js
+	// end:source /src/xhr/XHR.js
 	
-	// source ../src/business/Serializable.js
+	// source /src/business/Serializable.js
 	function Serializable(data) {
 		
 		if (this === Class || this == null || this === global) {
@@ -1185,8 +1207,8 @@
 	
 	
 	
-	// end:source ../src/business/Serializable.js
-	// source ../src/business/Route.js
+	// end:source /src/business/Serializable.js
+	// source /src/business/Route.js
 	/**
 	 *	var route = new Route('/user/:id');
 	 *
@@ -1329,8 +1351,8 @@
 		
 		return Route;
 	}());
-	// end:source ../src/business/Route.js
-	// source ../src/business/Deferred.js
+	// end:source /src/business/Route.js
+	// source /src/business/Deferred.js
 	function Deferred(){}
 	
 	Deferred.prototype = {
@@ -1447,8 +1469,8 @@
 		},
 	};
 	
-	// end:source ../src/business/Deferred.js
-	// source ../src/business/EventEmitter.js
+	// end:source /src/business/Deferred.js
+	// source /src/business/EventEmitter.js
 	var EventEmitter = (function(){
 	 
 		function Emitter() {
@@ -1540,8 +1562,8 @@
 	    
 	}());
 	
-	// end:source ../src/business/EventEmitter.js
-	// source ../src/business/Validation.js
+	// end:source /src/business/EventEmitter.js
+	// source /src/business/Validation.js
 	var Validation = (function(){
 		
 		
@@ -1617,9 +1639,9 @@
 		};
 		
 	}());
-	// end:source ../src/business/Validation.js
+	// end:source /src/business/Validation.js
 	
-	// source ../src/Class.js
+	// source /src/Class.js
 	var Class = function(mix) {
 		
 		var namespace,
@@ -1781,9 +1803,9 @@
 	
 		return _class;
 	};
-	// end:source ../src/Class.js
+	// end:source /src/Class.js
 	
-	// source ../src/business/Await.js
+	// source /src/business/Await.js
 	var Await = (function(){
 		
 		return Class({
@@ -1913,8 +1935,8 @@
 		}
 	
 	}());
-	// end:source ../src/business/Await.js
-	// source ../src/store/Store.js
+	// end:source /src/business/Await.js
+	// source /src/store/Store.js
 	var StoreProto = {
 		
 		
@@ -1932,8 +1954,8 @@
 			}
 		}
 	};
-	// end:source ../src/store/Store.js
-	// source ../src/store/Remote.js
+	// end:source /src/store/Store.js
+	// source /src/store/Remote.js
 	Class.Remote = (function(){
 	
 		var str_CONTENT_TYPE = 'content-type',
@@ -2074,8 +2096,8 @@
 		};
 		
 	}());
-	// end:source ../src/store/Remote.js
-	// source ../src/store/mongo/MongoStore.js
+	// end:source /src/store/Remote.js
+	// source /src/store/mongo/MongoStore.js
 	
 	Class.MongoStore = (function(){
 	    
@@ -2887,9 +2909,9 @@
 	    };
 	}());
 	
-	// end:source ../src/store/mongo/MongoStore.js
+	// end:source /src/store/mongo/MongoStore.js
 
-	// source ../src/Class.Static.js
+	// source /src/Class.Static.js
 	/**
 	 * Can be used in Constructor for binding class's functions to class's context
 	 * for using, for example, as callbacks
@@ -2941,9 +2963,9 @@
 	Class.stringify = class_stringify;
 	Class.parse = class_parse;
 	Class.patch = class_patch;
-	// end:source ../src/Class.Static.js
+	// end:source /src/Class.Static.js
 	
-	// source ../src/collection/Collection.js
+	// source /src/collection/Collection.js
 	Class.Collection = (function(){
 		
 		// source ArrayProto.js
@@ -3312,9 +3334,9 @@
 		
 		return Collection;
 	}());
-	// end:source ../src/collection/Collection.js
+	// end:source /src/collection/Collection.js
 	
-	// source ../src/fn/fn.js
+	// source /src/fn/fn.js
 	(function(){
 		
 		// source memoize.js
@@ -3427,7 +3449,7 @@
 		};
 		
 	}());
-	// end:source ../src/fn/fn.js
+	// end:source /src/fn/fn.js
 	
 	exports.Class = Class;
 	
