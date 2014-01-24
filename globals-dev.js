@@ -11966,7 +11966,7 @@ function __eval(source, include) {
 		// source html-dom/lib.js
 		
 		
-		util_extend(Dom, {
+		obj_extend(Dom, {
 			DOCTYPE: 11
 		});
 		
@@ -12755,7 +12755,7 @@ function __eval(source, include) {
 			
 				
 		
-			attr = util_extend(compo.attr, node.attr);
+			attr = obj_extend(compo.attr, node.attr);
 			
 			if (attr['x-mode'] !== void 0) 
 				compo.mode = attr['x-mode'] ;
