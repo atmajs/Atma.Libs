@@ -13505,393 +13505,398 @@ function __eval(source, include) {
 	
 	// end:source ../src/builder.js
 	// source ../src/mock/mock.js
+	(function(){
 	
-	// source Meta.js
-	var Meta = (function(){
-		
-		var seperator_CODE = 30,
-			seperator_CHAR = String.fromCharCode(seperator_CODE);
-		
-		function val_stringify(mix) {
-			if (typeof mix !== 'string') 
-				return val_stringify(JSON.stringify(mix));
+		// source Meta.js
+		var Meta = (function(){
 			
-			return mix;
-		}
-		
-		var parser_Index,
-			parser_Length,
-			parser_String;
+			var seperator_CODE = 30,
+				seperator_CHAR = String.fromCharCode(seperator_CODE);
 			
-		var tag_OPEN = '<!--',
-			tag_CLOSE = '-->';
+			function val_stringify(mix) {
+				if (typeof mix !== 'string') 
+					return val_stringify(JSON.stringify(mix));
 				
-			
-		function parse_ID(json){
-			
-			if (parser_String[parser_Index] !== '#') {
-				return;
-			}
-			parser_Index++;
-			
-			var end = parser_String.indexOf(seperator_CHAR);
-			
-			if (end === -1) {
-				end = parser_String.length;
+				return mix;
 			}
 			
-			json.ID = parseInt(parser_String.substring(parser_Index, end), 10);
-			parser_Index = end;
-		}
-		
-		function parse_property(json) {
-			if (parser_Index > parser_Length - 5) 
-				return false;
-			
-			
-			if (parser_String[parser_Index++] !== seperator_CHAR || parser_String[parser_Index++] !== ' '){
-				parser_Index = -1;
-				return false;
-			}
-			
-			var index = parser_Index,
-				str = parser_String;
-			
-			var colon = str.indexOf(':', index),
-				key = str.substring(index, colon);
+			var parser_Index,
+				parser_Length,
+				parser_String;
 				
-			var end = str.indexOf(seperator_CHAR + ' ', colon),
-				value = str.substring(colon + 1, end);
+			var tag_OPEN = '<!--',
+				tag_CLOSE = '-->';
+					
 				
-			
-			if (key === 'attr') {
-				value = JSON.parse(value);
-			}
-			
-			json[key] = value;
-			
-			parser_Index = end;
-			return true;
-		}
-		
-		
-		return {
-			stringify: function(json, info){
+			function parse_ID(json){
 				
-				switch (info.mode) {
-					case 'server':
-					case 'server:all':
-						return '';
+				if (parser_String[parser_Index] !== '#') {
+					return;
+				}
+				parser_Index++;
+				
+				var end = parser_String.indexOf(seperator_CHAR);
+				
+				if (end === -1) {
+					end = parser_String.length;
 				}
 				
-				
-				var	type = info.type,
-					isSingle = info.single,
-				
-					string = tag_OPEN + type;
-					
-					if (json.ID) 
-						string += '#' + json.ID;
-					
-					string += seperator_CHAR + ' ';
-				
-				for (var key in json) {
-					if (key === 'ID') 
-						continue;
-					
-					if (json[key] == null) 
-						continue;
-					
-					
-					string += key
-						+ ':'
-						+ val_stringify(json[key])
-						+ seperator_CHAR
-						+ ' ';
-				}
-				
-				if (isSingle)
-					string += '/';
-					
-				string += tag_CLOSE;
-				
-				return string;
-			},
-			
-			close: function(json, info){
-				switch (info.mode) {
-					case 'server':
-					case 'server:all':
-						return '';
-				}
-				
-				
-				return tag_OPEN
-					+'/'
-					+ info.type
-					+ (json.ID ? '#' + json.ID : '')
-					+ tag_CLOSE;
-			},
-			
-			parse: function (string){
-				parser_Index = 0;
-				parser_String = string;
-				parser_Length = string.length;
-				
-				
-				var json = {},
-					c = string[parser_Index];
-					
-				if (c === '/') {
-					json.end = true;
-					parser_Index++;
-				}
-				
-				json.type = string[parser_Index++];
-				
-				
-				parse_ID(json);
-				
-				while (parse_property(json));
-				
-				if (parser_Index === -1) 
-					return {};
-				
-				
-				if (string[parser_Length - 1] === '/') 
-					json.single = true;
-				
-				return json;
+				json.ID = parseInt(parser_String.substring(parser_Index, end), 10);
+				parser_Index = end;
 			}
-		};
-	}());
-	// end:source Meta.js
-	// source attr-handler.js
-	var mock_AttrHandler = (function() {
-		
-		function Attr(attrName, attrValue, ID) {
-			this.meta = {
-				ID : ID,
-				name : attrName,
-				value : attrValue
+			
+			function parse_property(json) {
+				if (parser_Index > parser_Length - 5) 
+					return false;
+				
+				
+				if (parser_String[parser_Index++] !== seperator_CHAR || parser_String[parser_Index++] !== ' '){
+					parser_Index = -1;
+					return false;
+				}
+				
+				var index = parser_Index,
+					str = parser_String;
+				
+				var colon = str.indexOf(':', index),
+					key = str.substring(index, colon);
+					
+				var end = str.indexOf(seperator_CHAR + ' ', colon),
+					value = str.substring(colon + 1, end);
+					
+				
+				if (key === 'attr') {
+					value = JSON.parse(value);
+				}
+				
+				json[key] = value;
+				
+				parser_Index = end;
+				return true;
+			}
+			
+			
+			return {
+				stringify: function(json, info){
+					
+					switch (info.mode) {
+						case 'server':
+						case 'server:all':
+							return '';
+					}
+					
+					
+					var	type = info.type,
+						isSingle = info.single,
+					
+						string = tag_OPEN + type;
+						
+						if (json.ID) 
+							string += '#' + json.ID;
+						
+						string += seperator_CHAR + ' ';
+					
+					for (var key in json) {
+						if (key === 'ID') 
+							continue;
+						
+						if (json[key] == null) 
+							continue;
+						
+						
+						string += key
+							+ ':'
+							+ val_stringify(json[key])
+							+ seperator_CHAR
+							+ ' ';
+					}
+					
+					if (isSingle)
+						string += '/';
+						
+					string += tag_CLOSE;
+					
+					return string;
+				},
+				
+				close: function(json, info){
+					switch (info.mode) {
+						case 'server':
+						case 'server:all':
+							return '';
+					}
+					
+					
+					return tag_OPEN
+						+'/'
+						+ info.type
+						+ (json.ID ? '#' + json.ID : '')
+						+ tag_CLOSE;
+				},
+				
+				parse: function (string){
+					parser_Index = 0;
+					parser_String = string;
+					parser_Length = string.length;
+					
+					
+					var json = {},
+						c = string[parser_Index];
+						
+					if (c === '/') {
+						json.end = true;
+						parser_Index++;
+					}
+					
+					json.type = string[parser_Index++];
+					
+					
+					parse_ID(json);
+					
+					while (parse_property(json));
+					
+					if (parser_Index === -1) 
+						return {};
+					
+					
+					if (string[parser_Length - 1] === '/') 
+						json.single = true;
+					
+					return json;
+				}
 			};
-		}
-		
-		Attr.prototype = {
-			toString: function(){
-				var json = this.meta,
-					info = {
-						type: 'a',
-						single: true
-					};
-					
-				return Meta.stringify(json, info);
-			}
-		};
-		
-		return {
-			create: function(attrName, fn, mode) {
-				
-				return function(node, value, model, cntx, tag, controller, container){
-					
-					if (mode !== 'server') {
-						container.insertBefore(new Attr(attrName, value, ++cntx._id), tag);
-					}
-					
-					if (mode !== 'client') {
-						return fn(node, value, model, cntx, tag, controller);
-					}
-					
-					
-					return '';
+		}());
+		// end:source Meta.js
+		// source attr-handler.js
+		var mock_AttrHandler = (function() {
+			
+			function Attr(attrName, attrValue, ID) {
+				this.meta = {
+					ID : ID,
+					name : attrName,
+					value : attrValue
 				};
 			}
-		};
-	
-	}());
-	// end:source attr-handler.js
-	// source tag-handler.js
-	var mock_TagHandler = (function() {
-		
-		function EmptyHandler(attrName, attrValue) {}
-		
-		EmptyHandler.prototype = {
-			render: function(){},
-			mode: 'client'
-		};
-		
-		return {
-			create: function(tagName, Compo, mode){
-				
-				if (mode === 'client' || Compo.prototype.mode === 'client') {
-					return EmptyHandler;
+			
+			Attr.prototype = {
+				toString: function(){
+					var json = this.meta,
+						info = {
+							type: 'a',
+							single: true
+						};
+						
+					return Meta.stringify(json, info);
 				}
-				
-				Compo.prototype.mode = mode;
-				return Compo;
-				
-			},
-			
-			
-		};
-			
-	}());
-	// end:source tag-handler.js
-	// source util-handler.js
-	var mock_UtilHandler = (function() {
-		
-		
-	
-		function Util(type, utilName, value, attrName, ID) {
-			this.meta = {
-				ID: ID,
-				utilType: type,
-				utilName: utilName,
-				
-				value: value,
-				attrName: attrName
 			};
-		}
-	
-		Util.prototype = {
-			toString: function() {
-				var json = this.meta,
-					info = {
-						type: 'u',
-						single: this.firstChild == null
-					},
-					string = Meta.stringify(json, info);
-				
-				var element = this.firstChild;
-				while (element != null) {
-					string += element.toString();
+			
+			return {
+				create: function(attrName, fn, mode) {
 					
-					element = element.nextSibling;
-				}
-				
-				if (this.firstChild != null) {
-					string += Meta.close(this);
-				}
-				
-				return string;
-			}
-		};
-		
-		var util_FNS = {
-			node: 'nodeRenderStart',
-			attr: 'attrRenderStart'
-		};
-	
-		return {
-			create: function(utilName, mix, mode) {
-	
-				return function(value, model, ctx, element, controller, attrName, type) {
-	
-					if (mode !== 'server') {
+					return function(node, value, model, cntx, tag, controller, container){
 						
-						element
-							.parentNode
-							.insertBefore(new Util(type, utilName, value, attrName, ++ctx._id), element);
+						if (mode !== 'server') {
+							container.insertBefore(new Attr(attrName, value, ++cntx._id), tag);
+						}
 						
-						if (mode === 'partial') {
-							var fn = util_FNS[type];
-							
-							if (is_Function(mix[fn]))
-								return mix[fn](value, model, ctx, element, controller);
+						if (mode !== 'client') {
+							return fn(node, value, model, cntx, tag, controller);
 						}
 						
 						
+						return '';
+					};
+				}
+			};
+		
+		}());
+		// end:source attr-handler.js
+		// source tag-handler.js
+		var mock_TagHandler = (function() {
+			
+			function EmptyHandler(attrName, attrValue) {}
+			
+			EmptyHandler.prototype = {
+				render: function(){},
+				mode: 'client'
+			};
+			
+			return {
+				create: function(tagName, Compo, mode){
+					
+					if (mode === 'client' || Compo.prototype.mode === 'client') {
+						return EmptyHandler;
 					}
-	
-					if (mode !== 'client') {
-						return mix(value, model, ctx, element, controller, attrName, type);
-					}
-	
-	
-					return '';
+					
+					Compo.prototype.mode = mode;
+					return Compo;
+					
+				},
+				
+				
+			};
+				
+		}());
+		// end:source tag-handler.js
+		// source util-handler.js
+		var mock_UtilHandler = (function() {
+			
+			
+		
+			function Util(type, utilName, value, attrName, ID) {
+				this.meta = {
+					ID: ID,
+					utilType: type,
+					utilName: utilName,
+					
+					value: value,
+					attrName: attrName
 				};
 			}
+		
+			Util.prototype = {
+				toString: function() {
+					var json = this.meta,
+						info = {
+							type: 'u',
+							single: this.firstChild == null
+						},
+						string = Meta.stringify(json, info);
+					
+					var element = this.firstChild;
+					while (element != null) {
+						string += element.toString();
+						
+						element = element.nextSibling;
+					}
+					
+					if (this.firstChild != null) {
+						string += Meta.close(this);
+					}
+					
+					return string;
+				}
+			};
+			
+			var util_FNS = {
+				node: 'nodeRenderStart',
+				attr: 'attrRenderStart'
+			};
+		
+			return {
+				create: function(utilName, mix, mode) {
+		
+					return function(value, model, ctx, element, controller, attrName, type) {
+		
+						if (mode !== 'server') {
+							
+							element
+								.parentNode
+								.insertBefore(new Util(type, utilName, value, attrName, ++ctx._id), element);
+							
+							if (mode === 'partial') {
+								var fn = util_FNS[type];
+								
+								if (is_Function(mix[fn]))
+									return mix[fn](value, model, ctx, element, controller);
+							}
+							
+							
+						}
+		
+						if (mode !== 'client') {
+							return mix(value, model, ctx, element, controller, attrName, type);
+						}
+		
+		
+						return '';
+					};
+				}
+			};
+		
+		}());
+		// end:source util-handler.js
+		
+		var orig_registerUtil = Mask.registerUtil;
+		
+		Mask.registerAttrHandler = function(attrName, mix, fn){
+			
+			if (fn == null) {
+				custom_Attributes[attrName] = mix;
+				return;
+			}
+			
+			// obsolete - change args in all callers
+			if (typeof fn === 'string') {
+				var swap = mix;
+				mix = fn;
+				fn = swap;
+			}
+			
+			custom_Attributes[attrName] = mock_AttrHandler.create(attrName, fn, mix);
 		};
-	
+		
+		
+		
+		Mask.registerUtil = function(name, mix, mode){
+			
+			if (mode == null && is_Object(mix)) 
+				mode = mix.mode;
+			
+			orig_registerUtil(name, mode == null
+				? mix
+				: mock_UtilHandler.create(name, mix, mode)
+			);
+		}
+		
+		// backward support
+		Mask.registerUtility  = Mask.registerUtil;
+		
+		Mask.registerHandler = function(tagName, compo){
+			
+			if (custom_Tags_defs.hasOwnProperty(tagName)) {
+				obj_extend(compo.prototype, custom_Tags_defs[tagName]);
+			}
+			
+			if (compo.prototype.mode === 'client') {
+				custom_Tags[tagName] = mock_TagHandler.create(tagName, compo, 'client');
+				return;
+			}
+			
+			custom_Tags[tagName] = compo;
+		};
+		
+		Mask.compoDefinitions = function(compos, utils, attributes){
+			var tags = custom_Tags,
+				defs = custom_Tags_defs;
+				
+			for (var tagName in compos) {
+				defs[tagName] = compos[tagName];
+				
+				if (tags[tagName] !== void 0) {
+					obj_extend(tags[tagName].prototype, compos[tagName]);
+					continue;
+				}
+				
+				tags[tagName] = mock_TagHandler.create(tagName, null, 'client');
+			}
+			
+			for (var key in utils){
+				if (utils[key].mode === 'client'){
+					Mask.registerUtil(key, function(){}, 'client');
+				}
+			}
+			
+			for (var key in attributes){
+				if (attributes[key].mode === 'client') {
+					Mask.registerAttrHandler(key, function(){}, 'client');
+				}
+			}
+		};	
+		
+		
 	}());
-	// end:source util-handler.js
 	
-	var registerUtil = Mask.registerUtil;
-	
-	Mask.registerAttrHandler = function(attrName, mix, fn){
-		
-		if (fn == null) {
-			custom_Attributes[attrName] = mix;
-			return;
-		}
-		
-		// obsolete - change args in all callers
-		if (typeof fn === 'string') {
-			var swap = mix;
-			mix = fn;
-			fn = swap;
-		}
-		
-		custom_Attributes[attrName] = mock_AttrHandler.create(attrName, fn, mix);
-	};
-	
-	
-	
-	Mask.registerUtil = function(name, mix, mode){
-		
-		if (mode == null && is_Object(mix)) 
-			mode = mix.mode;
-		
-		registerUtil(name, mode == null
-			? mix
-			: mock_UtilHandler.create(name, mix, mode)
-		);
-	}
-	
-	// backward support
-	Mask.registerUtility  = Mask.registerUtil;
-	
-	Mask.registerHandler = function(tagName, compo){
-		
-		if (custom_Tags_defs.hasOwnProperty(tagName)) {
-			obj_extend(compo.prototype, custom_Tags_defs[tagName]);
-		}
-		
-		if (compo.prototype.mode === 'client') {
-			custom_Tags[tagName] = mock_TagHandler.create(tagName, compo, 'client');
-			return;
-		}
-		
-		custom_Tags[tagName] = compo;
-	};
-	
-	Mask.compoDefinitions = function(compos, utils, attributes){
-		var tags = custom_Tags,
-			defs = custom_Tags_defs;
-			
-		for (var tagName in compos) {
-			defs[tagName] = compos[tagName];
-			
-			if (tags[tagName] !== void 0) {
-				obj_extend(tags[tagName].prototype, compos[tagName]);
-				continue;
-			}
-			
-			tags[tagName] = mock_TagHandler.create(tagName, null, 'client');
-		}
-		
-		for (var key in utils){
-			if (utils[key].mode === 'client'){
-				Mask.registerUtil(key, function(){}, 'client');
-			}
-		}
-		
-		for (var key in attributes){
-			if (attributes[key].mode === 'client') {
-				Mask.registerAttrHandler(key, function(){}, 'client');
-			}
-		}
-	};
 	// end:source ../src/mock/mock.js
 	
 	
