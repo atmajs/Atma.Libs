@@ -2201,7 +2201,10 @@
 	        db_patchSingle,
 	        db_ensureIndex,
 	        
-	        db_getMongo
+	        db_getMongo,
+	        
+	        db_resolveCollection,
+	        db_resolveDb
 	        ;
 	    
 	    (function(){
@@ -2221,11 +2224,37 @@
 	            callback(null, coll);
 	        };
 	        
+	        db_resolveCollection = function(name){
+	            var dfr = new Class.Deferred();
+	                    
+	            db_getCollection(name, function(err, coll) {
+	                if (err) 
+	                    return dfr.reject(err);
+	                
+	                dfr.resolve(coll)
+	            });
+	            
+	            return dfr;  
+	        };
+	        
 	        db_getDb = function(callback){
 	            if (db == null) 
 	                return connect(createDbDelegate(db_getDb, callback));
 	            
 	            callback(null, db);
+	        };
+	        
+	        db_resolveDb = function(name){
+	            var dfr = new Deferred();
+	                
+	            db_getDb(function(error, db){
+	                if (error) 
+	                    return dfr.reject(error);
+	                
+	                dfr.resolve(db);
+	            })
+	            
+	            return dfr;
 	        };
 	        
 	        db_findSingle = function(coll, query, callback){
@@ -2577,20 +2606,13 @@
 	            
 	            Static: {
 	                fetch: function(data) {
+	                    
 	                    return new this().fetch(data);
 	                },
 	                
 	                resolveCollection: function(){
-	                    var dfr = new Class.Deferred();
 	                    
-	                    db_getCollection(new this()._coll, function(err, coll) {
-	                        if (err) 
-	                            return dfr.reject(err);
-	                        
-	                        dfr.resolve(coll)
-	                    });
-	                    
-	                    return dfr;
+	                    return db_resolveCollection(new this()._coll);
 	                }
 	            },
 	    
@@ -2870,18 +2892,8 @@
 	        Collection: MongoStoreCollection,
 	        settings: Settings,
 	        
-	        resolveDb: function(){
-	            var dfr = new Deferred();
-	            
-	            db_getDb(function(error, db){
-	                if (error) 
-	                    return dfr.reject(error);
-	                
-	                dfr.resolve(db);
-	            })
-	            
-	            return dfr;
-	        },
+	        resolveDb: db_resolveDb,
+	        resolveCollection: db_resolveCollection,
 	        
 	        createId: function(id){
 	            return db_ensureObjectID(id);
