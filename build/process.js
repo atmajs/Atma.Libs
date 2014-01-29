@@ -40,7 +40,7 @@ include
 			
 			process(libsBrowser, function(){
 				
-				if (app.config.cli.params.publish){
+				if (app.config.$cli.params.publish){
 					publish(function(error){
 						if (error) 
 							logger.error(error);
