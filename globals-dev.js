@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.46
+ * ClassJS v1.0.47
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -2013,7 +2013,7 @@
 		
 		function listenerDelegate(sender, type) {
 			return function(){
-				var isSuccess = sender._rejected === void 0,
+				var isSuccess = sender._rejected == null,
 					arguments_ = isSuccess 
 						? sender._resolved
 						: sender._rejected
@@ -13367,27 +13367,27 @@ function __eval(source, include) {
 			var el_create = (function(doc){
 				return function(name){
 					
-					return doc.createElement(name);
+					// if DEBUG
+					try {
+					// endif
+						return doc.createElement(name);
+					// if DEBUG
+					} catch(error) {
+						console.error(tagName, 'element cannot be created. If this should be a custom handler tag, then controller is not defined');
+						return null;
+					}
+					// endif
 				};
 			}(document));
 			
 			return function build_node(node, model, ctx, container, controller, childs){
 				
 				var tagName = node.tagName,
-					attr = node.attr,
-					tag;
+					attr = node.attr;
 				
-				// if DEBUG
-				try {
-				// endif
-					tag = el_create(tagName);
-				// if DEBUG
-				} catch(error) {
-					console.error(tagName, 'element cannot be created. If this should be a custom handler tag, then controller is not defined');
+				var tag = el_create(tagName);
+				if (tag == null) 
 					return;
-				}
-				// endif
-				
 				
 				if (childs != null){
 					childs.push(tag);
@@ -13429,10 +13429,8 @@ function __eval(source, include) {
 							tag.setAttribute(key, value);
 						}
 					}
-				
 				}
-			
-			
+		
 				return tag;
 			}
 			
@@ -13691,10 +13689,13 @@ function __eval(source, include) {
 	
 	// end:source ../src/builder.js
 	// source ../src/mock/mock.js
-	var Meta = (function(){
+	var Meta,
+		mock_TagHandler;
+	
+	(function(){
 	
 		// source Meta.js
-		var Meta = (function(){
+		Meta = (function(){
 			
 			var seperator_CODE = 30,
 				seperator_CHAR = String.fromCharCode(seperator_CODE);
@@ -13898,7 +13899,7 @@ function __eval(source, include) {
 		}());
 		// end:source attr-handler.js
 		// source tag-handler.js
-		var mock_TagHandler = (function() {
+		mock_TagHandler = (function() {
 			
 			function EmptyHandler(attrName, attrValue) {}
 			
@@ -14080,8 +14081,6 @@ function __eval(source, include) {
 			}
 		};	
 		
-		
-		return Meta;	
 	}());
 	
 	// end:source ../src/mock/mock.js

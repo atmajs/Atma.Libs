@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.46
+ * ClassJS v1.0.47
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -2017,7 +2017,7 @@
 		
 		function listenerDelegate(sender, type) {
 			return function(){
-				var isSuccess = sender._rejected === void 0,
+				var isSuccess = sender._rejected == null,
 					arguments_ = isSuccess 
 						? sender._resolved
 						: sender._rejected
