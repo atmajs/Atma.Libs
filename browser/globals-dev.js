@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.45
+ * ClassJS v1.0.46
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -1400,6 +1400,10 @@
 				return fn_proxy(this.reject, this);
 			},
 			
+			then: function(onSuccess, onError){
+				return this.done(onSuccess).fail(onError);
+			},
+			
 			done: function(callback) {
 				
 				return dfr_bind(
@@ -1937,6 +1941,7 @@
 	
 	}());
 	// end:source /src/business/Await.js
+	
 	// source /src/store/Store.js
 	var StoreProto = {
 		
@@ -1956,6 +1961,84 @@
 		}
 	};
 	// end:source /src/store/Store.js
+	// source /src/store/events.js
+	var storageEvents_onBefore,
+		storageEvents_onAfter,
+		storageEvents_remove,
+		storageEvents_overridenDefer
+		;
+		
+	(function(){
+		
+		
+		var event_START = 'start',
+			event_SUCCESS = 'fulfilled',
+			event_FAIL = 'rejected';
+		
+		var events_ = new EventEmitter,
+			hasBeforeListeners_,
+			hasAfterListeners_
+			;
+		
+		storageEvents_onBefore = function(callback){
+			events_.on(event_START, callback);
+			hasBeforeListeners_ = true;
+		};
+		
+		storageEvents_onAfter = function(onSuccess, onFailure){
+			events_
+				.on(event_SUCCESS, onSuccess)
+				.on(event_FAIL, onFailure)
+				;
+			hasAfterListeners_ = true;
+		};
+		
+		storageEvents_remove = function(callback){
+			events_
+				.off(event_SUCCESS, callback)
+				.off(event_FAIL, callback)
+				.off(event_START, callback)
+				;
+		};
+		
+		storageEvents_overridenDefer = function(type){
+			Deferred.prototype.defer.call(this);
+			
+			if (hasBeforeListeners_) 
+				emit([event_START, this, type]);
+			
+			if (hasAfterListeners_) 
+				this.always(listenerDelegate(this, type));
+			
+			return this;
+		};
+		
+		// PRIVATE
+		
+		function listenerDelegate(sender, type) {
+			return function(){
+				var isSuccess = sender._rejected === void 0,
+					arguments_ = isSuccess 
+						? sender._resolved
+						: sender._rejected
+						,
+					event = isSuccess
+						? event_SUCCESS
+						: event_FAIL
+					;
+				
+				emit([event, sender, type].concat(arguments_));
+			};
+		}
+		
+		
+		function emit(arguments_/* [ event, sender, .. ]*/){
+			events_.trigger.apply(events_, arguments_);
+		}
+		
+		
+	}());
+	// end:source /src/store/events.js
 	// source /src/store/Remote.js
 	Class.Remote = (function(){
 	
@@ -1968,6 +2051,8 @@
 		};
 		
 		obj_inherit(XHRRemote, StoreProto, Serializable, Deferred, {
+			
+			defer: storageEvents_overridenDefer,
 			
 			serialize: function(){
 				
@@ -1982,29 +2067,30 @@
 			},
 			
 			fetch: function(data){
+				this.defer('fetch');
+				
 				XHR.get(this._route.create(data || this), this);
 				return this;
 			},
 			
 			save: function(callback){
+				this.defer('save');
 				
-				var self = this,
-					json = self.serialize(),
-					path = self._route.create(self),
-					method = self._route.hasAliases(self)
+				var json = this.serialize(),
+					path = this._route.create(this),
+					method = this._route.hasAliases(this)
 						? 'put'
 						: 'post'
 					;
 				
-				self.defer();
-				XHR[method](path, json, resolveDelegate(self, callback, 'save'));
-				return self;
+				XHR[method](path, json, resolveDelegate(this, callback, 'save'));
+				return this;
 			},
 			
 			patch: function(json){
-				obj_patch(this, json);
+				this.defer('patch');
 				
-				this.defer();
+				obj_patch(this, json);
 				
 				XHR.patch(
 					this._route.create(this),
@@ -2015,14 +2101,14 @@
 			},
 			
 			del: function(callback){
-				var self = this,
-					json = self.serialize(),
-					path = self._route.create(self)
+				this.defer('del');
+				
+				var json = this.serialize(),
+					path = this._route.create(this)
 					;
-					
-				self.defer();
-				XHR.del(path, json, resolveDelegate(self, callback));
-				return self;
+				
+				XHR.del(path, json, resolveDelegate(this, callback));
+				return this;
 			},
 			
 			onSuccess: function(response){
@@ -2105,12 +2191,15 @@
 			};
 		}
 		
-		return function(route){
+		function Remote(route){
 			
 			return new XHRRemote(route);
-			
 		};
 		
+		Remote.onBefore = storageEvents_onBefore;
+		Remote.onAfter = storageEvents_onAfter;
+		
+		return Remote;
 	}());
 	// end:source /src/store/Remote.js
 	// source /src/store/LocalStore.js
@@ -2227,6 +2316,7 @@
 	
 	}());
 	// end:source /src/store/LocalStore.js
+	
 
 	// source /src/Class.Static.js
 	/**
@@ -2356,8 +2446,10 @@
 		
 			var ArrayProto = {
 				length: 0,
-				push: function(/*mix*/) { 
-					for (var i = 0, imax = arguments.length; i < imax; i++){
+				push: function(/*mix*/) {
+					var imax = arguments.length,
+						i = -1;
+					while ( ++i < imax ) {
 						
 						this[this.length++] = create(this._ctor, arguments[i]);
 					}
@@ -2487,16 +2579,8 @@
 					return _Array_slice.call(this, 0).toString()
 				},
 				
-				each: function(fn, ctx){
-					var imax = this.length,
-						i = -1
-						;
-					while( ++i < imax ) {
-						
-						fn.call(ctx || this, this[i], i);
-					}
-		            return this;
-				},
+				each: forEach,
+				forEach: forEach,
 				
 				
 				where: function(mix){
@@ -2608,8 +2692,33 @@
 						arr[i] = fn(this[i]);
 					}
 					return arr;
+				},
+				
+				filter: function(fn, ctx){
+					var coll = new this.constructor(),
+						imax = this.length,
+						i = -1;
+					while ( ++i < imax ){
+						if (fn.call(ctx || this, this[i])) {
+							coll.push(this[i]);
+						}
+					}
+					return coll;
 				}
 			};
+			
+			
+			function forEach(fn, ctx){
+				
+				var imax = this.length,
+					i = -1
+					;
+				while( ++i < imax ) {
+					
+					fn.call(ctx || this, this[i], i);
+				}
+				return this;
+			}
 			
 			
 			return ArrayProto;
