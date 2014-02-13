@@ -4854,9 +4854,26 @@ function __eval(source, include) {
 	
 	// end:source /src/scope-vars.js
     // source /src/util/is.js
-    function is_Function(x){
-        return typeof x === 'function';
-    }
+    var is_Function,
+        is_Array
+        ;
+    
+    (function(){
+    
+        is_Function = function(x){
+            return typeof x === 'function';
+        };
+        
+        is_Array = function(x){
+            return x != null
+                && typeof x === 'object'
+                && typeof x.length === 'number'
+                && typeof x.splice === 'function'
+                ;
+        };
+        
+    }());
+    
     // end:source /src/util/is.js
 	// source /src/util/util.js
 	
@@ -5123,7 +5140,8 @@ function __eval(source, include) {
                 value = model,
                 i = -1,
                 imax = props.length,
-                key = props[0]
+                key = props[0],
+                start_i
                 ;
             
             if ('$c' === key) {
@@ -5146,8 +5164,27 @@ function __eval(source, include) {
                 i++;
             }
             
+            start_i = i;
             while (value != null && ++i < imax) 
                 value = value[props[i]];
+            
+            if (value == null && start_i === -1) {
+                var $scope;
+                while (true){
+                    
+                    if (controller == null) 
+                        break;
+                    
+                    $scope = controller.scope;
+                    if ($scope != null) {
+                        value = getProperty($scope, props, 0, imax);
+                        if (value != null) 
+                            return value;
+                    }
+                    
+                    controller = controller.parent;
+                }
+            }
             
             return value;
         };
@@ -5167,6 +5204,19 @@ function __eval(source, include) {
             return array;
         };
         
+        
+        // = private
+        
+        function getProperty(obj, props, i, imax) {
+            var value = obj;
+            
+            while(i < imax && value != null){
+                value = value[props[i]];
+                i++;
+            }
+            
+            return value;
+        }
     }());
     
     // end:source /src/util/object.js
@@ -5212,6 +5262,127 @@ function __eval(source, include) {
 	}
 	// end:source /src/util/function.js
     
+	// source /src/custom.js
+	// source custom.utils.js
+	var customUtil_register,
+		customUtil_get,
+	
+		customUtil_$utils = {};
+	
+	(function() {
+	
+		customUtil_register = function(name, mix) {
+	
+			if (is_Function(mix)) {
+				custom_Utils[name] = mix;
+				return;
+			}
+	
+			custom_Utils[name] = createUtil(mix);
+	
+			if (mix.arguments === 'parsed')
+				customUtil_$utils[name] = mix.process;
+	
+		};
+	
+		customUtil_get = function(name) {
+			return name != null ? custom_Utils[name] : custom_Utils;
+		};
+	
+	
+		function createUtil(obj) {
+	
+			if (obj.arguments !== 'parsed')
+				return fn_proxy(obj.process || processRawFn, obj);
+	
+			return processParsedDelegate(obj.process);
+		}
+	
+	
+		function processRawFn(expr, model, ctx, element, controller, attrName, type) {
+			if ('node' === type) {
+	
+				this.nodeRenderStart(expr, model, ctx, element, controller);
+				return this.node(expr, model, ctx, element, controller);
+			}
+	
+			// asume 'attr'
+	
+			this.attrRenderStart(expr, model, ctx, element, controller, attrName);
+			return this.attr(expr, model, ctx, element, controller, attrName);
+		}
+	
+	
+		function processParsedDelegate(fn) {
+	
+			return function(expr, model, ctx, element, controller) {
+				
+				var args = ExpressionUtil
+						.evalStatements(expr, model, ctx, controller);
+	
+				return fn.apply(null, args);
+			};
+		}
+	
+	}());
+	// end:source custom.utils.js
+	
+	var custom_Utils = {
+			expression: function(value, model, ctx, element, controller){
+				return ExpressionUtil.eval(value, model, ctx, controller);
+			},
+		},
+		
+		custom_Statements = {
+			
+		},
+		
+		custom_Attributes = {
+			'class': null,
+			id: null,
+			style: null,
+			name: null,
+			type: null
+		},
+		custom_Tags = {
+			/*
+			 * Most common html tags
+			 * http://jsperf.com/not-in-vs-null/3
+			 */
+			div: null,
+			span: null,
+			input: null,
+			button: null,
+			textarea: null,
+			select: null,
+			option: null,
+			h1: null,
+			h2: null,
+			h3: null,
+			h4: null,
+			h5: null,
+			h6: null,
+			a: null,
+			p: null,
+			img: null,
+			table: null,
+			td: null,
+			tr: null,
+			pre: null,
+			ul: null,
+			li: null,
+			ol: null,
+			i: null,
+			b: null,
+			strong: null,
+			form: null
+		},
+		
+		// use on server to define reserved tags and its meta info
+		custom_Tags_defs = {};
+	
+	// end:source /src/custom.js
+	
 	// source /src/expression/exports.js
 	/**
 	 * ExpressionUtil
@@ -5519,17 +5690,34 @@ function __eval(source, include) {
 						value = model[key];
 					}
 					
-					// @TODO - deprecate this for predefined accessors '$c' ...	
-					if (value == null && ctx != null) {
-						object = ctx;
-						value = ctx[key];
-					}
+					// @TODO - deprecate this for predefined accessors '$c' ...
+					
+					////// remove
+					//////if (value == null && ctx != null) {
+					//////	object = ctx;
+					//////	value = ctx[key];
+					//////}
 				
-					if (value == null && controller != null) {
-						do {
-							object = controller;
-							value = controller[key];
-						} while (value == null && (controller = controller.parent) != null);
+					//////if (value == null && controller != null) {
+					//////	do {
+					//////		object = controller;
+					//////		value = controller[key];
+					//////	} while (value == null && (controller = controller.parent) != null);
+					//////}
+					
+					if (value == null) {
+						
+						while (controller != null) {
+							object = controller.scope;
+							
+							if (object != null) 
+								value = object[key];
+							
+							if (value != null) 
+								break;
+							
+							controller = controller.parent;
+						} 
 					}
 				}
 				
@@ -6383,224 +6571,645 @@ function __eval(source, include) {
 			 *
 			 * All symbol and function references will be looked for in 
 			 *
-			 * 1. model
-			 * 2. cntx
-			 * 3. controller
-			 * 4. controller.parent
-			 * 5. and so on
+			 * 1. model, or via special accessors:
+			 * 		- `$c` controller
+			 * 		- `$ctx`
+			 * 		- `$a' controllers attributes
+			 * 2. scope:
+			 * 		controller.scope
+			 * 		controller.parent.scope
+			 * 		...
 			 *
 			 * Sample:
 			 * '(user.age + 20) / 2'
 			 * 'fn(user.age + "!") + x'
 			 **/
 			eval: expression_evaluate,
-			varRefs: refs_extractVars
-		};
-	
-	}());
-	
-	// end:source /src/expression/exports.js
-	// source /src/custom.js
-	// source custom.utils.js
-	var customUtil_register ,
-	    customUtil_get,
-	    
-	    customUtil_$utils = {}
-	    ;
-	
-	(function(){
-	    
-	    customUtil_register = function(name, mix){
-	        
-	        if (is_Function(mix)) {
-	            custom_Utils[name] = mix;
-	            return;
-	        }
-	        
-	        custom_Utils[name] = createUtil(mix);
-	        
-	        if (mix.arguments === 'parsed') 
-	            customUtil_$utils[name] = mix.process;
-	            
-	    };
-	    
-	    customUtil_get = function(name){
-	        return name != null
-					? custom_Utils[name]
-					: custom_Utils
-					;
-	    };
-	    
-	    
-	    function createUtil(obj){
-	        
-	        if (obj.arguments !== 'parsed') 
-	            return fn_proxy(obj.process || processRawFn, obj);
-	        
-	        return processParsedDelegate(obj.process);
-	    }
-	    
-	    
-	    function processRawFn(expr, model, ctx, element, controller, attrName, type){
-	         if ('node' === type) {
-	            
-	            this.nodeRenderStart(expr, model, ctx, element, controller);
-	            return this.node(expr, model, ctx, element, controller);
-	        }
-	        
-	        // asume 'attr'
-	        
-	        this.attrRenderStart(expr, model, ctx, element, controller, attrName);
-	        return this.attr(expr, model, ctx, element, controller, attrName);
-	    }
-	    
-	    
-	    function processParsedDelegate(fn){
-	        
-	        return function(expr, model, ctx, element, controller, attrName, type){
-	            
-	            var body = ExpressionUtil.parse(expr).body,
+			varRefs: refs_extractVars,
+			
+			// Return all values of a comma delimiter expressions
+			// like argumets: ' foo, bar, "4,50" ' => [ %fooValue, %barValue, "4,50" ]
+			evalStatements: function(expr, model, ctx, controller){
+				
+				var body = expression_parse(expr).body,
 	                args = [],
 	                imax = body.length,
 	                i = -1
 	                ;
 	            while( ++i < imax ){
-	                args[i] = ExpressionUtil.eval(body[i], model, ctx, controller);
+	                args[i] = expression_evaluate(body[i], model, ctx, controller);
 	            }
-	            
-	            return fn.apply(null, args);
-	        };
-	    }
-	    
+				
+				return args;
+			}
+		};
+	
 	}());
-	// end:source custom.utils.js
 	
-	var custom_Utils = {
-		expression: function(value, model, cntx, element, controller){
-			return ExpressionUtil.eval(value, model, cntx, controller);
-		},
-	},
-		custom_Attributes = {
-			'class': null,
-			id: null,
-			style: null,
-			name: null,
-			type: null
-		},
-		custom_Tags = {
-			/*
-			 * Most common html tags
-			 * http://jsperf.com/not-in-vs-null/3
-			 */
-			div: null,
-			span: null,
-			input: null,
-			button: null,
-			textarea: null,
-			select: null,
-			option: null,
-			h1: null,
-			h2: null,
-			h3: null,
-			h4: null,
-			h5: null,
-			h6: null,
-			a: null,
-			p: null,
-			img: null,
-			table: null,
-			td: null,
-			tr: null,
-			pre: null,
-			ul: null,
-			li: null,
-			ol: null,
-			i: null,
-			b: null,
-			strong: null,
-			form: null
-		},
+	// end:source /src/expression/exports.js
+	// source /src/statements/exports.js
+	// source 1.if.js
+	custom_Statements['if'] = function(node, model, ctx, container, controller, childs){
 		
-		// use on server to define reserved tags and its meta info
-		custom_Tags_defs = {};
-	
-	// end:source /src/custom.js
-	// source /src/dom/dom.js
-	
-	var Dom = {
-		NODE: 1,
-		TEXTNODE: 2,
-		FRAGMENT: 3,
-		COMPONENT: 4,
-		CONTROLLER: 9,
-		SET: 10,
-	
-		Node: Node,
-		TextNode: TextNode,
-		Fragment: Fragment,
-		Component: Component
+		var nodes;
+		
+		function evaluate(expr){
+			return ExpressionUtil.eval(expr, model, ctx, controller);
+		}
+		
+		if (evaluate(node.expression)) {
+			
+			nodes = node.nodes;
+		}
+		
+		while (nodes == null) {
+			node = node.nextSibling;
+			
+			if (node == null || node.tagName !== 'else') 
+				break;
+			
+			var expr = node.expression;
+			if (expr == null || expr === '' || evaluate(expr)) {
+				nodes = node.nodes;
+				break;
+			}
+		}
+		
+		if (nodes == null) 
+			return;
+		
+		builder_build(nodes, model, ctx, container, controller, childs);
 	};
+	// end:source 1.if.js
+	// source 2.for.js
 	
-	function Node(tagName, parent) {
-		this.type = Dom.NODE;
+	(function(){
 	
-		this.tagName = tagName;
-		this.parent = parent;
-		this.attr = {};
-	}
+		custom_Statements['for'] = function(node, model, ctx, container, controller, childs){
+			
+			parse_For(node.expression);
+			
+			var prop1 = __ForDirective[0],
+				prop2 = __ForDirective[1],
+				loopType = __ForDirective[2],
+				expression = __ForDirective[3]
+				;
+			
+			var value = ExpressionUtil.eval(expression, model, ctx, controller);
+			if (value == null) 
+				return;
+			
+			var nodes;
+			
+			if (loopType === 'of') {
+				if (is_Array(value) === false) {
+					console.warn('<ForStatement> Value is not enumerable', expression);
+					return;
+				}
+				
+				nodes = loop_Array(node.nodes, value, prop1, prop2);
+			}
+			
+			if (loopType === 'in') {
+				if (typeof value !== 'object') {
+					console.warn('<ForStatement> Value is not an object', expression);
+					return;
+				}
+				
+				nodes = loop_Object(node.nodes, value, prop1, prop2);
+			}
+			
+			builder_build(nodes, model, ctx, container, controller, childs);
+		};
+		
+		function loop_Array(template, arr, prop1, prop2){
+			
+			var i = -1,
+				imax = arr.length,
+				nodes = new Array(imax),
+				scope;
+			
+			while ( ++i < imax ) {
+				scope = {};
+				
+				scope[prop1] = arr[i];
+				
+				if (prop2) 
+					scope[prop2] = i;
+				
+				
+				nodes[i] = compo_init('for..of/item', template, scope);
+			}
+			
+			return nodes;
+		}
+		
+		function loop_Object(template, obj, prop1, prop2){
+			var nodes = [],
+				i = 0,
+				scope, key, value;
+			
+			for (key in obj) {
+				value = obj[key];
+				scope = {};
+				
+				scope[prop1] = key;
+				
+				if (prop2) 
+					scope[prop2] = value;
+				
+				
+				nodes[i++] = compo_init('for..in/item', template, scope);
+			}
+			
+			return nodes;
+		}
+		
+		
+		function compo_init(name, nodes, scope) {
+			
+			return {
+				type: Dom.COMPONENT,
+				tagName: name,
+				nodes: nodes,
+				controller: {
+					compoName: name,
+					scope: scope
+				}
+			};
+		}
 	
-	Node.prototype = {
-		constructor: Node,
-		type: Dom.NODE,
-		tagName: null,
-		parent: null,
-		attr: null,
-		nodes: null,
-		__single: null
+		
+		var __ForDirective = [ 'prop1', 'prop2', 'in|of', 'expression' ],
+			state_prop = 1,
+			state_multiprop = 2,
+			state_loopType = 3
+			;
+			
+		var template,
+			index,
+			length
+			;
+			
+		function parse_For(expr) {
+			// /([\w_$]+)((\s*,\s*([\w_$]+)\s*\))|(\s*\))|(\s+))(of|in)\s+([\w_$\.]+)/
+			
+			template = expr;
+			length = expr.length;
+			index = 0;
+		
+			var prop1,
+				prop2,
+				loopType,
+				hasBrackets,
+				c
+				;
+				
+			c = parser_skipWhitespace();
+			if (c === 40) {
+				// (
+				hasBrackets = true;
+				index++;
+				parser_skipWhitespace();
+			}
+			
+			prop1 = parser_getVarDeclaration();
+			
+			c = parser_skipWhitespace();
+			if (c === 44) {
+				//,
+				
+				if (hasBrackets !== true) {
+					return throw_('Parenthese must be used in multiple var declarion');
+				}
+				
+				index++;
+				parser_skipWhitespace();
+				prop2 = parser_getVarDeclaration();
+			}
+			
+			if (hasBrackets) {
+				c = parser_skipWhitespace();
+				
+				if (c !== 41) 
+					return throw_('Closing parenthese expected');
+				
+				index++;
+			}
+			
+			c = parser_skipWhitespace();
+				
+			var loopType;
+			
+			if (c === 105 && template.charCodeAt(++index) === 110) {
+				// i n
+				loopType = 'in';
+			}
+	
+			if (c === 111 && template.charCodeAt(++index) === 102) {
+				// o f
+				loopType = 'of';
+			}
+			
+			if (loopType == null) {
+				return throw_('Invalid FOR statement. (in|of) expected');
+			}
+			
+			__ForDirective[0] = prop1;
+			__ForDirective[1] = prop2;
+			__ForDirective[2] = loopType;
+			__ForDirective[3] = template.substring(++index);
+			
+			
+			return __ForDirective;
+		}
+		
+		function parser_skipWhitespace(){
+			var c;
+			for(; index < length; index++ ){
+				c = template.charCodeAt(index);
+				if (c < 33) 
+					continue;
+				
+				return c;
+			}
+			
+			return -1;
+		}
+		
+		function parser_getVarDeclaration(){
+			var start = index,
+				var_, c;
+				
+			for (; index < length; index++) {
+					
+				c = template.charCodeAt(index);
+				
+				if (c > 48 && c < 57) {
+					// 0-9
+					if (start === index)
+						return throw_('Variable name begins with a digit');
+					
+					continue;
+				}
+				
+				if (
+					(c === 36) || // $
+					(c === 95) || // _ 
+					(c >= 97 && c <= 122) || // a-z
+					(c >= 65 && c <= 90)  // A-Z
+					) {
+					
+					continue;
+				}
+				
+				break;
+			}
+			
+			if (start === index) 
+				return throw_('Variable declaration expected');
+			
+			return template.substring(start, index);
+		}
+		
+		function throw_(message) {
+			throw new Error( '<ForStatement parser> '
+				+ message
+				+ ' `'
+				+ template.substring(index, 20)
+				+ '`'
+			);
+		}
+		
+	}());
+	
+	
+	// end:source 2.for.js
+	// source 3.each.js
+	
+	(function(){
+	
+		custom_Statements['each'] = function(node, model, ctx, container, controller, childs){
+			
+			var array = ExpressionUtil.eval(node.expression, model, ctx, controller);
+			
+			if (array == null) 
+				return;
+			
+			var imax = array.length,
+				i = -1,
+				nodes = node.nodes,
+				itemCtrller;
+			
+			while ( ++i < imax ){
+				
+				itemCtrller = compo_init('each::item', i, controller);
+				
+				builder_build(nodes, array[i], ctx, container, itemCtrller, childs);
+			}
+			
+		};
+		
+		function compo_init(name, index, parent) {
+			
+			return {
+				compoName: name,
+				attr: {},
+				
+				scope: {
+					index: index
+				},
+				parent: parent,
+				nodes: null
+			};
+		}
+		
+	}());
+	
+	// end:source 3.each.js
+	// source 4.with.js
+		
+	custom_Statements['with'] = function(node, model, ctx, container, controller, childs){
+		
+		var obj = ExpressionUtil.eval(node.expression, model, ctx, controller);
+		
+			
+		builder_build(node.nodes, obj, ctx, container, controller, childs);
 	};
-	
-	function TextNode(text, parent) {
-		this.content = text;
-		this.parent = parent;
-		this.type = Dom.TEXTNODE;
-	}
-	
-	TextNode.prototype = {
-		type: Dom.TEXTNODE,
-		content: null,
-		parent: null
+	// end:source 4.with.js
+	// source 5.switch.js
+		
+	custom_Statements['switch'] = function(node, model, ctx, container, controller, childs){
+		
+		var eval_ = ExpressionUtil.eval;
+		
+		var value = eval_(node.expression, model, ctx, controller),
+			nodes = node.nodes;
+		
+		
+		if (nodes == null) 
+			return;
+		
+		var imax = nodes.length,
+			i = -1,
+			
+			child, expr,
+			case_, default_;
+			
+		while ( ++i < imax ){
+			child = nodes[i];
+			
+			if (child.tagName === 'default') {
+				default_ = child;
+				continue;
+			}
+			
+			if (child.tagName !== 'case') {
+				console.warn('<mask:switch> Case expected', child.tagName);
+				continue;
+			}
+			expr = child.expression;
+			if (!expr) {
+				console.warn('<mask:switch:case> Expression expected');
+				continue;
+			}
+			
+			if (eval_(expr, model, ctx, controller) == value) {
+				//! `==` comparison
+				case_ = child;
+				break;
+			}
+		}
+		
+		if (case_ == null) 
+			case_ = default_;
+		
+		if (case_ == null) 
+			return;
+		
+		builder_build(case_.nodes, model, ctx, container, controller, childs);
 	};
+	// end:source 5.switch.js
+	// source 6.include.js
+	(function(){
+		
+		custom_Statements['include'] = function(node, model, ctx, container, controller, childs){
+			
+			var arguments_ = ExpressionUtil.evalStatements(node.expression);
+				
+			var resource;
+			
+			while(controller != null){
+				
+				resource = controller.resource;
+				if (resource != null) 
+					break;
+				
+				controller = controller.parent;
+			}
+			
+			//if (resource == null) {
+			//	console.warn('<mask:include `%s`> Resource not defined', node.expression);
+			//}
+			
+			var ctr = new IncludeController(controller),
+				resume = Compo.pause(ctr, ctx);
+			
+			
+			
+			include
+				.instance(resource && resource.url)
+				.load
+				.apply(resource, arguments_)
+				.done(function(resp){
+					
+					ctr.templates = resp.load;
+					
+					builder_build(
+						node.nodes,
+						model,
+						ctx,
+						container,
+						ctr,
+						childs);
+					
+					resume();
+				});
+		};
+		
+		function IncludeController(parent){
+			
+			this.parent = parent;
+			this.compoName = 'include';
+			this.components = [];
+			this.templates = null;
+		}
+		
+	}());
+		
 	
-	function Fragment(){
-		this.nodes = [];
-	}
+	// end:source 6.include.js
+	// source 7.import.js
 	
-	Fragment.prototype = {
-		constructor: Fragment,
-		type: Dom.FRAGMENT,
-		nodes: null
+	
+	custom_Statements['import'] = function(node, model, ctx, container, controller, childs){
+		
+		var expr = node.expression,
+			args = ExpressionUtil.evalStatements(expr, model, ctx, controller),
+			name = args[0]
+			;
+		if (typeof name !== 'string') 
+			return console.error('<mask:import> Invalid argument', expr);
+	
+		while (true) {
+			
+			if (controller.compoName == 'include') 
+				break;
+			
+			controller = controller.parent;
+			
+			if (controller == null)
+				break;
+		}
+		
+		
+		
+		if (controller == null) 
+			return;
+		
+		var nodes = controller.templates[name];
+		if (nodes == null) 
+			return;
+		
+		builder_build(Parser.parse(nodes), model, ctx, container, controller, childs);
 	};
+	// end:source 7.import.js
+	// end:source /src/statements/exports.js
+	// source /src/dom/exports.js
+	var Dom;
 	
-	function Component(compoName, parent, controller){
-		this.tagName = compoName;
-		this.parent = parent;
-		this.controller = controller;
-		this.attr = {};
-	}
+	(function(){
+		
+		var dom_NODE = 1,
+			dom_TEXTNODE = 2,
+			dom_FRAGMENT = 3,
+			dom_COMPONENT = 4,
+			dom_CONTROLLER = 9,
+			dom_SET = 10,
+			dom_STATEMENT = 15
+			;
+		
+		// source 1.utils.js
+		function _appendChild(el){
+			
+			if (this.nodes == null) {
+				this.nodes = [el];
+				return;
+			}
+			
+			this.nodes.push(el);
+			var prev = this.nodes[this.nodes.length - 2];
+			
+			prev.nextSibling = el;
+		}
+		// end:source 1.utils.js
+		// source 2.Node.js
+		
+		function Node(tagName, parent, type) {
+			this.type = Dom.NODE;
+		
+			this.tagName = tagName;
+			this.parent = parent;
+			this.attr = {};
+			
+			if (type != null) 
+				this.type = type;
+		}
+		
+		Node.prototype = {
+			constructor: Node,
+			type: dom_NODE,
+			tagName: null,
+			parent: null,
+			attr: null,
+			nodes: null,
+			expression: null,
+			appendChild: _appendChild,
+			
+			__single: null
+		};
+		// end:source 2.Node.js
+		// source 3.TextNode.js
+		
+		
+		function TextNode(text, parent) {
+			this.content = text;
+			this.parent = parent;
+		}
+		
+		TextNode.prototype = {
+			type: dom_TEXTNODE,
+			content: null,
+			parent: null
+		};
+		// end:source 3.TextNode.js
+		// source 4.Component.js
+		
+		
+		function Component(compoName, parent, controller){
+			this.tagName = compoName;
+			this.parent = parent;
+			this.controller = controller;
+			this.attr = {};
+		}
+		
+		Component.prototype = {
+			constructor: Component,
+			type: dom_COMPONENT,
+			parent: null,
+			attr: null,
+			controller: null,
+			nodes: null,
+			components: null,
+			model: null,
+			modelRef: null
+		};
+		
+		// end:source 4.Component.js
+		// source 5.Fragment.js
+		
+		
+		function Fragment(){
+			
+		}
+		
+		Fragment.prototype = {
+			constructor: Fragment,
+			type: dom_FRAGMENT,
+			nodes: null,
+			appendChild: _appendChild
+		};
+		// end:source 5.Fragment.js
+		
+		
+		Dom = {
+			NODE: dom_NODE,
+			TEXTNODE: dom_TEXTNODE,
+			FRAGMENT: dom_FRAGMENT,
+			COMPONENT: dom_COMPONENT,
+			CONTROLLER: dom_CONTROLLER,
+			SET: dom_SET,
+			STATEMENT: dom_STATEMENT,
+		
+			Node: Node,
+			TextNode: TextNode,
+			Fragment: Fragment,
+			Component: Component
+		};
+	}());
 	
-	Component.prototype = {
-		constructor: Component,
-		type: Dom.COMPONENT,
-		parent: null,
-		attr: null,
-		controller: null,
-		nodes: null,
-		components: null,
-		model: null,
-		modelRef: null
-	};
+	// end:source /src/dom/exports.js
 	
-	// end:source /src/dom/dom.js
 	// source /src/parse/parser.js
 	var Parser = (function(Node, TextNode, Fragment, Component) {
 	
@@ -6616,6 +7225,57 @@ function __eval(source, include) {
 	
 			_serialize;
 	
+		// source cursor.js
+		var cursor_bracketsEnd,
+			cursor_quotesEnd
+			;
+		
+		(function(){
+			
+			cursor_bracketsEnd = function(template, index, length, startCode, endCode){
+				
+				var c, count = 0;
+				
+				for( ; index < length; index++){
+					c = template.charCodeAt(index);
+					
+					if (c === 34) {
+						// "
+						index = cursor_quotesEnd(template, index + 1, length, '"');
+						continue;
+					}
+					
+					if (c === startCode) {
+						count++;
+						continue;
+					}
+					
+					if (c === endCode) {
+						if (--count === -1) 
+							return index;
+					}
+				}
+				
+				_throw(template, index, null, 'Not closed brackets `' + String.fromCharCode(startCode) + '`');
+				return index;
+			};
+			
+			cursor_quotesEnd = function(template, index, length, char_){
+				var nindex;
+		
+				while ((nindex = template.indexOf(char_, index)) !== -1) {
+					index = nindex;
+					if (template.charCodeAt(nindex - 1) !== 92 /*'\\'*/ ) 
+						break;
+					
+					index++;
+				}
+				
+				return index;
+			};
+			
+		}());
+		// end:source cursor.js
 	
 		function ensureTemplateFunction(template) {
 			var index = -1;
@@ -6716,6 +7376,14 @@ function __eval(source, include) {
 			});
 		}
 	
+		var go_tag = 2,
+			state_tag = 3,
+			state_attr = 5,
+			go_attrVal = 6,
+			go_attrHeadVal = 7,
+			state_literal = 8,
+			go_up = 9
+			;
 	
 	
 		return {
@@ -6727,8 +7395,8 @@ function __eval(source, include) {
 	
 				var current = new Fragment(),
 					fragment = current,
-					state = 2,
-					last = 3,
+					state = go_tag,
+					last = state_tag,
 					index = 0,
 					length = template.length,
 					classNames,
@@ -6736,17 +7404,12 @@ function __eval(source, include) {
 					key,
 					value,
 					next,
+					next_Type,
 					c, // charCode
 					start,
 					nextC;
 	
-				var go_tag = 2,
-					state_tag = 3,
-					state_attr = 5,
-					go_attrVal = 6,
-					go_attrHeadVal = 7,
-					state_literal = 8,
-					go_up = 9;
+				
 	
 	
 				outer: while (true) {
@@ -6820,30 +7483,32 @@ function __eval(source, include) {
 	
 						} else if (last === state_tag) {
 	
-							next = custom_Tags[token] != null
-								? new Component(token, current, custom_Tags[token])
-								: new Node(token, current);
+							//next = custom_Tags[token] != null
+							//	? new Component(token, current, custom_Tags[token])
+							//	: new Node(token, current);
+							
+							next = new Node(token, current, next_Type);
 	
-							if (current.nodes == null) {
-								current.nodes = [next];
-							} else {
-								current.nodes.push(next);
-							}
+							current.appendChild(next);
+							//////if (current.nodes == null) {
+							//////	current.nodes = [next];
+							//////} else {
+							//////	current.nodes.push(next);
+							//////}
 	
 							current = next;
-	
-	
 							state = state_attr;
 	
 						} else if (last === state_literal) {
 	
 							next = new TextNode(token, current);
-	
-							if (current.nodes == null) {
-								current.nodes = [next];
-							} else {
-								current.nodes.push(next);
-							}
+							
+							current.appendChild(next);
+							//if (current.nodes == null) {
+							//	current.nodes = [next];
+							//} else {
+							//	current.nodes.push(next);
+							//}
 	
 							if (current.__single === true) {
 								do {
@@ -6974,11 +7639,18 @@ function __eval(source, include) {
 					if (state === go_tag) {
 						last = state_tag;
 						state = state_tag;
-	
+						next_Type = Dom.NODE;
+						
 						if (c === 46 /* . */ || c === 35 /* # */ ) {
 							token = 'div';
 							continue;
 						}
+						
+						if (c === 58 || c === 36 || c === 64 || c === 37) {
+							// : $ @ %
+							next_Type = Dom.COMPONENT;
+						}
+						
 					}
 	
 					else if (state === state_attr) {
@@ -6987,17 +7659,32 @@ function __eval(source, include) {
 							index++;
 							key = 'class';
 							state = go_attrHeadVal;
-						} else if (c === 35) {
+						}
+						
+						else if (c === 35) {
 							// #
 							index++;
 							key = 'id';
 							state = go_attrHeadVal;
-						} else if (c === 61) {
+						}
+						
+						else if (c === 61) {
 							// =;
 							index++;
 							state = go_attrVal;
 							continue;
-						} else {
+						}
+						
+						else if (c === 40) {
+							// (
+							start = 1 + index;
+							index = 1 + cursor_bracketsEnd(template, start, length, c, 41 /* ) */);
+							current.expression = template.substring(start, index - 1);
+							current.type = Dom.STATEMENT;
+							continue;
+						}
+						
+						else {
 	
 							if (key != null) {
 								token = key;
@@ -7047,8 +7734,8 @@ function __eval(source, include) {
 							break;
 						}
 	
-						if (c === 61 || c === 62 || c === 123 || c < 33 || c === 59) {
-							// =>{ ;
+						if (c === 61 || c === 62 || c === 123 || c < 33 || c === 59 || c === 40) {
+							// =>{ ;(
 							break;
 						}
 	
@@ -7060,7 +7747,7 @@ function __eval(source, include) {
 	
 					// if DEBUG
 					if (!token) {
-						_throw(template, index, state, '*EMPTY*');
+						_throw(template, index, state, '<empty token>');
 						break;
 					}
 					if (isInterpolated === true && state === state_tag) {
@@ -7087,8 +7774,10 @@ function __eval(source, include) {
 				}
 				// endif
 	
-	
-				return fragment.nodes.length === 1 ? fragment.nodes[0] : fragment;
+				
+				return fragment.nodes != null && fragment.nodes.length === 1
+					? fragment.nodes[0]
+					: fragment;
 			},
 			cleanObject: function(obj) {
 				if (obj instanceof Array) {
@@ -7125,13 +7814,13 @@ function __eval(source, include) {
 			
 			ensureTemplateFunction: ensureTemplateFunction
 		};
-	}(Node, TextNode, Fragment, Component));
+	}(Dom.Node, Dom.TextNode, Dom.Fragment, Dom.Component));
 	
 	// end:source /src/parse/parser.js
 	// source /src/build/builder.dom.js
 	var _controllerID = 0;
 	
-	var builder_build = (function(custom_Attributes, Component){
+	var builder_build = (function(custom_Attributes, custom_Tags, Component){
 		
 		
 			
@@ -7308,7 +7997,7 @@ function __eval(source, include) {
 						return doc.createElement(name);
 					// if DEBUG
 					} catch(error) {
-						console.error(tagName, 'element cannot be created. If this should be a custom handler tag, then controller is not defined');
+						console.error(name, 'element cannot be created. If this should be a custom handler tag, then controller is not defined');
 						return null;
 					}
 					// endif
@@ -7375,8 +8064,16 @@ function __eval(source, include) {
 		
 		function build_compo(node, model, ctx, container, controller){
 			
-			var Handler = node.controller,
-				handler = is_Function(Handler)
+			var Handler; 
+			
+			if (node.controller != null) 
+				Handler = node.controller;
+			
+			if (Handler == null) 
+				Handler = custom_Tags[node.tagName];
+			
+			
+			var handler = is_Function(Handler)
 					? new Handler(model)
 					: Handler,
 				attr,
@@ -7461,57 +8158,83 @@ function __eval(source, include) {
 			return controller;
 		}
 		// end:source type.component.js
+		
 	
 		return function builder_build(node, model, ctx, container, controller, childs) {
 		
-			if (node == null) {
+			if (node == null) 
 				return container;
-			}
-		
+			
 			var type = node.type,
 				elements,
 				key,
 				value,
 				j, jmax;
-		
-			if (container == null && type !== 1) {
-				container = document.createDocumentFragment();
-			}
-		
-			if (controller == null) {
-				controller = new Component();
-			}
-		
-			if (type === 10 /*SET*/ || node instanceof Array){
-				
-				j = 0;
-				jmax = node.length;
-				
-				for(; j < jmax; j++){
-					builder_build(node[j], model, ctx, container, controller, childs);
-				}
-				return container;
-			}
-		
+			
 			if (type == null){
 				// in case if node was added manually, but type was not set
-				if (node.tagName != null){
+				
+				if (node instanceof Array) {
+					type = 10
+				}
+				else if (node.tagName != null){
 					type = 1;
 				}
 				else if (node.content != null){
 					type = 2;
 				}
 			}
+			
+			if (type == 1 && custom_Tags[node.tagName] != null) {
+				// check if the tag name was overriden
+				type = 4;
+			}
+		
+			if (container == null && type !== 1) 
+				container = document.createDocumentFragment();
+			
+			if (controller == null) 
+				controller = new Component();
+			
+			// Dom.SET
+			if (type === 10) {
+				
+				j = 0;
+				jmax = node.length;
+				
+				for(; j < jmax; j++) {
+					builder_build(node[j], model, ctx, container, controller, childs);
+				}
+				return container;
+			}
+		
+			// Dom.STATEMENT
+			if (type === 15) {
+				var Handler = custom_Statements[node.tagName];
+				if (is_Function(Handler)) {
+					
+					Handler(node, model, ctx, container, controller, childs);
+				}
+				
+				else {
+					console.error('<mask: statement is undefined', node.tagName);
+				}
+				
+				return container;
+			}
 		
 			// Dom.NODE
-			if (type === 1){
+			if (type === 1) {
+				
+				if (node.tagName === 'else') 
+					return container;
 		
 				container = build_node(node, model, ctx, container, controller, childs);
 				childs = null;
 			}
 		
 			// Dom.TEXTNODE
-			if (type === 2){
+			if (type === 2) {
 				
 				build_textNode(node, model, ctx, container, controller);
 				return container;
@@ -7522,15 +8245,15 @@ function __eval(source, include) {
 		
 				controller = build_compo(node, model, ctx, container, controller);
 				
-				if (controller == null) {
+				if (controller == null) 
 					return container;
-				}		
+				
 				elements = [];
 				node = controller;
 				
-				if (controller.model !== model) {
+				if (controller.model !== model) 
 					model = controller.model;
-				}
+				
 			}
 		
 			var nodes = node.nodes;
@@ -7586,15 +8309,9 @@ function __eval(source, include) {
 					}
 				}
 				
-				if (is_Function(node.renderEnd)) {
-					/* if !DEBUG
-					try{
-					*/
+				if (is_Function(node.renderEnd)) 
 					node.renderEnd(elements, model, ctx, container);
-					/* if !DEBUG
-					} catch(error){ console.error('Custom Tag Handler:', node.tagName, error); }
-					*/
-				}
+				
 			}
 		
 			if (childs != null && childs !== elements){
@@ -7612,7 +8329,7 @@ function __eval(source, include) {
 		
 		
 		
-	}(custom_Attributes, Component));
+	}(custom_Attributes, custom_Tags, Dom.Component));
 	// end:source /src/build/builder.dom.js
 	// source /src/mask.js
 	
@@ -15423,158 +16140,278 @@ function __eval(source, include) {
 	var	_cfg_isStrict = true;
 	// end:source ../src/vars.js
 	// source ../src/utils/path.js
-	function path_normalize(str) {
+	var path_normalize,
+		path_split,
+		path_join,
+		path_fromCLI
+		;
+	
+	(function(){
+	
+	
+		path_normalize = function(str) {
+			
+			var length = str.length,
+				i = 0,
+				j = length - 1;
+				
+			for(; i < length; i++) {
+				if (str[i] === '/') 
+					continue;
+				
+				break;
+			}
+			for (; j > i; j--) {
+				if (str[j] === '/') 
+					continue;
+				
+				break;
+			}
+			
+			return str.substring(i, j + 1);
+		};
 		
-		var length = str.length,
-			i = 0,
-			j = length - 1;
+		path_split = function(path) {
+			path = path_normalize(path);
 			
-		for(; i < length; i++) {
-			if (str[i] === '/') 
-				continue;
+			return path === ''
+				? []
+				: path.split('/');
+		};
+		
+		path_join = function(pathParts) {
+			return '/' + pathParts.join('/');
+		};
+		
+		path_fromCLI = function(commands){
 			
-			break;
+			if (typeof commands === 'string') 
+				commands = cli_split(commands);
+			
+			var parts = cli_parseArguments(commands);
+			
+			return parts_serialize(parts);
+		};
+		
+		
+		// == private
+		
+		function cli_split(string){
+			var args = string.trim().split(/\s+/);
+					
+			var imax = args.length,
+				i = -1,
+				c, arg;
+				
+			while ( ++i < imax ){
+				
+				arg = args[i];
+				if (arg.length === 0) 
+					continue;
+				
+				c = arg[0];
+				
+				if (c !== '"' && c !== "'") 
+					continue;
+				
+				
+				var start = i;
+				for( ; i < imax; i++ ){
+					
+					arg = args[i];
+					if (arg[arg.length - 1] === c) {
+						
+						var str = args
+							.splice(start, i - start + 1)
+							.join(' ')
+							.slice(1,  -1)
+							;
+						
+						args.splice(start, 0, str);
+						imax = args.length;
+						break;
+					}
+				}
+			}
+			
+			return args;
 		}
-		for (; j > i; j--) {
-			if (str[j] === '/') 
-				continue;
+		
+		function cli_parseArguments(argv){
+			var imax = argv.length,
+				i = 0,
+				params = {},
+				args = [],
+				key, val, x;
 			
-			break;
+			for (; i < imax; i++){
+				x = argv[i];
+				
+				if (x[0] === '-') {
+					
+					key = x.replace(/^[\-]+/, '');
+					
+					if (i < imax - 1 && argv[i + 1][0] !== '-') {
+						val = argv[i + 1];
+						i++;
+					} else {
+						val = true;
+					}
+					
+					params[key] = val;
+					continue;
+				}
+				
+				args.push(x);
+			}
+			
+			return {
+				path: args,
+				query: params
+			};	
 		}
-		
-		return str.substring(i, j + 1);
-	}
 	
-	function path_split(path) {
-		path = path_normalize(path);
-		
-		return path === ''
-			? []
-			: path.split('/');
-	}
-	
-	function path_join(pathParts) {
-		return '/' + pathParts.join('/');
-	}
-	
+	}());
 	
 	// end:source ../src/utils/path.js
 	// source ../src/utils/query.js
-	function query_deserialize(query, delimiter) {
-		delimiter == null && (delimiter = '/');
+	var query_deserialize,
+		query_serialize
+		;
 	
-		var obj = {},
-			parts = query.split(delimiter),
-			i = 0,
-			imax = parts.length,
-			x;
+	(function(){
 	
-		for (; i < imax; i++) {
-			x = parts[i].split('=');
+		query_deserialize = function(query, delimiter) {
+			delimiter == null && (delimiter = '/');
+		
+			var obj = {},
+				parts = query.split(delimiter),
+				i = 0,
+				imax = parts.length,
+				x;
+		
+			for (; i < imax; i++) {
+				x = parts[i].split('=');
+		
+				obj[x[0]] = x[1] == null
+					? ''
+					: decodeURIComponent(x[1])
+					;
+		
+			}
+			return obj;
+		};
+		
+		query_serialize = function(params, delimiter) {
+			delimiter == null && (delimiter = '/');
+		
+			var query = '',
+				key;
+		
+			for (key in params) {
+				query = (query ? delimiter : '') + key + '=' + encodeURIComponent(params[key]);
+			}
+		
+			return query;
+		};
+		
+	}());
 	
-			obj[x[0]] = x[1] == null
-				? ''
-				: decodeURIComponent(x[1])
-				;
-	
-		}
-	
-		return obj;
-	}
-	
-	function query_serialize(params, delimiter) {
-		delimiter == null && (delimiter = '/');
-	
-		var query = '',
-			key;
-	
-		for (key in params) {
-			query = (query ? delimiter : '') + key + '=' + encodeURIComponent(params[key]);
-		}
-	
-		return query;
-	}
-	////
-	//// @obsolete - use query_deserialize
-	////function query_split(query){
-	////	var parts = query.split('&'),
-	////		i = -1,
-	////		imax = parts.length,
-	////		search = {},
-	////		eqIndex,
-	////		key,
-	////		value
-	////		;
-	////	while(++i < imax){
-	////		key = parts[i];
-	////		eqIndex = key.indexOf('=');
-	////		if (eqIndex === -1) {
-	////			search[key] = '';
-	////			continue;
-	////		}
-	////		
-	////		value = decodeURIComponent(key.substring(eqIndex + 1));
-	////		key = key.substring(0, eqIndex);
-	////		
-	////		search[key] = value;
-	////	}
-	////	
-	////	return search;
-	////}
 	
 	// end:source ../src/utils/query.js
 	// source ../src/utils/rgx.js
+	var rgx_fromString,
 	
-	function rgx_fromString(str, flags) {
-		return new RegExp(str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"), flags);
-	}
+		// Url part should be completely matched, so add ^...$ and create RegExp
+		rgx_aliasMatcher,
+		
+		// :debugger(d|debug) => { alias: 'debugger', matcher: RegExp }
+		rgx_parsePartWithRegExpAlias
+		;
 	
-	/**
-	 *  Url part should be completely matched, so add ^...$
-	 */
-	function rgx_aliasMatcher(str){
-		
-		if (str[0] === '^') 
-			return new RegExp(str);
-		
-		var groups = str.split('|');
-		for (var i = 0, imax = groups.length; i < imax; i++){
-			groups[i] = '^' + groups[i] + '$';
-		}
-		
-		return new RegExp(groups.join('|'));
-	}
+	(function(){
 	
+		
+		rgx_fromString = function(str, flags) {
+			return new RegExp(str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"), flags);
+		};
+		
+		rgx_aliasMatcher = function(str){
+			
+			if (str[0] === '^') 
+				return new RegExp(str);
+			
+			var groups = str.split('|');
+			for (var i = 0, imax = groups.length; i < imax; i++){
+				groups[i] = '^' + groups[i] + '$';
+			}
+			
+			return new RegExp(groups.join('|'));
+		};
+	
+		rgx_parsePartWithRegExpAlias = function(str){
+			var pStart = str.indexOf('('),
+				pEnd = str.lastIndexOf(')')
+				;
+			
+			if (pStart === -1 || pEnd === -1) {
+				console.error('<ruta> Expected alias part with regexp', str);
+				return null;
+			}
+			
+			var rgx = str.substring(pStart + 1, pEnd);
+			return {
+				alias: str.substring(1, pStart),
+				matcher: rgx_aliasMatcher(rgx)
+			};
+		};
+		
+	}());
 	
 	// end:source ../src/utils/rgx.js
 	// source ../src/utils/parts.js
 	
-	function parts_serialize(parts){
-		var path = path_join(parts.path);
-		
-		if (parts.query == null) 
-			return path;
-		
-		return path
-				+ '?'
-				+ query_serialize(parts.query, '&')
-			;
-	}
+	/**
+	 *	'/foo/bar?a=b' =>
+	 *	{ path: ['foo', 'bar'], query: { a: 'b' } }
+	 */
 	
-	function parts_deserialize(url){
-		var query = url.indexOf('?'),
-			path = query === -1
-				? url
-				: url.substring(0, query);
+	var parts_serialize,
+		parts_deserialize
+		;
+	
+	(function(){
+		
+	
+		parts_serialize = function(parts){
+			var path = path_join(parts.path);
+			
+			if (parts.query == null) 
+				return path;
+			
+			return path
+					+ '?'
+					+ query_serialize(parts.query, '&')
+				;
+		};
+		
+		parts_deserialize = function(url){
+			var query = url.indexOf('?'),
+				path = query === -1
+					? url
+					: url.substring(0, query);
+			
+			
+			return {
+				path: path_split(path),
+				query: query === -1
+					? null
+					: query_deserialize(url.substring(query + 1), '&')
+			}
+		};
 		
 		
-		return {
-			path: path_split(path),
-			query: query === -1
-				? null
-				: query_deserialize(url.substring(query + 1), '&')
-		}
-	}
+	}());
 	
 	// end:source ../src/utils/parts.js
 
@@ -15584,330 +16421,394 @@ function __eval(source, include) {
 		// source Route.js
 		
 		// source parse.js
+		var route_parseDefinition, // out route, definition 
 		
-		function route_parseDefinition(route, definition) {
+			// path should be already matched by the route 
+			route_parsePath // route, path 
+			;
+		
+		(function(){
+				
 			
-			var c = definition.charCodeAt(0);
-			switch(c){
-				case 33:
-					// !
-					route.strict = true;
-					definition = definition.substring(1);
-					break;
-				case 94:
-					// ^
-					route.strict = false;
-					definition = definition.substring(1);
-					break;
-				case 40:
-					// (
-					var start = 1,
-						end = definition.length - 1
-						;
-					if (definition.charCodeAt(definition.length - 1) !== 41) {
-						// )
-						console.error('<ruta> rgx parse - expect group closing');
-						end ++;
+			route_parseDefinition = function(route, definition) {
+				
+				var c = definition.charCodeAt(0);
+				switch(c){
+					case 33:
+						// !
+						route.strict = true;
+						definition = definition.substring(1);
+						break;
+					case 94:
+						// ^
+						route.strict = false;
+						definition = definition.substring(1);
+						break;
+					case 40:
+						// (
+						var start = 1,
+							end = definition.length - 1
+							;
+						if (definition.charCodeAt(definition.length - 1) !== 41) {
+							// )
+							console.error('<ruta> rgx parse - expect group closing');
+							end ++;
+						}
+						
+						route.match = new RegExp(definition.substring(start, end));
+						return;
+				}
+				
+				
+				
+				var parts = definition.split('/'),
+					search,
+					searchIndex,
+					i = 0,
+					imax = parts.length,
+					x,
+					c0,
+					index,
+					c1;
+					
+				
+				var last = parts[imax - 1];
+				searchIndex = last.indexOf('?');
+				if (searchIndex > (imax === 1 ? -1 : 0)) {
+					// `?` cannt be at `0` position, when has url definition contains `path`
+					search = last.substring(searchIndex + 1);
+					parts[imax - 1] = last.substring(0, searchIndex);
+				}
+			
+				var matcher = '',
+					alias = null,
+					strictCount = 0;
+			
+				var gettingMatcher = true,
+					isOptional,
+					isAlias,
+					rgx;
+			
+				var array = route.path = [];
+				
+				for (; i < imax; i++) {
+					x = parts[i];
+					
+					if (x === '') 
+						continue;
+					
+			
+					c0 = x.charCodeAt(0);
+					c1 = x.charCodeAt(1);
+			
+					isOptional = c0 === 63; /* ? */
+					isAlias = (isOptional ? c1 : c0) === 58; /* : */
+					index = 0;
+					
+					if (isOptional) 
+						index++;
+					
+					if (isAlias) 
+						index++;
+					
+			
+					if (index !== 0) 
+						x = x.substring(index);
+					
+			
+					// if DEBUG
+					!isOptional && !gettingMatcher && console.log('<ruta> strict part found after optional', definition);
+					// endif
+			
+			
+					if (isOptional) 
+						gettingMatcher = false;
+					
+					var bracketIndex = x.indexOf('(');
+					if (isAlias && bracketIndex !== -1) {
+						var end = x.length - 1;
+						if (x[end] !== ')') 
+							end+= 1;
+						
+						rgx = new RegExp(rgx_aliasMatcher(x.substring(bracketIndex + 1, end)));
+						x = x.substring(0, bracketIndex);
 					}
 					
-					route.match = new RegExp(definition.substring(start, end));
-					return;
-			}
-			
-			
-			
-			var parts = definition.split('/'),
-				search,
-				searchIndex,
-				i = 0,
-				imax = parts.length,
-				x,
-				c0,
-				index,
-				c1;
-				
-			
-			var last = parts[imax - 1];
-			searchIndex = last.indexOf('?');
-			if (searchIndex > (imax === 1 ? -1 : 0)) {
-				// `?` cannt be at `0` position, when has url definition contains `path`
-				search = last.substring(searchIndex + 1);
-				parts[imax - 1] = last.substring(0, searchIndex);
-			}
-		
-			var matcher = '',
-				alias = null,
-				strictCount = 0;
-		
-			var gettingMatcher = true,
-				isOptional,
-				isAlias,
-				rgx;
-		
-			var array = route.path = [];
-			
-			for (; i < imax; i++) {
-				x = parts[i];
-				
-				if (x === '') 
-					continue;
-				
-		
-				c0 = x.charCodeAt(0);
-				c1 = x.charCodeAt(1);
-		
-				isOptional = c0 === 63; /* ? */
-				isAlias = (isOptional ? c1 : c0) === 58; /* : */
-				index = 0;
-				
-				if (isOptional) 
-					index++;
-				
-				if (isAlias) 
-					index++;
-				
-		
-				if (index !== 0) 
-					x = x.substring(index);
-				
-		
-				// if DEBUG
-				!isOptional && !gettingMatcher && console.log('<ruta> strict part found after optional', definition);
-				// endif
-		
-		
-				if (isOptional) 
-					gettingMatcher = false;
-				
-				var bracketIndex = x.indexOf('(');
-				if (isAlias && bracketIndex !== -1) {
-					var end = x.length - 1;
-					if (x[end] !== ')') 
-						end+= 1;
-					
-					rgx = new RegExp(rgx_aliasMatcher(x.substring(bracketIndex + 1, end)));
-					x = x.substring(0, bracketIndex);
-				}
-				
-				if (!isOptional && !isAlias) {
-					array.push(x);
-					continue;
-				}
-				
-				if (isAlias) {
-					array.push({
-						alias: x,
-						matcher: rgx,
-						optional: isOptional
-					});
-				}
-				
-			}
-		
-			if (search) {
-				var query = route.query = {};
-				
-				parts = search.split('&');
-				
-				i = -1;
-				imax = parts.length;
-				
-				var key, value, str, eqIndex;
-				while(++i < imax){
-					str = parts[i];
-					
-					eqIndex = str.indexOf('=');
-					if (eqIndex === -1) {
-						query[str] = '';
+					if (!isOptional && !isAlias) {
+						array.push(x);
 						continue;
 					}
 					
-					key = str.substring(0, eqIndex);
-					value = str.substring(eqIndex + 1);
-					
-					if (value.charCodeAt(0) === 40) {
-						// (
-						value = new RegExp(rgx_aliasMatcher(value));
+					if (isAlias) {
+						array.push({
+							alias: x,
+							matcher: rgx,
+							optional: isOptional
+						});
 					}
 					
-					query[key] = value;
 				}
-				
-				if (route.path.length === 0) {
-					route.strict = false;
+			
+				if (search) {
+					var query = route.query = {};
+					
+					parts = search.split('&');
+					
+					i = -1;
+					imax = parts.length;
+					
+					var key, value, str, eqIndex;
+					while(++i < imax){
+						str = parts[i];
+						
+						eqIndex = str.indexOf('=');
+						if (eqIndex === -1) {
+							query[str] = ''; // <empty string>
+							continue;
+						}
+						
+						key = str.substring(0, eqIndex);
+						value = str.substring(eqIndex + 1);
+						
+						if (value.charCodeAt(0) === 40) {
+							// (
+							value = new RegExp(rgx_aliasMatcher(value));
+						}
+						
+						query[key] = value;
+					}
+					
+					if (route.path.length === 0) {
+						route.strict = false;
+					}
 				}
-			}
-		}
-		
-		
-		/* - path should be already matched by the route */
-		
-		function route_parsePath(route, path) {
+			};
 			
-			var queryIndex = path.indexOf('?'),
-				
-				query = queryIndex === -1
-					? null
-					: path.substring(queryIndex + 1),
-				
-				current = {
-					path: path,
-					params: query == null
-						? {}
-						: query_deserialize(query, '&')
-				};
-		
-			if (queryIndex !== -1) {
-				path = path.substring(0, queryIndex);
-			}
-		
-			if (route.path != null) {
-					
-				var pathArr = path_split(path),
-					routePath = route.path,
-					routeLength = routePath.length,
-					
-					imax = pathArr.length,
-					i = 0,
-					part,
-					x;
 			
-				for (; i < imax; i++) {
-					part = pathArr[i];
-					x = i < routeLength ? routePath[i] : null;
+			route_parsePath = function(route, path) {
+				
+				var queryIndex = path.indexOf('?'),
 					
-					if (x) {
+					query = queryIndex === -1
+						? null
+						: path.substring(queryIndex + 1),
+					
+					current = {
+						path: path,
+						params: query == null
+							? {}
+							: query_deserialize(query, '&')
+					};
+				
+				if (route.query) {
+					// ensura aliased queries, like ?:debugger(d|debug)
+					for (var key in route.query){
 						
-						if (typeof x === 'string') 
-							continue;
+						if (key[0] === '?') 
+							key = key.substring(1);
 						
-						if (x.alias) {
-							current.params[x.alias] = part;
-							continue;
+						if (key[0] === ':') {
+							var alias = rgx_parsePartWithRegExpAlias(key),
+								name = alias.alias;
+							
+							current.params[name] = getAliasedValue(current.params, alias.matcher);
 						}
 					}
 				}
+			
+				if (queryIndex !== -1) {
+					path = path.substring(0, queryIndex);
+				}
+			
+				if (route.path != null) {
+						
+					var pathArr = path_split(path),
+						routePath = route.path,
+						routeLength = routePath.length,
+						
+						imax = pathArr.length,
+						i = 0,
+						part,
+						x;
+				
+					for (; i < imax; i++) {
+						part = pathArr[i];
+						x = i < routeLength ? routePath[i] : null;
+						
+						if (x) {
+							
+							if (typeof x === 'string') 
+								continue;
+							
+							if (x.alias) {
+								current.params[x.alias] = part;
+								continue;
+							}
+						}
+					}
+				}
+			
+				return current;
+			};
+		
+			
+			// = private
+			
+			function getAliasedValue(obj, matcher) {
+				for (var key in obj){
+					if (matcher.test(key)) 
+						return obj[key];
+				}
 			}
-		
-			return current;
-		}
-		
+		}())
 		// end:source parse.js
 		// source match.js
+		var route_match,
+			route_isMatch
+			;
 			
+		(function(){
 			
-		function route_match(url, routes, currentMethod){
-			
-			var parts = parts_deserialize(url);
-			
-			
-			for (var i = 0, route, imax = routes.length; i < imax; i++){
-				route = routes[i];
+			route_match = function(url, routes, currentMethod){
 				
-				if (route_isMatch(parts, route, currentMethod)) {
+				var parts = parts_deserialize(url);
+				
+				
+				for (var i = 0, route, imax = routes.length; i < imax; i++){
+					route = routes[i];
 					
-					route.current = route_parsePath(route, url);
-					return route;
+					if (route_isMatch(parts, route, currentMethod)) {
+						
+						route.current = route_parsePath(route, url);
+						return route;
+					}
 				}
-			}
-			
-			return null;
-		};
-		
-		function route_isMatch(parts, route, currentMethod) {
-			
-			if (currentMethod != null &&
-				route.method != null &&
-				route.method !== currentMethod) {
-				return false;
-			}
-			
-			if (route.match) {
 				
-				return route.match.test(
-					typeof parts === 'string'
-						? parts
-						: parts_serialize(parts)
-				);
-			}
+				return null;
+			};
 			
-			
-			if (typeof parts === 'string') 
-				parts = parts_deserialize(parts);
-		
+			route_isMatch = function(parts, route, currentMethod) {
 				
-			if (route.query) {
-				var query = parts.query,
-					key, value;
-				if (query == null) 
+				if (currentMethod != null &&
+					route.method != null &&
+					route.method !== currentMethod) {
 					return false;
+				}
 				
-				for(key in route.query){
-					value = route.query[key];
+				if (route.match) {
 					
-					if (typeof value === 'string') {
+					return route.match.test(
+						typeof parts === 'string'
+							? parts
+							: parts_serialize(parts)
+					);
+				}
+				
+				
+				if (typeof parts === 'string') 
+					parts = parts_deserialize(parts);
+			
+				// route defines some query, match these with the current path{parts}
+				if (route.query) {
+					var query = parts.query,
+						key, value;
+					if (query == null) 
+						return false;
+					
+					for(key in route.query){
+						value = route.query[key];
 						
-						if (query[key] == null) 
+						
+						var c = key[0];
+						if (c === ':') {
+							// '?:isGlob(g|glob) will match if any is present
+							var alias = rgx_parsePartWithRegExpAlias(key);
+							if (alias == null || hasKey(query, alias.matcher) === false)
+								return false;
+							
+							continue;
+						}
+						
+						if (c === '?') 
+							continue;
+						
+						
+						if (typeof value === 'string') {
+							
+							if (query[key] == null) 
+								return false;
+							
+							if (value && query[key] !== value) 
+								return false;
+							
+							continue;
+						}
+						
+						if (value.test && !value.test(query[key])) 
 							return false;
+					}
+				}
+				
+					
+				var routePath = route.path,
+					routeLength = routePath.length;
+				
+				
+				if (routeLength === 0) {
+					if (route.strict) 
+						return parts.path.length === 0;
+					
+					return true;
+				}
+				
+				
+				
+				for (var i = 0, x, imax = parts.path.length; i < imax; i++){
+					
+					x = routePath[i];
+					
+					if (i >= routeLength) 
+						return route.strict !== true;
+					
+					if (typeof x === 'string') {
+						if (parts.path[i] === x) 
+							continue;
 						
-						if (value && query[key] !== value) 
-							return false;
-						
-						continue;
+						return false;
 					}
 					
-					if (value.test && !value.test(query[key])) 
+					if (x.matcher && x.matcher.test(parts.path[i]) === false) {
 						return false;
-				}
-			}
-			
-				
-			var routePath = route.path,
-				routeLength = routePath.length;
-			
-			
-			if (routeLength === 0) {
-				if (route.strict) 
-					return parts.path.length === 0;
-				
-				return true;
-			}
-			
-			
-			
-			for (var i = 0, x, imax = parts.path.length; i < imax; i++){
-				
-				x = routePath[i];
-				
-				if (i >= routeLength) 
-					return route.strict !== true;
-				
-				if (typeof x === 'string') {
-					if (parts.path[i] === x) 
+					}
+					
+					if (x.optional) 
+						return true;
+					
+					if (x.alias) 
 						continue;
 					
 					return false;
 				}
 				
-				if (x.matcher && x.matcher.test(parts.path[i]) === false) {
-					return false;
+				if (i < routeLength) 
+					return routePath[i].optional === true;
+					
+				
+				return true;
+			};
+			
+			
+			function hasKey(obj, rgx){
+				
+				for(var key in obj){
+					if (rgx.test(key)) 
+						return true;
 				}
-				
-				if (x.optional) 
-					return true;
-				
-				if (x.alias) 
-					continue;
-				
 				return false;
 			}
 			
-			if (i < routeLength) 
-				return routePath[i].optional === true;
-				
-			
-			return true;
-		}
+		}());
+		
 		// end:source match.js
 		
 		var regexp_var = '([^\\\\]+)';
@@ -15955,6 +16856,12 @@ function __eval(source, include) {
 			get: function(path, currentMethod){
 				
 				return route_match(path, this.routes, currentMethod);
+			},
+			
+			clear: function(){
+				this.routes.length = 0;
+				
+				return this;
 			}
 		};
 		
@@ -16170,7 +17077,12 @@ function __eval(source, include) {
 				.current();
 		},
 		
-		parse: Routes.parse
+		parse: Routes.parse,
+		
+		$utils: {
+			
+			pathFromCLI: path_fromCLI
+		}
 	};
 	
 	

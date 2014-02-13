@@ -5547,7 +5547,9 @@
 		        var type,
 		            id,
 		            index,
-		            res;
+		            res,
+		            parents = []
+		            ;
 		    
 		        for (type in bin) {
 		    
@@ -5559,27 +5561,41 @@
 		    
 		                    bin_clearCache(type, id);
 		                    
-		                    return res.parent && res.parent.url
+		                    parents.push(res.parent && res.parent.url
 		                        ? bin_remove(res.parent.url)
 		                        : res
-		                        ;
+		                    );
 		                }
 		            }
 		    
 		        }
-		        console.warn('<include:res:remove> Resource is not in cache', path);
+		        
+		        if (parents.length === 0) {
+		            console.warn('<include:res:remove> Resource is not in cache', path);
+		        }
+		            
+		        return parents;
 		    };
 		    
 		    bin_tryReload = function(path, callback) {
-		        var res = bin_remove(path);
-		    
-		        if (res == null) {
+		        var parents = bin_remove(path).filter(function(x){ return x != null; });
+		        if (parents.length === 0) {
 		            callback && callback(false);
 		            return;
 		        }
-		    
-		        return bin_load(res)
-		            .done(callback);
+		        
+		        var count = parents.length,
+		            imax = imax,
+		            i = -1;
+		        
+		        while (++i < imax) {
+		            bin_load(parents[i])
+		                .done(function(){
+		                    
+		                    if (--count === 0) 
+		                        callback();
+		                });
+		        }
 		    }
 		
 		    // PRIVATE
@@ -17213,158 +17229,278 @@ function __eval(source, include) {
 	var	_cfg_isStrict = true;
 	// end:source ../src/vars.js
 	// source ../src/utils/path.js
-	function path_normalize(str) {
+	var path_normalize,
+		path_split,
+		path_join,
+		path_fromCLI
+		;
+	
+	(function(){
+	
+	
+		path_normalize = function(str) {
+			
+			var length = str.length,
+				i = 0,
+				j = length - 1;
+				
+			for(; i < length; i++) {
+				if (str[i] === '/') 
+					continue;
+				
+				break;
+			}
+			for (; j > i; j--) {
+				if (str[j] === '/') 
+					continue;
+				
+				break;
+			}
+			
+			return str.substring(i, j + 1);
+		};
 		
-		var length = str.length,
-			i = 0,
-			j = length - 1;
+		path_split = function(path) {
+			path = path_normalize(path);
 			
-		for(; i < length; i++) {
-			if (str[i] === '/') 
-				continue;
+			return path === ''
+				? []
+				: path.split('/');
+		};
+		
+		path_join = function(pathParts) {
+			return '/' + pathParts.join('/');
+		};
+		
+		path_fromCLI = function(commands){
 			
-			break;
+			if (typeof commands === 'string') 
+				commands = cli_split(commands);
+			
+			var parts = cli_parseArguments(commands);
+			
+			return parts_serialize(parts);
+		};
+		
+		
+		// == private
+		
+		function cli_split(string){
+			var args = string.trim().split(/\s+/);
+					
+			var imax = args.length,
+				i = -1,
+				c, arg;
+				
+			while ( ++i < imax ){
+				
+				arg = args[i];
+				if (arg.length === 0) 
+					continue;
+				
+				c = arg[0];
+				
+				if (c !== '"' && c !== "'") 
+					continue;
+				
+				
+				var start = i;
+				for( ; i < imax; i++ ){
+					
+					arg = args[i];
+					if (arg[arg.length - 1] === c) {
+						
+						var str = args
+							.splice(start, i - start + 1)
+							.join(' ')
+							.slice(1,  -1)
+							;
+						
+						args.splice(start, 0, str);
+						imax = args.length;
+						break;
+					}
+				}
+			}
+			
+			return args;
 		}
-		for (; j > i; j--) {
-			if (str[j] === '/') 
-				continue;
+		
+		function cli_parseArguments(argv){
+			var imax = argv.length,
+				i = 0,
+				params = {},
+				args = [],
+				key, val, x;
 			
-			break;
+			for (; i < imax; i++){
+				x = argv[i];
+				
+				if (x[0] === '-') {
+					
+					key = x.replace(/^[\-]+/, '');
+					
+					if (i < imax - 1 && argv[i + 1][0] !== '-') {
+						val = argv[i + 1];
+						i++;
+					} else {
+						val = true;
+					}
+					
+					params[key] = val;
+					continue;
+				}
+				
+				args.push(x);
+			}
+			
+			return {
+				path: args,
+				query: params
+			};	
 		}
-		
-		return str.substring(i, j + 1);
-	}
 	
-	function path_split(path) {
-		path = path_normalize(path);
-		
-		return path === ''
-			? []
-			: path.split('/');
-	}
-	
-	function path_join(pathParts) {
-		return '/' + pathParts.join('/');
-	}
-	
+	}());
 	
 	// end:source ../src/utils/path.js
 	// source ../src/utils/query.js
-	function query_deserialize(query, delimiter) {
-		delimiter == null && (delimiter = '/');
+	var query_deserialize,
+		query_serialize
+		;
 	
-		var obj = {},
-			parts = query.split(delimiter),
-			i = 0,
-			imax = parts.length,
-			x;
+	(function(){
 	
-		for (; i < imax; i++) {
-			x = parts[i].split('=');
+		query_deserialize = function(query, delimiter) {
+			delimiter == null && (delimiter = '/');
+		
+			var obj = {},
+				parts = query.split(delimiter),
+				i = 0,
+				imax = parts.length,
+				x;
+		
+			for (; i < imax; i++) {
+				x = parts[i].split('=');
+		
+				obj[x[0]] = x[1] == null
+					? ''
+					: decodeURIComponent(x[1])
+					;
+		
+			}
+			return obj;
+		};
+		
+		query_serialize = function(params, delimiter) {
+			delimiter == null && (delimiter = '/');
+		
+			var query = '',
+				key;
+		
+			for (key in params) {
+				query = (query ? delimiter : '') + key + '=' + encodeURIComponent(params[key]);
+			}
+		
+			return query;
+		};
+		
+	}());
 	
-			obj[x[0]] = x[1] == null
-				? ''
-				: decodeURIComponent(x[1])
-				;
-	
-		}
-	
-		return obj;
-	}
-	
-	function query_serialize(params, delimiter) {
-		delimiter == null && (delimiter = '/');
-	
-		var query = '',
-			key;
-	
-		for (key in params) {
-			query = (query ? delimiter : '') + key + '=' + encodeURIComponent(params[key]);
-		}
-	
-		return query;
-	}
-	////
-	//// @obsolete - use query_deserialize
-	////function query_split(query){
-	////	var parts = query.split('&'),
-	////		i = -1,
-	////		imax = parts.length,
-	////		search = {},
-	////		eqIndex,
-	////		key,
-	////		value
-	////		;
-	////	while(++i < imax){
-	////		key = parts[i];
-	////		eqIndex = key.indexOf('=');
-	////		if (eqIndex === -1) {
-	////			search[key] = '';
-	////			continue;
-	////		}
-	////		
-	////		value = decodeURIComponent(key.substring(eqIndex + 1));
-	////		key = key.substring(0, eqIndex);
-	////		
-	////		search[key] = value;
-	////	}
-	////	
-	////	return search;
-	////}
 	
 	// end:source ../src/utils/query.js
 	// source ../src/utils/rgx.js
+	var rgx_fromString,
 	
-	function rgx_fromString(str, flags) {
-		return new RegExp(str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"), flags);
-	}
+		// Url part should be completely matched, so add ^...$ and create RegExp
+		rgx_aliasMatcher,
+		
+		// :debugger(d|debug) => { alias: 'debugger', matcher: RegExp }
+		rgx_parsePartWithRegExpAlias
+		;
 	
-	/**
-	 *  Url part should be completely matched, so add ^...$
-	 */
-	function rgx_aliasMatcher(str){
-		
-		if (str[0] === '^') 
-			return new RegExp(str);
-		
-		var groups = str.split('|');
-		for (var i = 0, imax = groups.length; i < imax; i++){
-			groups[i] = '^' + groups[i] + '$';
-		}
-		
-		return new RegExp(groups.join('|'));
-	}
+	(function(){
 	
+		
+		rgx_fromString = function(str, flags) {
+			return new RegExp(str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"), flags);
+		};
+		
+		rgx_aliasMatcher = function(str){
+			
+			if (str[0] === '^') 
+				return new RegExp(str);
+			
+			var groups = str.split('|');
+			for (var i = 0, imax = groups.length; i < imax; i++){
+				groups[i] = '^' + groups[i] + '$';
+			}
+			
+			return new RegExp(groups.join('|'));
+		};
+	
+		rgx_parsePartWithRegExpAlias = function(str){
+			var pStart = str.indexOf('('),
+				pEnd = str.lastIndexOf(')')
+				;
+			
+			if (pStart === -1 || pEnd === -1) {
+				console.error('<ruta> Expected alias part with regexp', str);
+				return null;
+			}
+			
+			var rgx = str.substring(pStart + 1, pEnd);
+			return {
+				alias: str.substring(1, pStart),
+				matcher: rgx_aliasMatcher(rgx)
+			};
+		};
+		
+	}());
 	
 	// end:source ../src/utils/rgx.js
 	// source ../src/utils/parts.js
 	
-	function parts_serialize(parts){
-		var path = path_join(parts.path);
-		
-		if (parts.query == null) 
-			return path;
-		
-		return path
-				+ '?'
-				+ query_serialize(parts.query, '&')
-			;
-	}
+	/**
+	 *	'/foo/bar?a=b' =>
+	 *	{ path: ['foo', 'bar'], query: { a: 'b' } }
+	 */
 	
-	function parts_deserialize(url){
-		var query = url.indexOf('?'),
-			path = query === -1
-				? url
-				: url.substring(0, query);
+	var parts_serialize,
+		parts_deserialize
+		;
+	
+	(function(){
+		
+	
+		parts_serialize = function(parts){
+			var path = path_join(parts.path);
+			
+			if (parts.query == null) 
+				return path;
+			
+			return path
+					+ '?'
+					+ query_serialize(parts.query, '&')
+				;
+		};
+		
+		parts_deserialize = function(url){
+			var query = url.indexOf('?'),
+				path = query === -1
+					? url
+					: url.substring(0, query);
+			
+			
+			return {
+				path: path_split(path),
+				query: query === -1
+					? null
+					: query_deserialize(url.substring(query + 1), '&')
+			}
+		};
 		
 		
-		return {
-			path: path_split(path),
-			query: query === -1
-				? null
-				: query_deserialize(url.substring(query + 1), '&')
-		}
-	}
+	}());
 	
 	// end:source ../src/utils/parts.js
 
@@ -17374,330 +17510,394 @@ function __eval(source, include) {
 		// source Route.js
 		
 		// source parse.js
+		var route_parseDefinition, // out route, definition 
 		
-		function route_parseDefinition(route, definition) {
+			// path should be already matched by the route 
+			route_parsePath // route, path 
+			;
+		
+		(function(){
+				
 			
-			var c = definition.charCodeAt(0);
-			switch(c){
-				case 33:
-					// !
-					route.strict = true;
-					definition = definition.substring(1);
-					break;
-				case 94:
-					// ^
-					route.strict = false;
-					definition = definition.substring(1);
-					break;
-				case 40:
-					// (
-					var start = 1,
-						end = definition.length - 1
-						;
-					if (definition.charCodeAt(definition.length - 1) !== 41) {
-						// )
-						console.error('<ruta> rgx parse - expect group closing');
-						end ++;
+			route_parseDefinition = function(route, definition) {
+				
+				var c = definition.charCodeAt(0);
+				switch(c){
+					case 33:
+						// !
+						route.strict = true;
+						definition = definition.substring(1);
+						break;
+					case 94:
+						// ^
+						route.strict = false;
+						definition = definition.substring(1);
+						break;
+					case 40:
+						// (
+						var start = 1,
+							end = definition.length - 1
+							;
+						if (definition.charCodeAt(definition.length - 1) !== 41) {
+							// )
+							console.error('<ruta> rgx parse - expect group closing');
+							end ++;
+						}
+						
+						route.match = new RegExp(definition.substring(start, end));
+						return;
+				}
+				
+				
+				
+				var parts = definition.split('/'),
+					search,
+					searchIndex,
+					i = 0,
+					imax = parts.length,
+					x,
+					c0,
+					index,
+					c1;
+					
+				
+				var last = parts[imax - 1];
+				searchIndex = last.indexOf('?');
+				if (searchIndex > (imax === 1 ? -1 : 0)) {
+					// `?` cannt be at `0` position, when has url definition contains `path`
+					search = last.substring(searchIndex + 1);
+					parts[imax - 1] = last.substring(0, searchIndex);
+				}
+			
+				var matcher = '',
+					alias = null,
+					strictCount = 0;
+			
+				var gettingMatcher = true,
+					isOptional,
+					isAlias,
+					rgx;
+			
+				var array = route.path = [];
+				
+				for (; i < imax; i++) {
+					x = parts[i];
+					
+					if (x === '') 
+						continue;
+					
+			
+					c0 = x.charCodeAt(0);
+					c1 = x.charCodeAt(1);
+			
+					isOptional = c0 === 63; /* ? */
+					isAlias = (isOptional ? c1 : c0) === 58; /* : */
+					index = 0;
+					
+					if (isOptional) 
+						index++;
+					
+					if (isAlias) 
+						index++;
+					
+			
+					if (index !== 0) 
+						x = x.substring(index);
+					
+			
+					// if DEBUG
+					!isOptional && !gettingMatcher && console.log('<ruta> strict part found after optional', definition);
+					// endif
+			
+			
+					if (isOptional) 
+						gettingMatcher = false;
+					
+					var bracketIndex = x.indexOf('(');
+					if (isAlias && bracketIndex !== -1) {
+						var end = x.length - 1;
+						if (x[end] !== ')') 
+							end+= 1;
+						
+						rgx = new RegExp(rgx_aliasMatcher(x.substring(bracketIndex + 1, end)));
+						x = x.substring(0, bracketIndex);
 					}
 					
-					route.match = new RegExp(definition.substring(start, end));
-					return;
-			}
-			
-			
-			
-			var parts = definition.split('/'),
-				search,
-				searchIndex,
-				i = 0,
-				imax = parts.length,
-				x,
-				c0,
-				index,
-				c1;
-				
-			
-			var last = parts[imax - 1];
-			searchIndex = last.indexOf('?');
-			if (searchIndex > (imax === 1 ? -1 : 0)) {
-				// `?` cannt be at `0` position, when has url definition contains `path`
-				search = last.substring(searchIndex + 1);
-				parts[imax - 1] = last.substring(0, searchIndex);
-			}
-		
-			var matcher = '',
-				alias = null,
-				strictCount = 0;
-		
-			var gettingMatcher = true,
-				isOptional,
-				isAlias,
-				rgx;
-		
-			var array = route.path = [];
-			
-			for (; i < imax; i++) {
-				x = parts[i];
-				
-				if (x === '') 
-					continue;
-				
-		
-				c0 = x.charCodeAt(0);
-				c1 = x.charCodeAt(1);
-		
-				isOptional = c0 === 63; /* ? */
-				isAlias = (isOptional ? c1 : c0) === 58; /* : */
-				index = 0;
-				
-				if (isOptional) 
-					index++;
-				
-				if (isAlias) 
-					index++;
-				
-		
-				if (index !== 0) 
-					x = x.substring(index);
-				
-		
-				// if DEBUG
-				!isOptional && !gettingMatcher && console.log('<ruta> strict part found after optional', definition);
-				// endif
-		
-		
-				if (isOptional) 
-					gettingMatcher = false;
-				
-				var bracketIndex = x.indexOf('(');
-				if (isAlias && bracketIndex !== -1) {
-					var end = x.length - 1;
-					if (x[end] !== ')') 
-						end+= 1;
-					
-					rgx = new RegExp(rgx_aliasMatcher(x.substring(bracketIndex + 1, end)));
-					x = x.substring(0, bracketIndex);
-				}
-				
-				if (!isOptional && !isAlias) {
-					array.push(x);
-					continue;
-				}
-				
-				if (isAlias) {
-					array.push({
-						alias: x,
-						matcher: rgx,
-						optional: isOptional
-					});
-				}
-				
-			}
-		
-			if (search) {
-				var query = route.query = {};
-				
-				parts = search.split('&');
-				
-				i = -1;
-				imax = parts.length;
-				
-				var key, value, str, eqIndex;
-				while(++i < imax){
-					str = parts[i];
-					
-					eqIndex = str.indexOf('=');
-					if (eqIndex === -1) {
-						query[str] = '';
+					if (!isOptional && !isAlias) {
+						array.push(x);
 						continue;
 					}
 					
-					key = str.substring(0, eqIndex);
-					value = str.substring(eqIndex + 1);
-					
-					if (value.charCodeAt(0) === 40) {
-						// (
-						value = new RegExp(rgx_aliasMatcher(value));
+					if (isAlias) {
+						array.push({
+							alias: x,
+							matcher: rgx,
+							optional: isOptional
+						});
 					}
 					
-					query[key] = value;
 				}
-				
-				if (route.path.length === 0) {
-					route.strict = false;
+			
+				if (search) {
+					var query = route.query = {};
+					
+					parts = search.split('&');
+					
+					i = -1;
+					imax = parts.length;
+					
+					var key, value, str, eqIndex;
+					while(++i < imax){
+						str = parts[i];
+						
+						eqIndex = str.indexOf('=');
+						if (eqIndex === -1) {
+							query[str] = ''; // <empty string>
+							continue;
+						}
+						
+						key = str.substring(0, eqIndex);
+						value = str.substring(eqIndex + 1);
+						
+						if (value.charCodeAt(0) === 40) {
+							// (
+							value = new RegExp(rgx_aliasMatcher(value));
+						}
+						
+						query[key] = value;
+					}
+					
+					if (route.path.length === 0) {
+						route.strict = false;
+					}
 				}
-			}
-		}
-		
-		
-		/* - path should be already matched by the route */
-		
-		function route_parsePath(route, path) {
+			};
 			
-			var queryIndex = path.indexOf('?'),
-				
-				query = queryIndex === -1
-					? null
-					: path.substring(queryIndex + 1),
-				
-				current = {
-					path: path,
-					params: query == null
-						? {}
-						: query_deserialize(query, '&')
-				};
-		
-			if (queryIndex !== -1) {
-				path = path.substring(0, queryIndex);
-			}
-		
-			if (route.path != null) {
-					
-				var pathArr = path_split(path),
-					routePath = route.path,
-					routeLength = routePath.length,
-					
-					imax = pathArr.length,
-					i = 0,
-					part,
-					x;
 			
-				for (; i < imax; i++) {
-					part = pathArr[i];
-					x = i < routeLength ? routePath[i] : null;
+			route_parsePath = function(route, path) {
+				
+				var queryIndex = path.indexOf('?'),
 					
-					if (x) {
+					query = queryIndex === -1
+						? null
+						: path.substring(queryIndex + 1),
+					
+					current = {
+						path: path,
+						params: query == null
+							? {}
+							: query_deserialize(query, '&')
+					};
+				
+				if (route.query) {
+					// ensura aliased queries, like ?:debugger(d|debug)
+					for (var key in route.query){
 						
-						if (typeof x === 'string') 
-							continue;
+						if (key[0] === '?') 
+							key = key.substring(1);
 						
-						if (x.alias) {
-							current.params[x.alias] = part;
-							continue;
+						if (key[0] === ':') {
+							var alias = rgx_parsePartWithRegExpAlias(key),
+								name = alias.alias;
+							
+							current.params[name] = getAliasedValue(current.params, alias.matcher);
 						}
 					}
 				}
+			
+				if (queryIndex !== -1) {
+					path = path.substring(0, queryIndex);
+				}
+			
+				if (route.path != null) {
+						
+					var pathArr = path_split(path),
+						routePath = route.path,
+						routeLength = routePath.length,
+						
+						imax = pathArr.length,
+						i = 0,
+						part,
+						x;
+				
+					for (; i < imax; i++) {
+						part = pathArr[i];
+						x = i < routeLength ? routePath[i] : null;
+						
+						if (x) {
+							
+							if (typeof x === 'string') 
+								continue;
+							
+							if (x.alias) {
+								current.params[x.alias] = part;
+								continue;
+							}
+						}
+					}
+				}
+			
+				return current;
+			};
+		
+			
+			// = private
+			
+			function getAliasedValue(obj, matcher) {
+				for (var key in obj){
+					if (matcher.test(key)) 
+						return obj[key];
+				}
 			}
-		
-			return current;
-		}
-		
+		}())
 		// end:source parse.js
 		// source match.js
+		var route_match,
+			route_isMatch
+			;
 			
+		(function(){
 			
-		function route_match(url, routes, currentMethod){
-			
-			var parts = parts_deserialize(url);
-			
-			
-			for (var i = 0, route, imax = routes.length; i < imax; i++){
-				route = routes[i];
+			route_match = function(url, routes, currentMethod){
 				
-				if (route_isMatch(parts, route, currentMethod)) {
+				var parts = parts_deserialize(url);
+				
+				
+				for (var i = 0, route, imax = routes.length; i < imax; i++){
+					route = routes[i];
 					
-					route.current = route_parsePath(route, url);
-					return route;
+					if (route_isMatch(parts, route, currentMethod)) {
+						
+						route.current = route_parsePath(route, url);
+						return route;
+					}
 				}
-			}
-			
-			return null;
-		};
-		
-		function route_isMatch(parts, route, currentMethod) {
-			
-			if (currentMethod != null &&
-				route.method != null &&
-				route.method !== currentMethod) {
-				return false;
-			}
-			
-			if (route.match) {
 				
-				return route.match.test(
-					typeof parts === 'string'
-						? parts
-						: parts_serialize(parts)
-				);
-			}
+				return null;
+			};
 			
-			
-			if (typeof parts === 'string') 
-				parts = parts_deserialize(parts);
-		
+			route_isMatch = function(parts, route, currentMethod) {
 				
-			if (route.query) {
-				var query = parts.query,
-					key, value;
-				if (query == null) 
+				if (currentMethod != null &&
+					route.method != null &&
+					route.method !== currentMethod) {
 					return false;
+				}
 				
-				for(key in route.query){
-					value = route.query[key];
+				if (route.match) {
 					
-					if (typeof value === 'string') {
+					return route.match.test(
+						typeof parts === 'string'
+							? parts
+							: parts_serialize(parts)
+					);
+				}
+				
+				
+				if (typeof parts === 'string') 
+					parts = parts_deserialize(parts);
+			
+				// route defines some query, match these with the current path{parts}
+				if (route.query) {
+					var query = parts.query,
+						key, value;
+					if (query == null) 
+						return false;
+					
+					for(key in route.query){
+						value = route.query[key];
 						
-						if (query[key] == null) 
+						
+						var c = key[0];
+						if (c === ':') {
+							// '?:isGlob(g|glob) will match if any is present
+							var alias = rgx_parsePartWithRegExpAlias(key);
+							if (alias == null || hasKey(query, alias.matcher) === false)
+								return false;
+							
+							continue;
+						}
+						
+						if (c === '?') 
+							continue;
+						
+						
+						if (typeof value === 'string') {
+							
+							if (query[key] == null) 
+								return false;
+							
+							if (value && query[key] !== value) 
+								return false;
+							
+							continue;
+						}
+						
+						if (value.test && !value.test(query[key])) 
 							return false;
+					}
+				}
+				
+					
+				var routePath = route.path,
+					routeLength = routePath.length;
+				
+				
+				if (routeLength === 0) {
+					if (route.strict) 
+						return parts.path.length === 0;
+					
+					return true;
+				}
+				
+				
+				
+				for (var i = 0, x, imax = parts.path.length; i < imax; i++){
+					
+					x = routePath[i];
+					
+					if (i >= routeLength) 
+						return route.strict !== true;
+					
+					if (typeof x === 'string') {
+						if (parts.path[i] === x) 
+							continue;
 						
-						if (value && query[key] !== value) 
-							return false;
-						
-						continue;
+						return false;
 					}
 					
-					if (value.test && !value.test(query[key])) 
+					if (x.matcher && x.matcher.test(parts.path[i]) === false) {
 						return false;
-				}
-			}
-			
-				
-			var routePath = route.path,
-				routeLength = routePath.length;
-			
-			
-			if (routeLength === 0) {
-				if (route.strict) 
-					return parts.path.length === 0;
-				
-				return true;
-			}
-			
-			
-			
-			for (var i = 0, x, imax = parts.path.length; i < imax; i++){
-				
-				x = routePath[i];
-				
-				if (i >= routeLength) 
-					return route.strict !== true;
-				
-				if (typeof x === 'string') {
-					if (parts.path[i] === x) 
+					}
+					
+					if (x.optional) 
+						return true;
+					
+					if (x.alias) 
 						continue;
 					
 					return false;
 				}
 				
-				if (x.matcher && x.matcher.test(parts.path[i]) === false) {
-					return false;
+				if (i < routeLength) 
+					return routePath[i].optional === true;
+					
+				
+				return true;
+			};
+			
+			
+			function hasKey(obj, rgx){
+				
+				for(var key in obj){
+					if (rgx.test(key)) 
+						return true;
 				}
-				
-				if (x.optional) 
-					return true;
-				
-				if (x.alias) 
-					continue;
-				
 				return false;
 			}
 			
-			if (i < routeLength) 
-				return routePath[i].optional === true;
-				
-			
-			return true;
-		}
+		}());
+		
 		// end:source match.js
 		
 		var regexp_var = '([^\\\\]+)';
@@ -17745,6 +17945,12 @@ function __eval(source, include) {
 			get: function(path, currentMethod){
 				
 				return route_match(path, this.routes, currentMethod);
+			},
+			
+			clear: function(){
+				this.routes.length = 0;
+				
+				return this;
 			}
 		};
 		
@@ -17960,7 +18166,12 @@ function __eval(source, include) {
 				.current();
 		},
 		
-		parse: Routes.parse
+		parse: Routes.parse,
+		
+		$utils: {
+			
+			pathFromCLI: path_fromCLI
+		}
 	};
 	
 	
