@@ -13974,9 +13974,9 @@ function __eval(source, include) {
 			if (container == null) 
 				container = new html_DocumentFragment();
 			
-			if (controller == null) {
-				controller = new Component();
-			}
+			if (controller == null) 
+				controller = new Dom.Component();
+			
 				
 			if (ctx == null) 
 				ctx = {};
@@ -14585,7 +14585,10 @@ function __eval(source, include) {
 						value = wrapString(value);
 					
 		
-					attr += ' ' + key + '=' + value;
+					attr += ' ' + key;
+					
+					if (key !== value)
+						attr += '=' + value;
 				}
 		
 				if (tagName === 'div' && (_id || _class)) 

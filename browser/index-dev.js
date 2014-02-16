@@ -4781,14 +4781,14 @@ function __eval(source, include) {
 }
 // end:source ../src/global-vars.js// source /src/license.txt
 /*!
- * MaskJS v0.8.12
+ * MaskJS v%VERSION%
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
  * MIT license
  * http://opensource.org/licenses/MIT
  *
- * (c) 2012, 2014 Atma.js and other contributors
+ * (c) 2012, %YEAR% Atma.js and other contributors
  */
 // end:source /src/license.txt
 // source /src/umd-head.js
@@ -8301,9 +8301,10 @@ function __eval(source, include) {
 					Handler(node, model, ctx, container, controller, childs);
 				}
 				
-				else {
+				// if DEBUG
+				else 
 					console.error('<mask: statement is undefined', node.tagName);
-				}
+				// endif
 				
 				return container;
 			}
@@ -8889,7 +8890,10 @@ function __eval(source, include) {
 						value = wrapString(value);
 					
 		
-					attr += ' ' + key + '=' + value;
+					attr += ' ' + key;
+					
+					if (key !== value)
+						attr += '=' + value;
 				}
 		
 				if (tagName === 'div' && (_id || _class)) 
