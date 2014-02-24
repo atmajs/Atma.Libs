@@ -5755,26 +5755,39 @@
 		    
 		        inject: function() {
 		    
-		            var pckg = arguments.length === 1 ? arguments[0] : __array_slice.call(arguments);
+		            var pckg = arguments.length === 1
+		                ? arguments[0]
+		                : __array_slice.call(arguments);
 		    
-		            var current = this;
+		            this.state = this.state >= 3 ? 3 : 2;
 		    
-		            current.state = current.state >= 3 ? 3 : 2;
-		    
-		            var bundle = current.create();
+		            var current = this,
+		                bundle = current.create()
+		                ;
 		    
 		            bundle.url = this.url;
 		            bundle.location = this.location;
-		            bundle.load(pckg)
+		            
+		            bundle
+		                .load(pckg)
 		                .done(function(resp) {
 		    
 		                bundle.state = 3;
 		                bundle.on(4, function() {
-		    
+		                    
+		                    var remove = 1;
+		                    var index = ruqq.arr.indexOf(current.includes, function(res){
+		                        return res.resource === bundle;
+		                    });
+		                    if (index === -1){
+		                        index = current.includes.length - 1;
+		                        remove = 0;
+		                    }
+		                    
 		                    current
 		                        .includes
 		                        .splice
-		                        .apply(current.includes, [bundle, 1].concat(bundle.includes));
+		                        .apply(current.includes, [index, remove].concat(bundle.includes));
 		    
 		                    current.readystatechanged(3);
 		                });
@@ -5986,6 +5999,8 @@ function __eval(source, include) {
 			 */
 			allowCache: true
 		};
+		
+	var _Array_slice = Array.prototype.slice;
 	
 	// end:source ../../mask/src/scope-vars.js
 	// source ../../mask/src/util/util.js
@@ -8736,10 +8751,26 @@ function __eval(source, include) {
 			getHandler: function (tagName) {
 				return tagName != null
 					? custom_Tags[tagName]
-					: custom_Tags;
+					: custom_Tags
+					;
 			},
-	
-	
+			
+			registerStatement: function(name, handler){
+				//@TODO should it be not allowed to override system statements, if, switch?
+				
+				custom_Statements[name] = is_Function(handler)
+					? { render: handler }
+					: handler
+					;
+			},
+			
+			getStatement: function(name){
+				return name != null
+					? custom_Statements[name]
+					: custom_Statements
+					;
+			},
+			
 			/**
 			 * mask.registerAttrHandler(attrName, mix, Handler) -> void
 			 * - attrName (String): any attribute string name
@@ -8920,7 +8951,7 @@ function __eval(source, include) {
 			setInterpolationQuotes: Parser.setInterpolationQuotes,
 			
 			setCompoIndex: function(index){
-				_controllerID = index;
+				builder_componentID = index;
 			},
 			
 			cfg: function(){
@@ -8966,6 +8997,9 @@ function __eval(source, include) {
 		var Dom = mask.Dom,
 		
 			_array_slice = Array.prototype.slice,
+			_Array_splice = Array.prototype.splice,
+			_Array_indexOf = Array.prototype.indexOf,
+			
 			_mask_ensureTmplFnOrig = mask.Utils.ensureTmplFn,
 			
 			domLib,
@@ -9367,10 +9401,17 @@ function __eval(source, include) {
 						;
 					
 					if (compo) {
-						compo_dispose(compo);
-						compo_detachChild(compo);
+						
+						if (compo.$ == null || compo.$.length === 1) {
+							compo_dispose(compo);
+							compo_detachChild(compo);
+							return;
+						}
+						
+						var i = _Array_indexOf.call(compo.$, node);
+						if (i !== -1) 
+							_Array_splice.call(compo.$, i, 1);
 					}
-					return;
 				}
 				
 				node_tryDisposeChildren(node);
@@ -13868,6 +13909,11 @@ function __eval(source, include) {
 				
 				return container;
 			}
+			
+			if (type == 1 && custom_Tags[node.tagName] != null) {
+				// check if the tag name was overriden
+				type = 4;
+			}
 	
 			// Dom.NODE
 			if (type === 1) {
@@ -15044,11 +15090,13 @@ function __eval(source, include) {
 					x = obj;
 				while ( ++i < imax ) {
 					x = x[parts[i]];
+					
 					if (x == null) 
 						break;
 					
 					if (x.__observers != null) {
-						var prop = parts.slice(i).join('.');
+						
+						var prop = parts.slice(i + 1).join('.');
 						
 						if (x.__observers[prop]) {
 							x.__observers[prop].push(callback);
@@ -15226,7 +15274,7 @@ function __eval(source, include) {
 					set: function(x) {
 						var i = 0,
 							imax = listeners.length;
-							
+						
 						if (x === currentValue) 
 							return;
 						
@@ -15296,13 +15344,16 @@ function __eval(source, include) {
 					var observers = obj.__observers;
 					if (observers == null) 
 						return;
+					
 					for (var property in observers) {
+						
 						if (property.indexOf(path) !== 0) 
 							continue;
 						
 						var listeners = observers[property].slice(0),
 							imax = listeners.length,
 							i = 0;
+						
 						if (imax === 0) 
 							continue;
 						
@@ -15319,6 +15370,7 @@ function __eval(source, include) {
 						for (i = 0; i < imax; i++){
 							listeners[i](val);
 						}
+						
 						for (i = 0; i < imax; i++){
 							obj_addObserver(obj, property, listeners[i]);
 						}
@@ -15893,59 +15945,68 @@ function __eval(source, include) {
 		
 		// end:source ../src/util/expression.js
 		// source ../src/util/signal.js
-		function signal_parse(str, isPiped, defaultType) {
-			var signals = str.split(';'),
-				set = [],
-				i = 0,
-				imax = signals.length,
-				x,
-				signalName, type,
-				signal;
-				
+		var signal_parse,
+			signal_create
+			;
 		
-			for (; i < imax; i++) {
-				x = signals[i].split(':');
-				
-				if (x.length !== 1 && x.length !== 2) {
-					console.error('Too much ":" in a signal def.', signals[i]);
-					continue;
-				}
-				
-				
-				type = x.length == 2 ? x[0] : defaultType;
-				signalName = x[x.length == 2 ? 1 : 0];
-				
-				signal = signal_create(signalName.trim(), type, isPiped);
-				
-				if (signal != null) {
-					set.push(signal);
-				}
-			}
+		(function(){
 			
-			return set;
-		}
-		
-		
-		function signal_create(signal, type, isPiped) {
-			if (isPiped !== true) {
+			
+			signal_parse = function(str, isPiped, defaultType) {
+				var signals = str.split(';'),
+					set = [],
+					i = 0,
+					imax = signals.length,
+					x,
+					signalName, type,
+					signal;
+					
+			
+				for (; i < imax; i++) {
+					x = signals[i].split(':');
+					
+					if (x.length !== 1 && x.length !== 2) {
+						console.error('Too much ":" in a signal def.', signals[i]);
+						continue;
+					}
+					
+					
+					type = x.length == 2 ? x[0] : defaultType;
+					signalName = x[x.length == 2 ? 1 : 0];
+					
+					signal = signal_create(signalName.trim(), type, isPiped);
+					
+					if (signal != null) {
+						set.push(signal);
+					}
+				}
+				
+				return set;
+			};
+			
+			
+			signal_create = function(signal, type, isPiped) {
+				if (isPiped !== true) {
+					return {
+						signal: signal,
+						type: type
+					};
+				}
+				
+				var index = signal.indexOf('.');
+				if (index === -1) {
+					console.error('No pipe name in a signal', signal);
+					return null;
+				}
+				
 				return {
-					signal: signal,
+					signal: signal.substring(index + 1),
+					pipe: signal.substring(0, index),
 					type: type
 				};
-			}
-			
-			var index = signal.indexOf('.');
-			if (index === -1) {
-				console.error('No pipe name in a signal', signal);
-				return null;
-			}
-			
-			return {
-				signal: signal.substring(index + 1),
-				pipe: signal.substring(0, index),
-				type: type
 			};
-		}
+		}());
+		
 		// end:source ../src/util/signal.js
 	
 		// source ../src/bindingProvider.js
@@ -16940,6 +17001,43 @@ function __eval(source, include) {
 		
 			mask.registerHandler('%%', Sys);
 		
+			// source sys.plus.js
+			(function(){
+				
+				// source stat.if.js
+				var stat_IF;
+				
+				(function(){
+					
+					stat_IF = function(node, model, ctx, container, controller, childs){
+						
+						
+						return node.nodes;
+					};
+				}());
+				// end:source stat.if.js
+				
+				mask.registerStatement('+', SysPlus);
+				
+				
+				function SysPlus(node, model, ctx, container, controller, childs) {
+					
+					var fn;
+					
+					if (node.attr['if']) 
+						fn = stat_IF;
+					
+					
+					var nodes = fn(node, model, ctx, container, controller, childs);
+					if (nodes != null) 
+						builder_build(nodes, model, ctx, container, controller, childs);
+					
+					
+				}
+				
+			}());
+			// end:source sys.plus.js
+			
 			// source attr.use.js
 			var attr_use = (function() {
 			

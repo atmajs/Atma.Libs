@@ -47,9 +47,9 @@ For now all builds differs in the way they export the libraries - globals, names
 	// ...
 ```
 
-These are build and minified source, to load development versions use:
+These are minified source, to load development versions use:
 
-```
+```javascript
 'atma-libs/index-dev'
 'atma-libs/exports-dev'
 'atma-libs/globals-dev'
