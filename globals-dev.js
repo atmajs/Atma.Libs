@@ -8332,7 +8332,7 @@ function __eval(source, include) {
 	
 			/** @out : nodes */
 			parse: function(template) {
-				logger.log('>> parse'.cyan.bold, template);
+	
 				//_serialize = T.serialize;
 	
 				var current = new Fragment(),
@@ -9354,7 +9354,7 @@ function __eval(source, include) {
 			 *	Create new Document Fragment from template or append rendered template to container
 			 **/
 			render: function (template, model, ctx, container, controller) {
-				logger.log('>>render'.bold, jmask(template).mask());
+	
 				// if DEBUG
 				if (container != null && typeof container.appendChild !== 'function'){
 					console.error('.render(template[, model, ctx, container, controller]', 'Container should implement .appendChild method');
