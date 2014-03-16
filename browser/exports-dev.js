@@ -139,7 +139,8 @@
 		class_patch,
 		
 		class_stringify,
-		class_parse
+		class_parse,
+		class_properties
 		
 		;
 	
@@ -194,6 +195,9 @@
 			return JSON.parse(str, parse);
 		};
 		
+		class_properties = function(Ctor) {
+			return getProperties(Ctor);
+		};
 		
 		// private
 		
@@ -244,6 +248,27 @@
 			
 			return val;
 		}
+		
+		function getProperties(proto, out){
+			if (typeof proto === 'function')
+				proto = proto.prototype;
+			
+			if (out == null) 
+				out = {};
+			
+			var type,
+				key
+	        for(key in proto){
+	            type = typeof proto[key];
+	            if (type !== 'function') 
+	                out[key] = type;
+	        }
+	        
+	        if (proto.__proto__) 
+	            getProperties(proto.__proto__, out);
+	        
+	        return out;
+	    }
 		
 	}());
 	// end:source /src/util/class.js
@@ -2199,6 +2224,24 @@
 		Remote.onBefore = storageEvents_onBefore;
 		Remote.onAfter = storageEvents_onAfter;
 		
+		arr_each(['get', 'post', 'put', 'delete'], function(method){
+			
+			Remote[method] = function(url, obj){
+				
+				var json = obj;
+				if (obj.serialize != null) 
+					json = obj.serialize();
+				
+				if (json == null && obj.toJSON) 
+					json = obj.toJSON();
+				
+				var dfr = new Deferred();
+				XHR[method](url, json, resolveDelegate(dfr));
+				
+				return dfr;
+			};
+		});
+		
 		return Remote;
 	}());
 	// end:source /src/store/Remote.js
@@ -2370,6 +2413,7 @@
 	Class.stringify = class_stringify;
 	Class.parse = class_parse;
 	Class.patch = class_patch;
+	Class.properties = class_properties;
 	// end:source /src/Class.Static.js
 	
 	// source /src/collection/Collection.js
@@ -5309,7 +5353,6 @@ function __eval(source, include) {
 				
 				if (Handler != null && typeof Handler === 'object') {
 					//> static
-					
 					Handler.__Ctor = wrapStatic(Handler);
 				}
 				
@@ -5317,8 +5360,8 @@ function __eval(source, include) {
 			};
 			
 			
-			function wrapStatic(proto, parent) {
-				function Ctor(node) {
+			function wrapStatic(proto) {
+				function Ctor(node, parent) {
 					this.tagName = node.tagName;
 					this.attr = node.attr;
 					this.expression = node.expression;
@@ -6841,7 +6884,11 @@ function __eval(source, include) {
 			build: build,
 			parseFor: parse_For,
 			createForItem: createForItem,
-			getNodes: getNodes
+			getNodes: getNodes,
+			
+			getHandler: function(compoName, model){
+				return createHandler(compoName, model);
+			}
 		};
 		
 		function build(value, For, nodes, model, ctx, container, ctr, childs) {
@@ -6932,12 +6979,21 @@ function __eval(source, include) {
 				controller: {
 					compoName: name,
 					scope: scope,
-					
-					renderEnd: function(elements){
-						this.elements = elements
-					}
+					renderEnd: handler_proto_renderEnd
 				}
 			};
+		}
+		
+		function createHandler(name, scope) {
+			return {
+				compoName: name,
+				scope: scope,
+				renderEnd: handler_proto_renderEnd
+			}
+		}
+		
+		function handler_proto_renderEnd(elements) {
+			this.elements = elements;
 		}
 	
 		
@@ -10535,7 +10591,8 @@ function __eval(source, include) {
 				compo_detachChild,
 				compo_ensureTemplate,
 				compo_attachDisposer,
-				compo_createConstructor
+				compo_createConstructor,
+				compo_removeElements
 				;
 			
 			(function(){
@@ -10685,6 +10742,33 @@ function __eval(source, include) {
 							Ctor.call(this);
 					};
 				};
+				
+				compo_removeElements = function(compo) {
+					if (compo.$) {
+						compo.$.remove();
+						return;
+					}
+					
+					var els = compo.elements;
+					if (els) {
+						var i = -1,
+							imax = els.length;
+						while ( ++i < imax ) {
+							if (els[i].parentNode) 
+								els[i].parentNode.removeChild(els[i]);
+						}
+						return;
+					}
+					
+					var compos = compo.components;
+					if (compos) {
+						var i = -1,
+							imax = compos.length;
+						while ( ++i < imax ){
+							compo_removeElements(compos[i]);
+						}
+					}
+				}
 			
 				
 			}());
@@ -11207,9 +11291,7 @@ function __eval(source, include) {
 					return this;
 				},
 				remove: function() {
-					if (this.$ != null)
-						this.$.remove();
-					
+					compo_removeElements(this);
 					compo_detachChild(this);
 					compo_dispose(this);
 		
@@ -13436,10 +13518,12 @@ function __eval(source, include) {
 		}
 		
 		function dom_removeAll(array) {
-			if (array == null) {
+			if (array == null) 
 				return;
-			}
-			for(var i = 0, length = array.length; i < length; i++){
+			
+			var imax = array.length,
+				i = -1;
+			while ( ++i < imax ) {
 				dom_removeElement(array[i]);
 			}
 		}
@@ -13478,18 +13562,20 @@ function __eval(source, include) {
 				return dom_insertAfter(fragment, placeholder || compo.placeholder);
 			
 			var compos = compo.components,
-				anchor = null,
+				anchor = placeholder,
 				insertBefore = true,
 				length = compos.length,
 				i = index,
 				elements;
 		
-			for (; i< length; i++) {
-				elements = compos[i].elements;
-		
-				if (elements && elements.length) {
-					anchor = elements[0];
-					break;
+			if (anchor == null) {
+				for (; i< length; i++) {
+					elements = compos[i].elements;
+			
+					if (elements && elements.length) {
+						anchor = elements[0];
+						break;
+					}
 				}
 			}
 		
@@ -13574,6 +13660,7 @@ function __eval(source, include) {
 			;
 			
 		(function(){
+			
 			var Expression = mask.Utils.Expression,
 				expression_eval_origin = Expression.eval
 				;
@@ -15519,6 +15606,8 @@ function __eval(source, include) {
 				};
 				
 				_renderElements = function(nodes, model, ctx, container, controller, children){
+					if (nodes == null) 
+						return null;
 					
 					var elements = [];
 					builder_build(nodes, model, ctx, container, controller, elements);
@@ -15576,23 +15665,33 @@ function __eval(source, include) {
 				
 				mask.registerHandler('+if', {
 					
+					$meta: {
+						serializeNodes: true
+					},
+					
 					render: function(model, ctx, container, controller, children){
 						
 						var node = this,
 							nodes = _getNodes('if', node, model, ctx, controller),
 							index = 0;
-							
+						
 						var next = node;
-						while(next != null){
+						while(true){
 							
 							if (next.nodes === nodes) 
 								break;
 							
 							index++;
 							next = node.nextSibling;
+							
+							if (next == null || next.tagName !== 'else') {
+								index = null;
+								break;
+							}
 						}
 						
 						this.attr['switch-index'] = index;
+						
 						return _renderElements(nodes, model, ctx, container, controller, children);
 					},
 					
@@ -15604,11 +15703,24 @@ function __eval(source, include) {
 						compo.placeholder = document.createComment('');
 						container.appendChild(compo.placeholder);
 						
-						
-						
 						initialize(compo, this, index, els, model, ctx, container, controller);
 						
+						
 						return compo;
+					},
+					
+					serializeNodes: function(current){
+						
+						var nodes = [ current ];
+						while (true) {
+							current = current.nextSibling;
+							if (current == null || current.tagName !== 'else') 
+								break;
+							
+							nodes.push(current);
+						}
+						
+						return mask.stringify(nodes);
 					}
 					
 				});
@@ -15617,7 +15729,7 @@ function __eval(source, include) {
 				function IFStatement() {}
 				
 				IFStatement.prototype = {
-					
+					compoName: '+if',
 					ctx : null,
 					model : null,
 					controller : null,
@@ -15741,12 +15853,308 @@ function __eval(source, include) {
 							expression_bind(node.expression, model, ctx, controller, compo.binder);
 					}
 					
-					compo.Switch[index].elements = elements;
+					if (index != null) 
+						compo.Switch[index].elements = elements;
+					
 				}
 			
 				
 			}());
 			// end:source 2.if.js
+			// source 3.switch.js
+			(function(){
+				
+				var $Switch = custom_Statements['switch'],
+					attr_SWITCH = 'switch-index'
+					;
+				
+				var _nodes,
+					_index;
+				
+				mask.registerHandler('+switch', {
+					
+					$meta: {
+						serializeNodes: true
+					},
+			
+					serializeNodes: function(current){
+						return mask.stringify(current);
+					},
+					
+					render: function(model, ctx, container, ctr, children){
+						
+						var value = expression_eval(this.expression, model, ctx, ctr);
+						
+						
+						resolveNodes(value, this.nodes, model, ctx, ctr);
+						
+						if (_nodes == null) 
+							return null;
+						
+						this.attr[attr_SWITCH] = _index;
+						
+						return _renderElements(_nodes, model, ctx, container, ctr, children);
+					},
+					
+					renderEnd: function(els, model, ctx, container, ctr){
+						
+						var compo = new SwitchStatement(),
+							index = this.attr[attr_SWITCH];
+						
+						_renderPlaceholder(compo, container);
+						
+						initialize(compo, this, index, els, model, ctx, container, ctr);
+						
+						return compo;
+					}
+					
+				});
+				
+				
+				function SwitchStatement() {}
+				
+				SwitchStatement.prototype = {
+					compoName: '+switch',
+					ctx: null,
+					model: null,
+					controller: null,
+					
+					index: null,
+					nodes: null,
+					Switch: null,
+					binder: null,
+					
+					
+					refresh: function(value) {
+						
+						var compo = this,
+							switch_ = compo.Switch,
+							
+							imax = switch_.length,
+							i = -1,
+							expr,
+							item, index = 0;
+							
+						var currentIndex = compo.index,
+							model = compo.model,
+							ctx = compo.ctx,
+							ctr = compo.controller
+							;
+						
+						resolveNodes(value, compo.nodes, model, ctx, ctr);
+						
+						if (_index === currentIndex) 
+							return;
+						
+						if (currentIndex != null) 
+							els_toggle(switch_[currentIndex], false);
+						
+						if (_index == null) {
+							compo.index = null;
+							return;
+						}
+						
+						this.index = _index;
+						
+						var elements = switch_[_index];
+						if (elements != null) {
+							els_toggle(elements, true);
+							return;
+						}
+						
+						var frag = mask.render(_nodes, model, ctx, null, ctr);
+						var els = frag.nodeType === Node.DOCUMENT_FRAGMENT_NODE
+							? _Array_slice.call(frag.childNodes)
+							: frag
+							;
+						
+						
+						dom_insertBefore(frag, compo.placeholder);
+						
+						switch_[_index] = els;
+						
+					},
+					dispose: function(){
+						expression_unbind(
+							this.expr,
+							this.model,
+							this.controller,
+							this.binder
+						);
+					
+						this.controller = null;
+						this.model = null;
+						this.ctx = null;
+						
+						var switch_ = this.Switch,
+							key,
+							els, i, imax
+							;
+						
+						for(key in switch_) {
+							els = switch_[key];
+							
+							if (els == null)
+								continue;
+							
+							imax = els.length;
+							i = -1;
+							while ( ++i < imax ){
+								if (els[i].parentNode != null) 
+									els[i].parentNode.removeChild(els[i]);
+							}
+						}
+					}
+				};
+				
+				function resolveNodes(val, nodes, model, ctx, ctr) {
+					
+					_nodes = $Switch.getNodes(val, nodes, model, ctx, ctr);
+					_index = null;
+					
+					if (_nodes == null) 
+						return;
+					
+					var imax = nodes.length,
+						i = -1;
+					while( ++i < imax ){
+						if (nodes[i].nodes === _nodes) 
+							break;
+					}
+						
+					_index = i === imax ? null : i;
+				}
+				
+				function initialize(compo, node, index, elements, model, ctx, container, ctr) {
+					
+					compo.ctx = ctx;
+					compo.expr = node.expression;
+					compo.model = model;
+					compo.controller = ctr;
+					compo.index = index;
+					compo.nodes = node.nodes;
+					
+					compo.refresh = fn_proxy(compo.refresh, compo);
+					compo.binder = expression_createBinder(
+						compo.expr,
+						model,
+						ctx,
+						ctr,
+						compo.refresh
+					);
+					
+					
+					compo.Switch = new Array(node.nodes.length);
+					
+					if (index != null) 
+						compo.Switch[index] = elements;
+					
+					expression_bind(node.expression, model, ctx, ctr, compo.binder);
+				}
+			
+				
+			}());
+			// end:source 3.switch.js
+			// source 4.with.js
+			(function(){
+				
+				var $With = custom_Statements['with'];
+					
+				mask.registerHandler('+with', {
+					$meta: {
+						serializeNodes: true
+					},
+					
+					render: function(model, ctx, container, ctr, childs){
+						
+						var val = expression_eval(this.expression, model, ctx, ctr);
+						
+						return build(this.nodes, val, ctx, container, ctr);
+					},
+					
+					renderEnd: function(els, model, ctx, container, ctr){
+						
+						var compo = new WithStatement(this);
+					
+						compo.elements = els;
+						compo.model = model;
+						compo.parent = ctr;
+						compo.refresh = fn_proxy(compo.refresh, compo);
+						compo.binder = expression_createBinder(
+							compo.expr,
+							model,
+							ctx,
+							ctr,
+							compo.refresh
+						);
+						
+						expression_bind(compo.expr, model, ctx, ctr, compo.binder);
+						
+						_renderPlaceholder(compo, container);
+						
+						return compo;
+					}
+				});
+				
+				
+				function WithStatement(node){
+					this.expr = node.expression;
+					this.nodes = node.nodes;
+				}
+				
+				WithStatement.prototype = {
+					compoName: '+with',
+					elements: null,
+					binder: null,
+					model: null,
+					parent: null,
+					refresh: function(val){
+						dom_removeAll(this.elements);
+						
+						if (this.components) {
+							var imax = this.components.length,
+								i = -1;
+							while ( ++i < imax ){
+								Compo.dispose(this.components[i]);
+							}
+							this.components.length = 0;
+						}
+						
+						
+						var fragment = document.createDocumentFragment();
+						this.elements = build(this.nodes, val, null, fragment, this);
+						
+						dom_insertBefore(fragment, this.placeholder);
+						compo_inserted(this);
+					},
+					
+					
+					dispose: function(){
+						expression_unbind(
+							this.expr,
+							this.model,
+							this.parent,
+							this.binder
+						);
+					
+						this.parent = null;
+						this.model = null;
+						this.ctx = null;
+					}
+					
+				};
+				
+				
+				function build(nodes, model, ctx, container, controller){
+					
+					var els = [];
+					builder_build(nodes, model, ctx, container, controller, els);
+					
+					return els;
+				}
+			
+			}());
+			// end:source 4.with.js
 			// source loop/exports.js
 			(function(){
 				
@@ -15863,13 +16271,20 @@ function __eval(source, include) {
 				
 					if (insertIndex != null && rangeModel && rangeModel.length) {
 				
-						var component = new mask.Dom.Component(),
-							fragment = self._build(node, rangeModel, ctx, component); 
+						var i = compos.length,
+							imax,
+							//component = new mask.Dom.Component(),
+							fragment = self._build(node, rangeModel, ctx, ctr); 
 						
 						compo_fragmentInsert(node, insertIndex, fragment, self.placeholder);
-						compo_inserted(component);
+						//compo_inserted(component);
 						
-						compos.splice.apply(compos, [insertIndex, 0].concat(component.components));
+						imax = compos.length;
+						for(; i < imax; i++){
+							__Compo.signal.emitIn(compos[i], 'domInsert');
+						}
+						
+						//-compos.splice.apply(compos, [insertIndex, 0].concat(component.components));
 					}
 				}
 				
@@ -15984,6 +16399,13 @@ function __eval(source, include) {
 						
 					
 					mask.registerHandler('+for', {
+						$meta: {
+							serializeNodes: true
+						},
+						
+						serializeNodes: function(node){
+							return mask.stringify(node);
+						},
 						
 						render: function(model, ctx, container, controller, childs){
 							
@@ -16027,6 +16449,11 @@ function __eval(source, include) {
 							_compo_initAndBind(compo, this, model, ctx, container, controller);
 							
 							return compo;
+						},
+						
+						getHandler: function(name, model){
+							
+							return For.getHandler(name, model);
 						}
 						
 					});
@@ -16342,8 +16769,6 @@ function __eval(source, include) {
 							compo.placeholder = document.createComment('');
 							container.appendChild(compo.placeholder);
 							
-							
-							
 							_compo_initAndBind(compo, this, model, ctx, container, controller);
 							
 							return compo;
@@ -16398,163 +16823,7 @@ function __eval(source, include) {
 			}());
 			
 			// end:source loop/exports.js
-			// source 3.switch.js
-			(function(){
-				
-				var $Switch = custom_Statements['switch'],
-					attr_SWITCH = 'switch-index'
-					;
-				
-				var _nodes,
-					_index;
-				
-				mask.registerHandler('+switch', {
-					
-					render: function(model, ctx, container, ctr, children){
-						
-						var value = expression_eval(this.expression, model, ctx, controller);
-						
-						
-						resolveNodes(value, this.nodes, model, ctx, ctr);
-						
-						if (_nodes == null) 
-							return null;
-						
-						this.attr[attr_SWITCH] = _index;
-						
-						return _renderElements(_nodes, model, ctx, container, controller, children);
-					},
-					
-					renderEnd: function(els, model, ctx, container, controller){
-						
-						var compo = new SwitchStatement(),
-							index = this.attr[attr_SWITCH];
-						
-						_renderPlaceholder(compo, container);
-						
-						initialize(compo, this, index, els, model, ctx, container, controller);
-						
-						return compo;
-					}
-					
-				});
-				
-				
-				function SwitchStatement() {}
-				
-				SwitchStatement.prototype = {
-					
-					ctx : null,
-					model : null,
-					controller : null,
-					
-					index : null,
-					Switch : null,
-					binder : null,
-					
-					refresh: function(value) {
-						var compo = this,
-							switch_ = compo.Switch,
-							
-							imax = switch_.length,
-							i = -1,
-							expr,
-							item, index = 0;
-							
-						var currentIndex = compo.index,
-							model = compo.model,
-							ctx = compo.ctx,
-							ctr = compo.controller
-							;
-						
-						resolveNodes(value, compo.nodes, model, ctx, ctr);
-						
-						if (_index === currentIndex) 
-							return;
-						
-						if (currentIndex != null) 
-							els_toggle(switch_[currentIndex], false);
-						
-						if (_index == null) {
-							compo.index = null;
-							return;
-						}
-						
-						this.index = _index;
-						
-						var elements = switch_[_index];
-						if (elements != null) {
-							els_toggle(elements, true);
-							return;
-						}
-						
-						var frag = mask.render(_nodes, model, ctx, null, ctr);
-						var els = frag.nodeType === Node.DOCUMENT_FRAGMENT_NODE
-							? _Array_slice.call(frag.childNodes)
-							: frag
-							;
-						
-						
-						dom_insertBefore(frag, compo.placeholder);
-						
-						switch_[_index] = els;
-						
-					},
-					dispose: function(){
-						expression_unbind(
-							this.expr,
-							this.model,
-							this.controller,
-							this.binder
-						);
-					
-						this.controller = null;
-						this.model = null;
-						this.ctx = null;
-					}
-				};
-				
-				function resolveNodes(val, nodes, model, ctx, ctr) {
-					_nodes = $Switch.getNodes(value, nodes, model, ctx, ctr);
-					_index = null;
-					
-					if (_nodes == null) 
-						return;
-					
-					var imax = nodes.length,
-						i = -1;
-					while( ++i < imax ){
-						if (nodes[i] === nodes) 
-							break;
-					}
-					
-					_index = i === imax ? null : i;
-				}
-				
-				function initialize(compo, node, index, elements, model, ctx, container, ctr) {
-					
-					compo.ctx = ctx;
-					compo.expr = node.expression;
-					compo.model = model;
-					compo.controller = ctr;
-					
-					
-					compo.refresh = fn_proxy(compo.refresh, compo);
-					compo.binder = expression_createListener(compo.refresh);
-					compo.index = index;
-					
-					compo.Switch = new Array(node.nodes.length);
-					
-					if (index != null) 
-						compo.Switch[index] = elements;
-					
-					expression_bind(node.expression, model, ctx, ctr, compo.binder);
-				}
 			
-				
-			}());
-			// end:source 3.switch.js
-				
 		}());
 		// end:source ../src/statements/exports.js
 	

@@ -138,7 +138,8 @@
 		class_patch,
 		
 		class_stringify,
-		class_parse
+		class_parse,
+		class_properties
 		
 		;
 	
@@ -193,6 +194,9 @@
 			return JSON.parse(str, parse);
 		};
 		
+		class_properties = function(Ctor) {
+			return getProperties(Ctor);
+		};
 		
 		// private
 		
@@ -243,6 +247,27 @@
 			
 			return val;
 		}
+		
+		function getProperties(proto, out){
+			if (typeof proto === 'function')
+				proto = proto.prototype;
+			
+			if (out == null) 
+				out = {};
+			
+			var type,
+				key
+	        for(key in proto){
+	            type = typeof proto[key];
+	            if (type !== 'function') 
+	                out[key] = type;
+	        }
+	        
+	        if (proto.__proto__) 
+	            getProperties(proto.__proto__, out);
+	        
+	        return out;
+	    }
 		
 	}());
 	// end:source /src/util/class.js
@@ -2195,6 +2220,24 @@
 		Remote.onBefore = storageEvents_onBefore;
 		Remote.onAfter = storageEvents_onAfter;
 		
+		arr_each(['get', 'post', 'put', 'delete'], function(method){
+			
+			Remote[method] = function(url, obj){
+				
+				var json = obj;
+				if (obj.serialize != null) 
+					json = obj.serialize();
+				
+				if (json == null && obj.toJSON) 
+					json = obj.toJSON();
+				
+				var dfr = new Deferred();
+				XHR[method](url, json, resolveDelegate(dfr));
+				
+				return dfr;
+			};
+		});
+		
 		return Remote;
 	}());
 	// end:source /src/store/Remote.js
@@ -3074,6 +3117,7 @@
 	Class.stringify = class_stringify;
 	Class.parse = class_parse;
 	Class.patch = class_patch;
+	Class.properties = class_properties;
 	// end:source /src/Class.Static.js
 	
 	// source /src/collection/Collection.js
@@ -5852,6 +5896,7 @@
 		    
 		            var res = new Resource();
 		            res.state = 4;
+		            res.location = currentUrl;
 		            return res;
 		        }
 		    });
@@ -5977,8 +6022,6 @@ function __eval(source, include) {
     'use strict';
 
 // end:source ../../mask/src/umd-head.js
-
-
 
 	// source ../../mask/src/scope-vars.js
 	var regexpWhitespace = /\s/g,
@@ -6492,11 +6535,27 @@ function __eval(source, include) {
 		compo_renderMode_CLIENT = 2,
 		compo_renderMode_BOTH = 3,
 		
-		
+		compo_getMetaInfo,	
 		compo_getRenderMode
 		;
 		
 	(function(){
+		
+		compo_getMetaInfo = function(compo){
+			if (compo == null) 
+				return {};
+			
+			var $meta,
+				proto = typeof compo === 'function'
+					? compo.prototype
+					: compo
+					;
+				
+			$meta = proto.$meta || {};
+			$meta.mode = compo_getRenderMode(compo);
+			
+			return $meta;
+		};
 		
 		compo_getRenderMode = function(compo){
 			if (compo == null) 
@@ -6507,7 +6566,10 @@ function __eval(source, include) {
 				: compo
 				;
 			
-			var meta = proto.$meta && proto.$meta.mode || proto.mode;
+			var meta = (proto.$meta && proto.$meta.mode) || proto.mode;
+			
+			if (typeof meta === 'number') 
+				return meta;
 			
 			if (meta == null || meta === 'both') 
 				return compo_renderMode_BOTH;
@@ -7867,7 +7929,6 @@ function __eval(source, include) {
 				
 				if (Handler != null && typeof Handler === 'object') {
 					//> static
-					
 					Handler.__Ctor = wrapStatic(Handler);
 				}
 				
@@ -7875,8 +7936,8 @@ function __eval(source, include) {
 			};
 			
 			
-			function wrapStatic(proto, parent) {
-				function Ctor(node) {
+			function wrapStatic(proto) {
+				function Ctor(node, parent) {
 					this.tagName = node.tagName;
 					this.attr = node.attr;
 					this.expression = node.expression;
@@ -8847,7 +8908,11 @@ function __eval(source, include) {
 			build: build,
 			parseFor: parse_For,
 			createForItem: createForItem,
-			getNodes: getNodes
+			getNodes: getNodes,
+			
+			getHandler: function(compoName, model){
+				return createHandler(compoName, model);
+			}
 		};
 		
 		function build(value, For, nodes, model, ctx, container, ctr, childs) {
@@ -8938,12 +9003,21 @@ function __eval(source, include) {
 				controller: {
 					compoName: name,
 					scope: scope,
-					
-					renderEnd: function(elements){
-						this.elements = elements
-					}
+					renderEnd: handler_proto_renderEnd
 				}
 			};
+		}
+		
+		function createHandler(name, scope) {
+			return {
+				compoName: name,
+				scope: scope,
+				renderEnd: handler_proto_renderEnd
+			}
+		}
+		
+		function handler_proto_renderEnd(elements) {
+			this.elements = elements;
 		}
 	
 		
@@ -9329,334 +9403,6 @@ function __eval(source, include) {
 	// end:source 7.import.js
 	// end:source ../../mask/src/statements/exports.js
 	
-	
-	
-	
-	// source ../../mask/src/mask.js
-	
-	/**
-	 *  mask
-	 *
-	 **/
-	
-	var cache = {},
-		Mask = {
-	
-			/**
-			 *	mask.render(template[, model, ctx, container = DocumentFragment, controller]) -> container
-			 * - template (String | MaskDOM): Mask String or Mask DOM Json template to render from.
-			 * - model (Object): template values
-			 * - ctx (Object): can store any additional information, that custom handler may need,
-			 * this object stays untouched and is passed to all custom handlers
-			 * - container (IAppendChild): container where template is rendered into
-			 * - controller (Object): instance of an controller that own this template
-			 *
-			 *	Create new Document Fragment from template or append rendered template to container
-			 **/
-			render: function (template, model, ctx, container, controller) {
-	
-				// if DEBUG
-				if (container != null && typeof container.appendChild !== 'function'){
-					console.error('.render(template[, model, ctx, container, controller]', 'Container should implement .appendChild method');
-					console.warn('Args:', arguments);
-				}
-				// endif
-	
-				if (typeof template === 'string') {
-					if (hasOwnProp.call(cache, template)){
-						/* if Object doesnt contains property that check is faster
-						then "!=null" http://jsperf.com/not-in-vs-null/2 */
-						template = cache[template];
-					}else{
-						template = cache[template] = parser_parse(template);
-					}
-				}
-				
-				if (ctx == null) {
-					ctx = {};
-				}
-				
-				return builder_build(template, model, ctx, container, controller);
-			},
-	
-			/* deprecated, renamed to parse */
-			compile: parser_parse,
-	
-			/**
-			 *	mask.parse(template) -> MaskDOM
-			 * - template (String): string to be parsed into MaskDOM
-			 *
-			 * Create MaskDOM from Mask markup
-			 **/
-			parse: parser_parse,
-	
-			build: builder_build,
-			/**
-			 * mask.registerHandler(tagName, tagHandler) -> void
-			 * - tagName (String): Any tag name. Good practice for custom handlers it when its name begins with ':'
-			 * - tagHandler (Function|Object):
-			 *
-			 *	When Mask.Builder matches the tag binded to this tagHandler, it -
-			 *	creates instances of the class(in case of Function) or uses specified object.
-			 *	Shallow copies -
-			 *		.nodes(MaskDOM) - Template Object of this node
-			 *		.attr(Object) - Attributes of this node
-			 *	And calls
-			 *		.renderStart(model, ctx, container)
-			 *		.renderEnd(elements, model, ctx, container)
-			 *
-			 *	Custom Handler now can handle rendering of underlined nodes.
-			 *	The most simple example to continue rendering is:
-			 *	mask.render(this.nodes, model, container, ctx);
-			 **/
-			registerHandler: customTag_register,
-			/**
-			 *	mask.getHandler(tagName) -> Function | Object
-			 * - tagName (String):
-			 *
-			 *	Get Registered Handler
-			 **/
-			getHandler: function (tagName) {
-				return tagName != null
-					? custom_Tags[tagName]
-					: custom_Tags
-					;
-			},
-			
-			registerStatement: function(name, handler){
-				//@TODO should it be not allowed to override system statements, if, switch?
-				
-				custom_Statements[name] = is_Function(handler)
-					? { render: handler }
-					: handler
-					;
-			},
-			
-			getStatement: function(name){
-				return name != null
-					? custom_Statements[name]
-					: custom_Statements
-					;
-			},
-			
-			/**
-			 * mask.registerAttrHandler(attrName, mix, Handler) -> void
-			 * - attrName (String): any attribute string name
-			 * - mix (String | Function): Render Mode or Handler Function if 'both'
-			 * - Handler (Function)
-			 *
-			 * Handler Interface, <i>(similar to Utility Interface)</i>
-			 * ``` customAttribute(maskNode, attributeValue, model, ctx, element, controller) ```
-			 *
-			 * You can change do any changes to maskNode's template, current element value,
-			 * controller, model.
-			 *
-			 * Note: Attribute wont be set to an element.
-			 **/
-			registerAttrHandler: function(attrName, mix, Handler){
-				if (is_Function(mix)) {
-					Handler = mix;
-				}
-				
-				custom_Attributes[attrName] = Handler;
-			},
-			
-			getAttrHandler: function(attrName){
-				return attrName != null
-					? custom_Attributes[attrName]
-					: custom_Attributes;
-			},
-			/**
-			 *	mask.registerUtil(utilName, mix) -> void
-			 * - utilName (String): name of the utility
-			 * - mix (Function, Object): Util Handler
-			 *
-			 *	Register Util Handler. Template Example: '~[myUtil: value]'
-			 *
-			 *	Function interface:
-			 *	```
-			 *	function(expr, model, ctx, element, controller, attrName, type);
-			 *	```
-			 *
-			 *	- value (String): string from interpolation part after util definition
-			 *	- model (Object): current Model
-			 *	- type (String): 'attr' or 'node' - tells if interpolation is in TEXTNODE value or Attribute
-			 *	- ctx (Object): Context Object
-			 *	- element (HTMLNode): current html node
-			 *	- name (String): If interpolation is in node attribute, then this will contain attribute name
-			 *
-			 *  Object interface:
-			 *  ```
-			 *  {
-			 *  	nodeRenderStart: function(expr, model, ctx, element, controller){}
-			 *  	node: function(expr, model, ctx, element, controller){}
-			 *
-			 *  	attrRenderStart: function(expr, model, ctx, element, controller, attrName){}
-			 *  	attr: function(expr, model, ctx, element, controller, attrName){}
-			 *  }
-			 *  ```
-			 *
-			 *	This diff nodeRenderStart/node is needed to seperate util logic.
-			 *	Mask in node.js will call only node-/attrRenderStart,
-			 *  
-			 **/
-			
-			registerUtil: customUtil_register,
-			//////function(utilName, mix){
-			//////	if (typeof mix === 'function') {
-			//////		custom_Utils[utilName] = mix;
-			//////		return;
-			//////	}
-			//////	
-			//////	if (typeof mix.process !== 'function') {
-			//////		mix.process = function(expr, model, ctx, element, controller, attrName, type){
-			//////			if ('node' === type) {
-			//////				
-			//////				this.nodeRenderStart(expr, model, ctx, element, controller);
-			//////				return this.node(expr, model, ctx, element, controller);
-			//////			}
-			//////			
-			//////			// asume 'attr'
-			//////			
-			//////			this.attrRenderStart(expr, model, ctx, element, controller, attrName);
-			//////			return this.attr(expr, model, ctx, element, controller, attrName);
-			//////		};
-			//////	
-			//////	}
-			//////	
-			//////	custom_Utils[utilName] = mix;
-			//////},
-			
-			getUtil: customUtil_get,
-			//////function(util){
-			//////	return util != null
-			//////		? custom_Utils[util]
-			//////		: custom_Utils;
-			//////},
-			
-			$utils: customUtil_$utils,
-			
-			registerUtility: function (utilityName, fn) {
-				// if DEBUG
-				console.warn('@registerUtility - deprecated - use registerUtil(utilName, mix)', utilityName);
-				// endif
-				this.registerUtility = this.registerUtil;
-				this.registerUtility(utilityName, fn);
-			},
-			
-			getUtility: function(util){
-				// if DEBUG
-				console.warn('@getUtility - deprecated - use getUtil(utilName)', util);
-				// endif
-				this.getUtility = this.getUtil;
-				
-				return this.getUtility();
-			},
-			/**
-			 * mask.clearCache([key]) -> void
-			 * - key (String): template to remove from cache
-			 *
-			 *	Mask Caches all templates, so this function removes
-			 *	one or all templates from cache
-			 **/
-			clearCache: function(key){
-				if (typeof key === 'string'){
-					delete cache[key];
-				}else{
-					cache = {};
-				}
-			},
-	
-			Utils: {
-				
-				/**
-				 * mask.Util.Expression -> ExpressionUtil
-				 *
-				 * [[ExpressionUtil]]
-				 **/
-				Expression: ExpressionUtil,
-	
-				/**
-				 *	mask.Util.getProperty(model, path) -> value
-				 *	- model (Object | value)
-				 *	- path (String): Property or dot chainable path to retrieve the value
-				 *		if path is '.' returns model itself
-				 *
-				 *	```javascript
-				 *	mask.render('span > ~[.]', 'Some string') // -> <span>Some string</span>
-				 *	```
-				 **/
-				getProperty: obj_getProperty,
-				
-				ensureTmplFn: Parser.ensureTemplateFunction
-			},
-			Dom: Dom,
-			plugin: function(source){
-				eval(source);
-			},
-			on: function(event, fn){
-				if (listeners == null){
-					listeners = {};
-				}
-	
-				(listeners[event] || (listeners[event] = [])).push(fn);
-			},
-	
-			/*
-			 *	Stub for reload.js, which will be used by includejs.autoreload
-			 */
-			delegateReload: function(){},
-	
-			/**
-			 *	mask.setInterpolationQuotes(start,end) -> void
-			 * -start (String): Must contain 2 Characters
-			 * -end (String): Must contain 1 Character
-			 *
-			 * Starting from 0.6.9 mask uses ~[] for string interpolation.
-			 * Old '#{}' was changed to '~[]', while template is already overloaded with #, { and } usage.
-			 *
-			 **/
-			setInterpolationQuotes: Parser.setInterpolationQuotes,
-			
-			setCompoIndex: function(index){
-				builder_componentID = index;
-			},
-			
-			cfg: function(){
-				var args = arguments;
-				if (args.length === 0) {
-					return __cfg;
-				}
-				
-				var key, value;
-				
-				if (args.length === 2) {
-					key = args[0];
-					
-					__cfg[key] = args[1];
-					return;
-				}
-				
-				var obj = args[0];
-				if (typeof obj === 'object') {
-					
-					for (key in obj) {
-						__cfg[key] = obj[key]
-					}
-				}
-			}
-		};
-	
-	
-	/**	deprecated
-	 *	mask.renderDom(template[, model, container, ctx]) -> container
-	 *
-	 * Use [[mask.render]] instead
-	 * (to keep backwards compatiable)
-	 **/
-	Mask.renderDom = Mask.render;
-	
-	// end:source ../../mask/src/mask.js
 	// source /src/builder.js
 	var builder_build = (function() {
 	
@@ -9678,7 +9424,7 @@ function __eval(source, include) {
 			
 			ModelBuilder.prototype = {
 				append: function(model){
-					if (model === null) 
+					if (model == null) 
 						return -1;
 					
 					var id = 'm' + (++this._id);
@@ -10550,15 +10296,15 @@ function __eval(source, include) {
 				cacheInfo;
 			
 			var compoName = node.compoName || node.tagName,
-				Ctor = custom_Tags[compoName] || node.controller;
+				Handler = custom_Tags[compoName] || node.controller;
 			
-			if (Ctor != null) 
-				cacheInfo = is_Function(Ctor)
-					? Ctor.prototype.cache
-					: Ctor.cache;
+			if (Handler != null) 
+				cacheInfo = is_Function(Handler)
+					? Handler.prototype.cache
+					: Handler.cache;
 			
 			if (cacheInfo != null) 
-				compo = Cache.getCompo(model, ctx, compoName, Ctor);
+				compo = Cache.getCompo(model, ctx, compoName, Handler);
 			
 			if (compo != null) {
 				this.compo = compo;
@@ -10569,14 +10315,22 @@ function __eval(source, include) {
 				return;
 			}
 			
-			compo = is_Function(Ctor)
-				? new Ctor(model)
-				: Ctor;
+			if (Handler != null) {
+			
+				if (is_Function(Handler))
+					compo = new Handler(model);
 				
+				if (compo == null && is_Function(Handler.__Ctor)) 
+					compo = new Handler.__Ctor(node, controller);
+				
+				if (compo == null)
+					compo = Handler;
+			}
 			
 			if (compo == null) {
 				compo = {
 					model: node.model,
+					expression: node.expression,
 					modelRef: node.modelRef,
 					container: node.container,
 					mode: controller.mode,
@@ -10589,6 +10343,7 @@ function __eval(source, include) {
 			
 			
 			this.compo = compo;
+			this.node = node;
 			this.ID = this.compo.ID = ++ ctx._id;
 			
 			if (mode_SERVER_ALL === controller.mode) 
@@ -10596,8 +10351,6 @@ function __eval(source, include) {
 			
 			if (mode_SERVER_CHILDREN === controller.mode) 
 				compo.mode = mode_SERVER_ALL;
-			
-				
 		
 			attr = obj_extend(compo.attr, node.attr);
 			
@@ -10646,7 +10399,7 @@ function __eval(source, include) {
 			}
 		
 			
-			if (compo.tagName != null && compo.tagName !== node.compoName) {
+			if (compo.tagName != null && compo.tagName !== node.tagName) {
 				compo.nodes = {
 					tagName: compo.tagName,
 					attr: compo.attr,
@@ -10679,7 +10432,8 @@ function __eval(source, include) {
 					return compo.__cached;
 				}
 				
-				var mode = compo.mode,
+				var meta = compo_getMetaInfo(compo),
+					mode = meta.mode,
 					compoName,
 					attr,
 					nodes;
@@ -10699,9 +10453,13 @@ function __eval(source, include) {
 						
 						compoName: compoName,
 						attr: attr,
+						expression: compo.expression,
 						mask: mode === 'client'
-								? mask.stringify(nodes, 0)
-								: null
+							? mask.stringify(nodes, 0)
+							: null,
+						nodes: meta.serializeNodes !== true
+							? null
+							: (compo.serializeNodes || mask.stringify)(this.node)
 					},
 					info = {
 						single: this.firstChild == null,
@@ -11335,15 +11093,15 @@ function __eval(source, include) {
 				controller = new Dom.Component();
 			
 			if (ctx == null) 
-				ctx = {};
+				ctx = { _model: null, _ctx: null };
 			
+			if (ctx._model == null) 
+				ctx._model = new ModelBuilder(model, Cache.modelID);
 			
-			ctx._model = new ModelBuilder(model, Cache.modelID);
-			ctx._id = Cache.controllerID;
+			if (ctx._id == null) 
+				ctx._id = Cache.controllerID;
 			
 			var html;
-	
-			
 			builder_html(template, model, ctx, container, controller);
 			
 			
@@ -11384,6 +11142,334 @@ function __eval(source, include) {
 	}());
 	
 	// end:source /src/builder.js
+	
+	
+	// source ../../mask/src/mask.js
+	
+	/**
+	 *  mask
+	 *
+	 **/
+	
+	var cache = {},
+		Mask = {
+	
+			/**
+			 *	mask.render(template[, model, ctx, container = DocumentFragment, controller]) -> container
+			 * - template (String | MaskDOM): Mask String or Mask DOM Json template to render from.
+			 * - model (Object): template values
+			 * - ctx (Object): can store any additional information, that custom handler may need,
+			 * this object stays untouched and is passed to all custom handlers
+			 * - container (IAppendChild): container where template is rendered into
+			 * - controller (Object): instance of an controller that own this template
+			 *
+			 *	Create new Document Fragment from template or append rendered template to container
+			 **/
+			render: function (template, model, ctx, container, controller) {
+	
+				// if DEBUG
+				if (container != null && typeof container.appendChild !== 'function'){
+					console.error('.render(template[, model, ctx, container, controller]', 'Container should implement .appendChild method');
+					console.warn('Args:', arguments);
+				}
+				// endif
+	
+				if (typeof template === 'string') {
+					if (hasOwnProp.call(cache, template)){
+						/* if Object doesnt contains property that check is faster
+						then "!=null" http://jsperf.com/not-in-vs-null/2 */
+						template = cache[template];
+					}else{
+						template = cache[template] = parser_parse(template);
+					}
+				}
+				
+				if (ctx == null) {
+					ctx = {};
+				}
+				
+				return builder_build(template, model, ctx, container, controller);
+			},
+	
+			/* deprecated, renamed to parse */
+			compile: parser_parse,
+	
+			/**
+			 *	mask.parse(template) -> MaskDOM
+			 * - template (String): string to be parsed into MaskDOM
+			 *
+			 * Create MaskDOM from Mask markup
+			 **/
+			parse: parser_parse,
+	
+			build: builder_build,
+			/**
+			 * mask.registerHandler(tagName, tagHandler) -> void
+			 * - tagName (String): Any tag name. Good practice for custom handlers it when its name begins with ':'
+			 * - tagHandler (Function|Object):
+			 *
+			 *	When Mask.Builder matches the tag binded to this tagHandler, it -
+			 *	creates instances of the class(in case of Function) or uses specified object.
+			 *	Shallow copies -
+			 *		.nodes(MaskDOM) - Template Object of this node
+			 *		.attr(Object) - Attributes of this node
+			 *	And calls
+			 *		.renderStart(model, ctx, container)
+			 *		.renderEnd(elements, model, ctx, container)
+			 *
+			 *	Custom Handler now can handle rendering of underlined nodes.
+			 *	The most simple example to continue rendering is:
+			 *	mask.render(this.nodes, model, container, ctx);
+			 **/
+			registerHandler: customTag_register,
+			/**
+			 *	mask.getHandler(tagName) -> Function | Object
+			 * - tagName (String):
+			 *
+			 *	Get Registered Handler
+			 **/
+			getHandler: function (tagName) {
+				return tagName != null
+					? custom_Tags[tagName]
+					: custom_Tags
+					;
+			},
+			
+			registerStatement: function(name, handler){
+				//@TODO should it be not allowed to override system statements, if, switch?
+				
+				custom_Statements[name] = is_Function(handler)
+					? { render: handler }
+					: handler
+					;
+			},
+			
+			getStatement: function(name){
+				return name != null
+					? custom_Statements[name]
+					: custom_Statements
+					;
+			},
+			
+			/**
+			 * mask.registerAttrHandler(attrName, mix, Handler) -> void
+			 * - attrName (String): any attribute string name
+			 * - mix (String | Function): Render Mode or Handler Function if 'both'
+			 * - Handler (Function)
+			 *
+			 * Handler Interface, <i>(similar to Utility Interface)</i>
+			 * ``` customAttribute(maskNode, attributeValue, model, ctx, element, controller) ```
+			 *
+			 * You can change do any changes to maskNode's template, current element value,
+			 * controller, model.
+			 *
+			 * Note: Attribute wont be set to an element.
+			 **/
+			registerAttrHandler: function(attrName, mix, Handler){
+				if (is_Function(mix)) {
+					Handler = mix;
+				}
+				
+				custom_Attributes[attrName] = Handler;
+			},
+			
+			getAttrHandler: function(attrName){
+				return attrName != null
+					? custom_Attributes[attrName]
+					: custom_Attributes;
+			},
+			/**
+			 *	mask.registerUtil(utilName, mix) -> void
+			 * - utilName (String): name of the utility
+			 * - mix (Function, Object): Util Handler
+			 *
+			 *	Register Util Handler. Template Example: '~[myUtil: value]'
+			 *
+			 *	Function interface:
+			 *	```
+			 *	function(expr, model, ctx, element, controller, attrName, type);
+			 *	```
+			 *
+			 *	- value (String): string from interpolation part after util definition
+			 *	- model (Object): current Model
+			 *	- type (String): 'attr' or 'node' - tells if interpolation is in TEXTNODE value or Attribute
+			 *	- ctx (Object): Context Object
+			 *	- element (HTMLNode): current html node
+			 *	- name (String): If interpolation is in node attribute, then this will contain attribute name
+			 *
+			 *  Object interface:
+			 *  ```
+			 *  {
+			 *  	nodeRenderStart: function(expr, model, ctx, element, controller){}
+			 *  	node: function(expr, model, ctx, element, controller){}
+			 *
+			 *  	attrRenderStart: function(expr, model, ctx, element, controller, attrName){}
+			 *  	attr: function(expr, model, ctx, element, controller, attrName){}
+			 *  }
+			 *  ```
+			 *
+			 *	This diff nodeRenderStart/node is needed to seperate util logic.
+			 *	Mask in node.js will call only node-/attrRenderStart,
+			 *  
+			 **/
+			
+			registerUtil: customUtil_register,
+			//////function(utilName, mix){
+			//////	if (typeof mix === 'function') {
+			//////		custom_Utils[utilName] = mix;
+			//////		return;
+			//////	}
+			//////	
+			//////	if (typeof mix.process !== 'function') {
+			//////		mix.process = function(expr, model, ctx, element, controller, attrName, type){
+			//////			if ('node' === type) {
+			//////				
+			//////				this.nodeRenderStart(expr, model, ctx, element, controller);
+			//////				return this.node(expr, model, ctx, element, controller);
+			//////			}
+			//////			
+			//////			// asume 'attr'
+			//////			
+			//////			this.attrRenderStart(expr, model, ctx, element, controller, attrName);
+			//////			return this.attr(expr, model, ctx, element, controller, attrName);
+			//////		};
+			//////	
+			//////	}
+			//////	
+			//////	custom_Utils[utilName] = mix;
+			//////},
+			
+			getUtil: customUtil_get,
+			//////function(util){
+			//////	return util != null
+			//////		? custom_Utils[util]
+			//////		: custom_Utils;
+			//////},
+			
+			$utils: customUtil_$utils,
+			
+			registerUtility: function (utilityName, fn) {
+				// if DEBUG
+				console.warn('@registerUtility - deprecated - use registerUtil(utilName, mix)', utilityName);
+				// endif
+				this.registerUtility = this.registerUtil;
+				this.registerUtility(utilityName, fn);
+			},
+			
+			getUtility: function(util){
+				// if DEBUG
+				console.warn('@getUtility - deprecated - use getUtil(utilName)', util);
+				// endif
+				this.getUtility = this.getUtil;
+				
+				return this.getUtility();
+			},
+			/**
+			 * mask.clearCache([key]) -> void
+			 * - key (String): template to remove from cache
+			 *
+			 *	Mask Caches all templates, so this function removes
+			 *	one or all templates from cache
+			 **/
+			clearCache: function(key){
+				if (typeof key === 'string'){
+					delete cache[key];
+				}else{
+					cache = {};
+				}
+			},
+	
+			Utils: {
+				
+				/**
+				 * mask.Util.Expression -> ExpressionUtil
+				 *
+				 * [[ExpressionUtil]]
+				 **/
+				Expression: ExpressionUtil,
+	
+				/**
+				 *	mask.Util.getProperty(model, path) -> value
+				 *	- model (Object | value)
+				 *	- path (String): Property or dot chainable path to retrieve the value
+				 *		if path is '.' returns model itself
+				 *
+				 *	```javascript
+				 *	mask.render('span > ~[.]', 'Some string') // -> <span>Some string</span>
+				 *	```
+				 **/
+				getProperty: obj_getProperty,
+				
+				ensureTmplFn: Parser.ensureTemplateFunction
+			},
+			Dom: Dom,
+			plugin: function(source){
+				eval(source);
+			},
+			on: function(event, fn){
+				if (listeners == null){
+					listeners = {};
+				}
+	
+				(listeners[event] || (listeners[event] = [])).push(fn);
+			},
+	
+			/*
+			 *	Stub for reload.js, which will be used by includejs.autoreload
+			 */
+			delegateReload: function(){},
+	
+			/**
+			 *	mask.setInterpolationQuotes(start,end) -> void
+			 * -start (String): Must contain 2 Characters
+			 * -end (String): Must contain 1 Character
+			 *
+			 * Starting from 0.6.9 mask uses ~[] for string interpolation.
+			 * Old '#{}' was changed to '~[]', while template is already overloaded with #, { and } usage.
+			 *
+			 **/
+			setInterpolationQuotes: Parser.setInterpolationQuotes,
+			
+			setCompoIndex: function(index){
+				builder_componentID = index;
+			},
+			
+			cfg: function(){
+				var args = arguments;
+				if (args.length === 0) {
+					return __cfg;
+				}
+				
+				var key, value;
+				
+				if (args.length === 2) {
+					key = args[0];
+					
+					__cfg[key] = args[1];
+					return;
+				}
+				
+				var obj = args[0];
+				if (typeof obj === 'object') {
+					
+					for (key in obj) {
+						__cfg[key] = obj[key]
+					}
+				}
+			}
+		};
+	
+	
+	/**	deprecated
+	 *	mask.renderDom(template[, model, container, ctx]) -> container
+	 *
+	 * Use [[mask.render]] instead
+	 * (to keep backwards compatiable)
+	 **/
+	Mask.renderDom = Mask.render;
+	
+	// end:source ../../mask/src/mask.js
+	
 	// source /src/mock/mock.js
 	var Meta,
 		mock_TagHandler;
@@ -11737,6 +11823,12 @@ function __eval(source, include) {
 		
 		Mask.registerHandler = function(tagName, compo){
 			
+			if (compo != null && typeof compo === 'object') {
+				//> static
+				compo.__Ctor = wrapStatic(compo);
+			}	
+					
+			
 			if (custom_Tags_defs.hasOwnProperty(tagName)) {
 				obj_extend(compo.prototype, custom_Tags_defs[tagName]);
 			}
@@ -11777,6 +11869,24 @@ function __eval(source, include) {
 			}
 		};	
 		
+		
+		function wrapStatic(proto, parent) {
+			function Ctor(node) {
+				this.tagName = node.tagName;
+				this.compoName = node.tagName;
+				
+				this.attr = node.attr;
+				this.expression = node.expression;
+				this.nodes = node.nodes;
+				this.nextSibling = node.nextSibling;
+				this.parent = parent;
+				this.components = null;
+			}
+			
+			Ctor.prototype = proto;
+			
+			return Ctor;
+		}
 	}());
 	
 	// end:source /src/mock/mock.js
@@ -11829,7 +11939,7 @@ function __eval(source, include) {
 		}());
 		
 		// if DEBUG
-		if (document != null && domLib == null) {
+		if (global.document != null && domLib == null) {
 			
 			console.warn('jQuery-Zepto-Kimbo etc. was not loaded before MaskJS:Compo, please use Compo.config.setDOMLibrary to define dom engine');
 		}
@@ -12742,7 +12852,8 @@ function __eval(source, include) {
 				compo_detachChild,
 				compo_ensureTemplate,
 				compo_attachDisposer,
-				compo_createConstructor
+				compo_createConstructor,
+				compo_removeElements
 				;
 			
 			(function(){
@@ -12892,6 +13003,33 @@ function __eval(source, include) {
 							Ctor.call(this);
 					};
 				};
+				
+				compo_removeElements = function(compo) {
+					if (compo.$) {
+						compo.$.remove();
+						return;
+					}
+					
+					var els = compo.elements;
+					if (els) {
+						var i = -1,
+							imax = els.length;
+						while ( ++i < imax ) {
+							if (els[i].parentNode) 
+								els[i].parentNode.removeChild(els[i]);
+						}
+						return;
+					}
+					
+					var compos = compo.components;
+					if (compos) {
+						var i = -1,
+							imax = compos.length;
+						while ( ++i < imax ){
+							compo_removeElements(compos[i]);
+						}
+					}
+				}
 			
 				
 			}());
@@ -13414,9 +13552,7 @@ function __eval(source, include) {
 					return this;
 				},
 				remove: function() {
-					if (this.$ != null)
-						this.$.remove();
-					
+					compo_removeElements(this);
 					compo_detachChild(this);
 					compo_dispose(this);
 		
@@ -16386,18 +16522,20 @@ function __eval(source, include) {
 				return dom_insertAfter(fragment, placeholder || compo.placeholder);
 			
 			var compos = compo.components,
-				anchor = null,
+				anchor = placeholder,
 				insertBefore = true,
 				length = compos.length,
 				i = index,
 				elements;
 		
-			for (; i< length; i++) {
-				elements = compos[i].elements;
-		
-				if (elements && elements.length) {
-					anchor = elements[0];
-					break;
+			if (anchor == null) {
+				for (; i< length; i++) {
+					elements = compos[i].elements;
+			
+					if (elements && elements.length) {
+						anchor = elements[0];
+						break;
+					}
 				}
 			}
 		
@@ -16482,6 +16620,7 @@ function __eval(source, include) {
 			;
 			
 		(function(){
+			
 			var Expression = mask.Utils.Expression,
 				expression_eval_origin = Expression.eval
 				;
@@ -18369,6 +18508,8 @@ function __eval(source, include) {
 				};
 				
 				_renderElements = function(nodes, model, ctx, container, controller, children){
+					if (nodes == null) 
+						return null;
 					
 					var elements = [];
 					builder_build(nodes, model, ctx, container, controller, elements);
@@ -18426,23 +18567,33 @@ function __eval(source, include) {
 				
 				mask.registerHandler('+if', {
 					
+					$meta: {
+						serializeNodes: true
+					},
+					
 					render: function(model, ctx, container, controller, children){
 						
 						var node = this,
 							nodes = _getNodes('if', node, model, ctx, controller),
 							index = 0;
-							
+						
 						var next = node;
-						while(next != null){
+						while(true){
 							
 							if (next.nodes === nodes) 
 								break;
 							
 							index++;
 							next = node.nextSibling;
+							
+							if (next == null || next.tagName !== 'else') {
+								index = null;
+								break;
+							}
 						}
 						
 						this.attr['switch-index'] = index;
+						
 						return _renderElements(nodes, model, ctx, container, controller, children);
 					},
 					
@@ -18454,11 +18605,24 @@ function __eval(source, include) {
 						compo.placeholder = document.createComment('');
 						container.appendChild(compo.placeholder);
 						
-						
-						
 						initialize(compo, this, index, els, model, ctx, container, controller);
 						
+						
 						return compo;
+					},
+					
+					serializeNodes: function(current){
+						
+						var nodes = [ current ];
+						while (true) {
+							current = current.nextSibling;
+							if (current == null || current.tagName !== 'else') 
+								break;
+							
+							nodes.push(current);
+						}
+						
+						return mask.stringify(nodes);
 					}
 					
 				});
@@ -18591,7 +18755,9 @@ function __eval(source, include) {
 							expression_bind(node.expression, model, ctx, controller, compo.binder);
 					}
 					
-					compo.Switch[index].elements = elements;
+					if (index != null) 
+						compo.Switch[index].elements = elements;
+					
 				}
 			
 				
@@ -18608,6 +18774,14 @@ function __eval(source, include) {
 					_index;
 				
 				mask.registerHandler('+switch', {
+					
+					$meta: {
+						serializeNodes: true
+					},
+			
+					serializeNodes: function(current){
+						return mask.stringify(current);
+					},
 					
 					render: function(model, ctx, container, ctr, children){
 						
@@ -18713,6 +18887,25 @@ function __eval(source, include) {
 						this.controller = null;
 						this.model = null;
 						this.ctx = null;
+						
+						var switch_ = this.Switch,
+							key,
+							els, i, imax
+							;
+						
+						for(key in switch_) {
+							els = switch_[key];
+							
+							if (els == null)
+								continue;
+							
+							imax = els.length;
+							i = -1;
+							while ( ++i < imax ){
+								if (els[i].parentNode != null) 
+									els[i].parentNode.removeChild(els[i]);
+							}
+						}
 					}
 				};
 				
@@ -18720,9 +18913,6 @@ function __eval(source, include) {
 					
 					_nodes = $Switch.getNodes(val, nodes, model, ctx, ctr);
 					_index = null;
-					
-					if (_nodes == null) 
-						debugger;
 					
 					if (_nodes == null) 
 						return;
@@ -18773,6 +18963,10 @@ function __eval(source, include) {
 				var $With = custom_Statements['with'];
 					
 				mask.registerHandler('+with', {
+					$meta: {
+						serializeNodes: true
+					},
+					
 					render: function(model, ctx, container, ctr, childs){
 						
 						var val = expression_eval(this.expression, model, ctx, ctr);
@@ -18781,6 +18975,7 @@ function __eval(source, include) {
 					},
 					
 					renderEnd: function(els, model, ctx, container, ctr){
+						
 						var compo = new WithStatement(this);
 					
 						compo.elements = els;
@@ -18816,7 +19011,6 @@ function __eval(source, include) {
 					model: null,
 					parent: null,
 					refresh: function(val){
-						
 						dom_removeAll(this.elements);
 						
 						if (this.components) {
@@ -18979,13 +19173,20 @@ function __eval(source, include) {
 				
 					if (insertIndex != null && rangeModel && rangeModel.length) {
 				
-						var component = new mask.Dom.Component(),
-							fragment = self._build(node, rangeModel, ctx, component); 
+						var i = compos.length,
+							imax,
+							//component = new mask.Dom.Component(),
+							fragment = self._build(node, rangeModel, ctx, ctr); 
 						
 						compo_fragmentInsert(node, insertIndex, fragment, self.placeholder);
-						compo_inserted(component);
+						//compo_inserted(component);
 						
-						compos.splice.apply(compos, [insertIndex, 0].concat(component.components));
+						imax = compos.length;
+						for(; i < imax; i++){
+							__Compo.signal.emitIn(compos[i], 'domInsert');
+						}
+						
+						//-compos.splice.apply(compos, [insertIndex, 0].concat(component.components));
 					}
 				}
 				
@@ -19100,6 +19301,13 @@ function __eval(source, include) {
 						
 					
 					mask.registerHandler('+for', {
+						$meta: {
+							serializeNodes: true
+						},
+						
+						serializeNodes: function(node){
+							return mask.stringify(node);
+						},
 						
 						render: function(model, ctx, container, controller, childs){
 							
@@ -19143,6 +19351,11 @@ function __eval(source, include) {
 							_compo_initAndBind(compo, this, model, ctx, container, controller);
 							
 							return compo;
+						},
+						
+						getHandler: function(name, model){
+							
+							return For.getHandler(name, model);
 						}
 						
 					});
@@ -19457,8 +19670,6 @@ function __eval(source, include) {
 							
 							compo.placeholder = document.createComment('');
 							container.appendChild(compo.placeholder);
-							
-							
 							
 							_compo_initAndBind(compo, this, model, ctx, container, controller);
 							
