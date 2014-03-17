@@ -5893,8 +5893,7 @@
 		                if (npmPath) 
 		                    next.paths.unshift(npmPath);
 		                    
-		                logger.log('<include:instance>'.yellow, next.paths);
-		    
+		                
 		                global.module = module = next;
 		                global.require = require = next.require.bind(next);
 		            }
