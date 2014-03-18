@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.47
+ * ClassJS v1.0.48
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -258,9 +258,24 @@
 			var type,
 				key
 	        for(key in proto){
-	            type = typeof proto[key];
-	            if (type !== 'function') 
-	                out[key] = type;
+	            type = proto[key] == null
+					? null
+					: typeof proto[key]
+					;
+					
+	            if (type === 'function')
+					continue;
+				
+				var c = key.charCodeAt(0);
+				if (c === 95 && key !== '_id')
+					// _
+					continue;
+				
+				if (c >= 65 && c <= 90)
+					// A-Z
+					continue;
+				
+	            out[key] = type;
 	        }
 	        
 	        if (proto.__proto__) 
@@ -2159,24 +2174,36 @@
 		}
 		
 		function reject(self, response, xhr){
-			self.reject(response);
+			var obj;
+			if (typeof response === 'string' && is_JsonResponse(xhr)) {
+				try {
+					obj = JSON.parse(response);
+				} catch (error) {
+					obj = error;
+				}
+			}
+			
+			self.reject(obj || response);
+		}
+		
+		function is_JsonResponse(xhr){
+			var header = xhr.getResponseHeader(str_CONTENT_TYPE);
+			
+			return header != null
+				&&  header.toLowerCase().indexOf(str_JSON) !== -1;
 		}
 		
 		function resolveDelegate(self, callback, action){
 			
 			return function(error, response, xhr){
 					
-					var header = xhr.getResponseHeader(str_CONTENT_TYPE),
-						isJSON = header != null &&  header.toLowerCase().indexOf(str_JSON) !== -1
-						;
-						
-					if (isJSON) {
+					if (is_JsonResponse(xhr)) {
 						try {
 							response = JSON.parse(response);
 						} catch(error){
 							console.error('<XHR> invalid json response', response);
 							
-							return reject(self, response, xhr);
+							return reject(self, error, xhr);
 						}
 					}
 					
@@ -4854,6 +4881,8 @@
 							resource = new Resource(),
 							state = info.state
 							;
+						if (! (id || url)) 
+							continue;
 						
 						if (url) {
 							if (url[0] === '/') {
@@ -4979,7 +5008,46 @@
 			pauseStack: fn_proxy(ScriptStack.pause, ScriptStack),
 			resumeStack: fn_proxy(ScriptStack.resume, ScriptStack),
 			
-			allDone: ScriptStack.complete
+			allDone: function(callback){
+				ScriptStack.complete(function(){
+					
+					var pending = include.getPending('js'),
+						await = pending.length;
+					if (await === 0) {
+						callback();
+						return;
+					}
+					
+					var i = -1,
+						imax = await;
+					while( ++i < imax ){
+						pending[i].on(4, check);
+					}
+					
+					function check() {
+						if (--await < 1) 
+							callback();
+					}
+				});
+			},
+			
+			getPending: function(type){
+				var resources = [],
+					res, key, id;
+				
+				for(key in bin){
+					if (type != null && type != key) 
+						continue;
+					
+					for (id in bin[key]){
+						res = bin[key][id];
+						if (res.state < 4)
+							resources.push(res);
+					}
+				}
+				
+				return resources;
+			}
 		});
 		
 		
@@ -10963,6 +11031,9 @@ function __eval(source, include) {
 				return container;
 			}
 			
+			if (node.tagName === 'else')
+				return container;
+			
 			// Dom.STATEMENT
 			if (type === 15) {
 				var Handler = custom_Statements[node.tagName];
@@ -10987,9 +11058,6 @@ function __eval(source, include) {
 			
 			// Dom.NODE
 			if (type === 1) {
-				
-				if (node.tagName === 'else') 
-					return container;
 				
 				if (node.tagName[0] === ':') {
 					
@@ -16526,14 +16594,14 @@ function __eval(source, include) {
 				return dom_insertAfter(fragment, placeholder || compo.placeholder);
 			
 			var compos = compo.components,
-				anchor = placeholder,
+				anchor = null,
 				insertBefore = true,
-				length = compos.length,
-				i = index,
+				imax = compos.length,
+				i = index - 1,
 				elements;
-		
+			
 			if (anchor == null) {
-				for (; i< length; i++) {
+				while (++i < imax) {
 					elements = compos[i].elements;
 			
 					if (elements && elements.length) {
@@ -16545,8 +16613,10 @@ function __eval(source, include) {
 		
 			if (anchor == null) {
 				insertBefore = false;
-				i = index < length ? index : length;
-		
+				i = index < imax
+					? index
+					: imax
+					;
 				while (--i > -1) {
 					elements = compos[i].elements;
 					if (elements && elements.length) {
@@ -19179,18 +19249,17 @@ function __eval(source, include) {
 				
 						var i = compos.length,
 							imax,
-							//component = new mask.Dom.Component(),
-							fragment = self._build(node, rangeModel, ctx, ctr); 
-						
+							fragment = self._build(node, rangeModel, ctx, ctr),
+							new_ = compos.splice(i)
+							; 
 						compo_fragmentInsert(node, insertIndex, fragment, self.placeholder);
-						//compo_inserted(component);
 						
-						imax = compos.length;
+						compos.splice.apply(compos, [insertIndex, 0].concat(new_));
+						i = 0;
+						imax = new_.length;
 						for(; i < imax; i++){
-							__Compo.signal.emitIn(compos[i], 'domInsert');
+							__Compo.signal.emitIn(new_[i], 'domInsert');
 						}
-						
-						//-compos.splice.apply(compos, [insertIndex, 0].concat(component.components));
 					}
 				}
 				
@@ -19254,7 +19323,7 @@ function __eval(source, include) {
 				
 						switch (method) {
 						case 'push':
-							list_update(this, null, null, array.length, array.slice(array.length - 1));
+							list_update(this, null, null, array.length - 1, array.slice(array.length - 1));
 							break;
 						case 'pop':
 							list_update(this, array.length, 1);
@@ -19412,231 +19481,8 @@ function __eval(source, include) {
 							var nodes = For.getNodes(node.nodes, model, this.prop1, this.prop2, this.type);
 							
 							return builder_build(nodes, model, ctx, null, component);
-						},
-						
-						_refresh: function(value, method, args, result){
-							var i = 0,
-								x, imax;
-								
-							var node = this.node,
-								prop1 = this.prop1,
-								prop2 = this.prop2,
-								type = this.type,
-								
-								model = this.model,
-								ctx = this.ctx,
-								ctr = this.node
-								;
-				
-							if (method == null) {
-								// this was new array/object setter and not an immutable function call
-								
-								var compos = node.components;
-								if (compos != null) {
-									var imax = compos.length,
-										i = -1;
-									while ( ++i < imax ){
-										if (compo_dispose(compos[i], node)){
-											i--;
-											imax--;
-										}
-									}
-									compos.length = 0;
-								}
-								
-								var frag = builder_build(
-									For.getNodes(node.nodes, value, prop1, prop2, type),
-									model,
-									ctx,
-									null,
-									ctr
-								);
-								
-								dom_insertBefore(frag, this.placeholder);
-								arr_each(node.components, compo_inserted);
-								return;
-							}
-				
-							var array = value;
-							arr_createRefs(value);
-							
-				
-							switch (method) {
-							case 'push':
-								list_update(this, null, null, array.length, array.slice(array.length - 1));
-								break;
-							case 'pop':
-								list_update(this, array.length, 1);
-								break;
-							case 'unshift':
-								list_update(this, null, null, 0, array.slice(0, 1));
-								break;
-							case 'shift':
-								list_update(this, 0, 1);
-								break;
-							case 'splice':
-								var sliceStart = args[0],
-									sliceRemove = args.length === 1 ? this.components.length : args[1],
-									sliceAdded = args.length > 2 ? array.slice(args[0], args.length - 2 + args[0]) : null;
-				
-								list_update(this, sliceStart, sliceRemove, sliceStart, sliceAdded);
-								break;
-							case 'sort':
-							case 'reverse':
-								list_sort(this, array);
-								break;
-							case 'remove':
-								if (result != null && result.length) 
-									list_remove(this, result);
-								break;
-							}
-						},
-						
-						_dispose: function(){
-							
-							expression_unbind(
-								this.expr, this.model, this.parent, this.binder
-							);
 						}
 					};
-					
-					
-					// = List Utils
-						
-					
-					function arr_createRefs(array){
-						var imax = array.length,
-							i = -1,
-							x;
-						while ( ++i < imax ){
-							//create references from values to distinguish the models
-							x = array[i];
-							switch (typeof x) {
-							case 'string':
-							case 'number':
-							case 'boolean':
-								array[i] = Object(x);
-								break;
-							}
-						}
-					}
-					
-					function list_sort(self, array) {
-					
-						var compos = self.node.components,
-							i = 0,
-							imax = compos.length,
-							j = 0,
-							jmax = null,
-							element = null,
-							compo = null,
-							fragment = document.createDocumentFragment(),
-							sorted = [];
-					
-						for (; i < imax; i++) {
-							compo = compos[i];
-							if (compo.elements == null || compo.elements.length === 0) 
-								continue;
-							
-							for (j = 0, jmax = compo.elements.length; j < jmax; j++) {
-								element = compo.elements[j];
-								element.parentNode.removeChild(element);
-							}
-						}
-					
-						
-						outer: for (j = 0, jmax = array.length; j < jmax; j++) {
-					
-							for (i = 0; i < imax; i++) {
-								if (array[j] === compos[i].scope[self.prop1]) {
-									sorted[j] = compos[i];
-									continue outer;
-								}
-							}
-					
-							console.warn('No Model Found for', array[j]);
-						}
-					
-					
-					
-						for (i = 0, imax = sorted.length; i < imax; i++) {
-							compo = sorted[i];
-					
-							if (compo.elements == null || compo.elements.length === 0) {
-								continue;
-							}
-					
-					
-							for (j = 0, jmax = compo.elements.length; j < jmax; j++) {
-								element = compo.elements[j];
-					
-								fragment.appendChild(element);
-							}
-						}
-					
-						self.components = self.node.components = sorted;
-					
-						dom_insertBefore(fragment, self.placeholder);
-					
-					}
-					
-					function list_update(self, deleteIndex, deleteCount, insertIndex, rangeModel) {
-						
-						var node = self.node,
-							compos = node.components
-							;
-						if (compos == null) 
-							compos = node.components = []
-						
-						var prop1 = self.prop1,
-							prop2 = self.prop2,
-							type = self.type,
-							
-							ctx = self.ctx,
-							ctr = self.node;
-							;
-						
-						if (deleteIndex != null && deleteCount != null) {
-							var i = deleteIndex,
-								length = deleteIndex + deleteCount;
-					
-							if (length > compos.length) 
-								length = compos.length;
-							
-							for (; i < length; i++) {
-								if (compo_dispose(compos[i], node)){
-									i--;
-									length--;
-								}
-							}
-						}
-					
-						if (insertIndex != null && rangeModel && rangeModel.length) {
-					
-							var component = new mask.Dom.Component(),
-								nodes = For.getNodes(node.nodes, rangeModel, prop1, prop2, type),
-								fragment = builder_build(nodes, rangeModel, ctx, null, component);
-								
-							compo_fragmentInsert(node, insertIndex, fragment, self.placeholder);
-							compo_inserted(component);
-							
-							compos.splice.apply(compos, [insertIndex, 0].concat(component.components));
-						}
-					}
-					
-					function list_remove(self, removed){
-						var compos = self.components,
-							i = compos.length,
-							x;
-						while(--i > -1){
-							x = compos[i];
-							
-							if (removed.indexOf(x.model) === -1) 
-								continue;
-							
-							compo_dispose(x, self.node);
-						}
-					}
 					
 				}());
 				// end:source for.js
@@ -20545,6 +20391,10 @@ function __eval(source, include) {
 			
 			HashEmitter.prototype = {
 				navigate: function(hash) {
+					if (hash == null) {
+						this.changed(location.hash);
+						return;
+					}
 					
 					location.hash = hash;
 				},
@@ -20596,6 +20446,11 @@ function __eval(source, include) {
 			
 			HistoryEmitter.prototype = {
 				navigate: function(url){
+					if (url == null) {
+						this.changed();
+						return;
+					}
+					
 					history.pushState({}, null, url);
 					this.changed();
 				},
