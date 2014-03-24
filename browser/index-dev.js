@@ -1861,30 +1861,28 @@
 			_result: null,
 			_resolved: [],
 			
+			Construct: function(/* promises <optional> */){
+				var imax = arguments.length,
+					i = -1,
+					dfr
+					;
+				while ( ++i < imax ){
+					dfr = arguments[i];
+					if (dfr != null && typeof dfr.done === 'function') 
+						await_deferredDelegate(this, null, dfr);
+				}
+			},
+			
 			delegate: function(name, errorable) {
 				return await_createDelegate(this, name, errorable);
 			},
 		
 			deferred: function(name) {
 				
-				var dfr = new Deferred,
-					delegate = await_createDelegate(this, name, true),
-					
-					args
-					;
-				
-				return dfr
-					.done(function(){
-						args = _Array_slice.call(arguments);
-						args.unshift(null);
-						
-						delegate.apply(null, args);
-					})
-					.fail(function(error){
-						
-						delegate(error);
-					})
-					;
+				return await_deferredDelegate(
+					this,
+					name,
+					new Deferred);
 			},
 		
 			Static: {
@@ -1893,6 +1891,23 @@
 			}
 		});
 	
+		function await_deferredDelegate(await, name, dfr){
+			var delegate = await_createDelegate(await, name, true),
+				args
+			;
+			return dfr
+				.done(function(){
+					args = _Array_slice.call(arguments);
+					args.unshift(null);
+					
+					delegate.apply(null, args);
+				})
+				.fail(function(error){
+					
+					delegate(error);
+				})
+				;
+		}
 		
 		function await_createDelegate(await, name, errorable){
 			if (errorable == null) 
@@ -9080,9 +9095,13 @@ function __eval(source, include) {
 				ensureTmplFn: Parser.ensureTemplateFunction
 			},
 			Dom: Dom,
+			
+			// if DEBUG
 			plugin: function(source){
 				eval(source);
 			},
+			// endif
+			
 			on: function(event, fn){
 				if (listeners == null){
 					listeners = {};
@@ -11077,9 +11096,11 @@ function __eval(source, include) {
 					return include.instance();
 				},
 				
+				// if DEBUG
 				plugin: function(source){
 					eval(source);
 				},
+				// endif
 				
 				Dom: {
 					addEventListener: dom_addEventListener
@@ -19222,9 +19243,9 @@ function __eval(source, include) {
 	
 	function normalize_pathsSlashes(str) {
 		
-		if (str[str.length - 1] === '/') {
+		if (str[str.length - 1] === '/') 
 			return str.substring(0, str.length - 1);
-		}
+		
 		return str;
 	}
 	
@@ -19322,11 +19343,17 @@ function __eval(source, include) {
 		
 		
 		obj.extension = match == null ? null : match[1];
-	
 	}
 	
-
-
+	function parse_hash(obj){
+		var i = obj.value.indexOf('#');
+		if (i === -1) 
+			return;
+		
+		obj.hash = obj.value.substring(i + 1);
+		obj.value = obj.value.substring(0, i);
+	}
+	
 
     var URI = function(uri) {
         if (uri == null) 
@@ -19344,8 +19371,11 @@ function __eval(source, include) {
         parse_protocol(this);
         parse_host(this);
 
+		parse_hash(this);
         parse_search(this);
+		
         parse_file(this);
+		
 
 		
         // normilize path - "/some/path"

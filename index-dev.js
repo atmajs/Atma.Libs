@@ -1858,30 +1858,28 @@
 			_result: null,
 			_resolved: [],
 			
+			Construct: function(/* promises <optional> */){
+				var imax = arguments.length,
+					i = -1,
+					dfr
+					;
+				while ( ++i < imax ){
+					dfr = arguments[i];
+					if (dfr != null && typeof dfr.done === 'function') 
+						await_deferredDelegate(this, null, dfr);
+				}
+			},
+			
 			delegate: function(name, errorable) {
 				return await_createDelegate(this, name, errorable);
 			},
 		
 			deferred: function(name) {
 				
-				var dfr = new Deferred,
-					delegate = await_createDelegate(this, name, true),
-					
-					args
-					;
-				
-				return dfr
-					.done(function(){
-						args = _Array_slice.call(arguments);
-						args.unshift(null);
-						
-						delegate.apply(null, args);
-					})
-					.fail(function(error){
-						
-						delegate(error);
-					})
-					;
+				return await_deferredDelegate(
+					this,
+					name,
+					new Deferred);
 			},
 		
 			Static: {
@@ -1890,6 +1888,23 @@
 			}
 		});
 	
+		function await_deferredDelegate(await, name, dfr){
+			var delegate = await_createDelegate(await, name, true),
+				args
+			;
+			return dfr
+				.done(function(){
+					args = _Array_slice.call(arguments);
+					args.unshift(null);
+					
+					delegate.apply(null, args);
+				})
+				.fail(function(error){
+					
+					delegate(error);
+				})
+				;
+		}
 		
 		function await_createDelegate(await, name, errorable){
 			if (errorable == null) 
@@ -2526,10 +2541,14 @@
 	            if (db == null) 
 	                return connect(createDbDelegate(db_ensureIndex, collection, index, callback));
 	            
-	            db
-	                .collection(collection)
-	                .ensureIndex(index, callback)
-	                ;
+	            var coll = db.collection(collection);
+	            if (Array.isArray(index)) {
+	                index.push(callback);
+	                coll.ensureIndex.apply(coll, index);
+	                return;
+	            }
+	            coll.ensureIndex(index, callback);
+	            
 	        };
 	        
 	        db_ensureObjectID = function(value){
@@ -2605,16 +2624,12 @@
 	        
 	        
 	        var queryToMongo = function(query){
-	            if (query == null) {
-	                if (arguments.length !== 0) 
-	                    console.warn('<mongo> query should not be empty');
-	                
+	            if (query == null) 
 	                return query;
-	            }
 	            
-	            if (query.hasOwnProperty('$query') || query.hasOwnProperty('$limit')) {
+	            if (query.hasOwnProperty('$query') || query.hasOwnProperty('$limit')) 
 	                return query;
-	            }
+	            
 	            
 	            if (query.hasOwnProperty('_id')) 
 	                query._id = db_ensureObjectID(query._id);
@@ -2686,14 +2701,23 @@
 	    var MongoStoreSingle = (function() {
 	    
 	        function MongoStoreSingle(mix) {
-	            var coll, indexes;
+	            var primaryKey = '_id',
+	                indexes = [],
+	                coll
+	                ;
 	            
 	            if (is_String(mix)) {
 	                coll = mix;
 	            }
 	            else if (is_Object(mix)) {
 	                coll = mix.collection;
-	                indexes = mix.indexes;
+	                indexes = mix.indexes || indexes;
+	                primaryKey = mix.primaryKey || primaryKey;
+	                
+	                var index = {};
+	                index[primaryKey] = 1;
+	                
+	                indexes.push([index, { unique: true }]);
 	            }
 	            
 	            // if DEBUG
@@ -2702,6 +2726,7 @@
 	            
 	            this._coll = coll;
 	            this._indexes = indexes;
+	            this._primaryKey = primaryKey;
 	        }
 	    
 	        /**
@@ -3060,18 +3085,15 @@
 	        ensureIndexes: function(Ctor) {
 	            var proto = Ctor.prototype,
 	                indexes = proto._indexes,
-	                coll = proto._coll
+	                coll = proto._coll,
+	                dfr = new Deferred()
 	                ;
-	            if (indexes == null) {
-	                // if DEBUG
-	                console.error('<class:mongodb> No indexes>', Ctor);
-	                // endif
-	                return;
-	            }
+	                
+	            if (indexes == null) 
+	                return dfr.reject('<No indexes> ' + coll);
 	            
 	            var i = -1,
 	                imax = indexes.length,
-	                dfr = new Deferred(),
 	                listener = cb_createListener(imax - 1, complete)
 	                ;
 	            
@@ -3085,6 +3107,8 @@
 	                
 	                dfr.resolve();
 	            }
+	            
+	            return dfr;
 	        }
 	    };
 	}());
@@ -21032,9 +21056,9 @@ function __eval(source, include) {
 	
 	function normalize_pathsSlashes(str) {
 		
-		if (str[str.length - 1] === '/') {
+		if (str[str.length - 1] === '/') 
 			return str.substring(0, str.length - 1);
-		}
+		
 		return str;
 	}
 	
@@ -21132,11 +21156,17 @@ function __eval(source, include) {
 		
 		
 		obj.extension = match == null ? null : match[1];
-	
 	}
 	
-
-
+	function parse_hash(obj){
+		var i = obj.value.indexOf('#');
+		if (i === -1) 
+			return;
+		
+		obj.hash = obj.value.substring(i + 1);
+		obj.value = obj.value.substring(0, i);
+	}
+	
 
     var URI = function(uri) {
         if (uri == null) 
@@ -21154,8 +21184,11 @@ function __eval(source, include) {
         parse_protocol(this);
         parse_host(this);
 
+		parse_hash(this);
         parse_search(this);
+		
         parse_file(this);
+		
 
 		
         // normilize path - "/some/path"
