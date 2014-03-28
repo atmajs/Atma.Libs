@@ -3,14 +3,14 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.51
+ * ClassJS v%VERSION%
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
  * MIT license
  * http://opensource.org/licenses/MIT
  *
- * (c) 2012, 2014 Atma.js and other contributors
+ * (c) 2012, %YEAR% Atma.js and other contributors
  */
 // end:source /src/license.txt
 // source /src/umd.js
@@ -494,14 +494,40 @@
 		
 	(function(){
 		
-		json_proto_toJSON = function(){
+		json_proto_toJSON = function(serialization){
 			
 			var object = this,
 				json = {},
 				
-				key, val;
+				key, val, s;
+				
+			if (serialization == null) 
+				serialization = object.__props;
 			
-			for (key in object){
+			
+			var asKey;
+			
+			for(key in object){
+				asKey = key;
+				
+				if (serialization != null && serialization.hasOwnProperty(key)) {
+					s = serialization[key];
+					if (s != null && typeof s === 'object') {
+						
+						if (s.key) 
+							asKey = s.key;
+							
+						if (s.hasOwnProperty('serialize')) {
+							if (s.serialize == null) 
+								continue;
+							
+							json[asKey] = s.serialize(object[key]);
+							continue;
+						}
+						
+					}
+				}
+				
 				// _ (private)
 				if (key.charCodeAt(0) === 95)
 					continue;
@@ -513,6 +539,11 @@
 	
 				if (val == null)
 					continue;
+				
+				if ('_id' === key) {
+					json[asKey] = val;
+					continue;
+				}
 	
 				switch (typeof val) {
 					case 'function':
@@ -524,14 +555,14 @@
 							break;
 						
 						if (toJSON === json_proto_toJSON || toJSON === json_proto_arrayToJSON) {
-							json[key] = val.toJSON();
+							json[asKey] = val.toJSON();
 							continue;
 						}
 						
 						break;
 				}
 	
-				json[key] = val;
+				json[asKey] = val;
 			}
 			
 			// make mongodb's _id property not private
@@ -1274,10 +1305,7 @@
 				Serializable.call(this, data);
 			};
 			
-			Ctor.prototype._props = data;
-			
-			//- 
-			//obj_extend(Ctor.prototype, Serializable.prototype);
+			Ctor.prototype.__props = data;
 			
 			return Ctor;
 		}
@@ -1299,7 +1327,7 @@
 			return instance.toJSON();
 		
 		
-		return json_proto_toJSON.call(instance);
+		return json_proto_toJSON.call(instance, instance.__props);
 	};
 	
 	Serializable.deserialize = function(instance, json) {
@@ -1321,41 +1349,60 @@
 			return instance;
 		}
 		
-		var props = instance._props,
+		var props = instance.__props,
+			asKeys, asKey,
 			key,
 			val,
 			Mix;
 		
+		
+		if (props != null) {
+			var pname = '__desAsKeys';
+			
+			asKeys = props[pname];
+			if (asKeys == null) {
+				asKeys = props[pname] = {};
+				for (key in props) {
+					if (key !== '__desAsKeys' && props[key].hasOwnProperty('key') === true) 
+						asKeys[props[key].key] = key;
+				}
+			}
+		}
+		
 		for (key in json) {
 			
 			val = json[key];
+			asKey = key;
 			
 			if (props != null) {
 				Mix = props.hasOwnProperty(key) 
 					? props[key]
 					: null
 					;
+				if (asKeys[key]) {
+					asKey = asKeys[key];
+				}
+					
 				if (Mix != null) {
 					
 					if (is_Function(Mix)) {
-						instance[key] = val instanceof Mix
+						instance[asKey] = val instanceof Mix
 							? val
 							: new Mix(val)
 							;
 						continue;
 					}
 					
-					var deserialize = Mix.deserialize;
-					
-					if (is_Function(deserialize)) {
-						instance[key] = deserialize(val);
+					var Deserialize = Mix.deserialize;
+					if (is_Function(Deserialize)) {
+						instance[asKey] = new Deserialize(val);
 						continue;
 					}
 					
 				}
 			}
 			
-			instance[key] = val;
+			instance[asKey] = val;
 		}
 		
 		return instance;
@@ -10463,9 +10510,9 @@ function __eval(source, include) {
 			if (compo != null) {
 				this.compo = compo;
 				
-				if (compo.__cached) {
+				if (compo.__cached) 
 					compo.render = fn_empty;
-				}
+				
 				return;
 			}
 			
@@ -10581,10 +10628,9 @@ function __eval(source, include) {
 				var element = this.firstChild,
 					compo = this.compo;
 					
-				if (compo.__cached !== void 0) {
-					console.log('from Cache size: ', compo.__cached.length);
+				if (compo.__cached !== void 0) 
 					return compo.__cached;
-				}
+				
 				
 				var meta = compo_getMetaInfo(compo),
 					mode = meta.mode,
@@ -11557,9 +11603,13 @@ function __eval(source, include) {
 				ensureTmplFn: Parser.ensureTemplateFunction
 			},
 			Dom: Dom,
+			
+			// if DEBUG
 			plugin: function(source){
 				eval(source);
 			},
+			// endif
+			
 			on: function(event, fn){
 				if (listeners == null){
 					listeners = {};
@@ -13424,9 +13474,11 @@ function __eval(source, include) {
 					return include.instance();
 				},
 				
+				// if DEBUG
 				plugin: function(source){
 					eval(source);
 				},
+				// endif
 				
 				Dom: {
 					addEventListener: dom_addEventListener
@@ -14245,9 +14297,20 @@ function __eval(source, include) {
 		
 		// end:source ../src/util/object.js
 		// source ../src/util/array.js
-		function arr_each(array, fn) {
-			for (var i = 0, length = array.length; i < length; i++) {
-				fn(array[i], i);
+		function arr_each(any, fn) {
+			var isarray = any instanceof Array,
+				i = -1,
+				imax = isarray
+					? any.length
+					: 1
+				;
+			var x;
+			while ( ++i < imax ){
+				x = isarray
+					? any[i]
+					: any
+					;
+				fn(x, i);
 			}
 		}
 		
@@ -14268,7 +14331,11 @@ function __eval(source, include) {
 		}
 		
 		function arr_isArray(x) {
-			return x != null && typeof x === 'object' && x.length != null && typeof x.slice === 'function';
+			return x != null
+				&& typeof x === 'object'
+				&& x.length != null
+				&& typeof x.slice === 'function'
+				;
 		}
 		
 		var arr_unique = (function() {
@@ -14543,144 +14610,128 @@ function __eval(source, include) {
 		
 		// end:source ../src/util/selector.js
 		// source ../src/util/utils.js
+		var jmask_filter,
+			jmask_find,
+			jmask_clone,
+			jmask_deepest,
+			jmask_getText
+			;
 		
-		function jmask_filter(arr, matcher) {
-			if (matcher == null) {
-				return arr;
-			}
-		
-			var result = [];
-			for (var i = 0, x, length = arr.length; i < length; i++) {
-				x = arr[i];
-				if (selector_match(x, matcher)) {
-					result.push(x);
+		(function(){
+			
+			jmask_filter = function(mix, matcher) {
+				if (matcher == null) 
+					return mix;
+				
+				var result = [];
+				arr_each(mix, function(node) {
+					if (selector_match(node, matcher)) 
+						result.push(node);
+				});
+				return result;
+			};
+			
+			/**
+			 * - mix (Node | Array[Node])
+			 */
+			jmask_find = function(mix, matcher, output) {
+				if (mix == null) {
+					return output;
 				}
-			}
-			return result;
-		}
-		
-		/**
-		 * - mix (Node | Array[Node])
-		 */
-		function jmask_find(mix, matcher, output) {
-			if (mix == null) {
+			
+				if (output == null) {
+					output = [];
+				}
+			
+				if (mix instanceof Array){
+					for(var i = 0, length = mix.length; i < length; i++){
+						jmask_find(mix[i], matcher, output);
+					}
+					return output;
+				}
+			
+				if (selector_match(mix, matcher)){
+					output.push(mix);
+				}
+			
+				var next = mix[matcher.nextKey];
+			
+				if (next != null){
+					jmask_find(next, matcher, output);
+				}
+			
 				return output;
-			}
-		
-			if (output == null) {
-				output = [];
-			}
-		
-			if (mix instanceof Array){
-				for(var i = 0, length = mix.length; i < length; i++){
-					jmask_find(mix[i], matcher, output);
+			};
+			
+			jmask_clone = function(node, parent){
+			
+				var copy = {
+					'type': 1,
+					'tagName': 1,
+					'compoName': 1,
+					'controller': 1
+				};
+			
+				var clone = {
+					parent: parent
+				};
+			
+				for(var key in node){
+					if (copy[key] === 1){
+						clone[key] = node[key];
+					}
+				}
+			
+				if (node.attr){
+					clone.attr = util_extend({}, node.attr);
+				}
+			
+				var nodes = node.nodes;
+				if (nodes != null && nodes.length > 0){
+					clone.nodes = [];
+			
+					var isarray = nodes instanceof Array,
+						length = isarray === true ? nodes.length : 1,
+						i = 0;
+					for(; i< length; i++){
+						clone.nodes[i] = jmask_clone(isarray === true ? nodes[i] : nodes, clone);
+					}
+				}
+			
+				return clone;
+			};
+			
+			
+			jmask_deepest = function(node){
+				var current = node,
+					prev;
+				while(current != null){
+					prev = current;
+					current = current.nodes && current.nodes[0];
+				}
+				return prev;
+			};
+			
+			
+			jmask_getText = function(node, model, cntx, controller) {
+				if (Dom.TEXTNODE === node.type) {
+					if (typeof node.content === 'function') {
+						return node.content('node', model, cntx, null, controller);
+					}
+					return node.content;
+				}
+			
+				var output = '';
+				if (node.nodes != null) {
+					for(var i = 0, x, imax = node.nodes.length; i < imax; i++){
+						x = node.nodes[i];
+						output += jmask_getText(x, model, cntx, controller);
+					}
 				}
 				return output;
-			}
-		
-			if (selector_match(mix, matcher)){
-				output.push(mix);
-			}
-		
-			var next = mix[matcher.nextKey];
-		
-			if (next != null){
-				jmask_find(next, matcher, output);
-			}
-		
-			return output;
-		}
-		
-		function jmask_clone(node, parent){
-		
-			var copy = {
-				'type': 1,
-				'tagName': 1,
-				'compoName': 1,
-				'controller': 1
 			};
 		
-			var clone = {
-				parent: parent
-			};
-		
-			for(var key in node){
-				if (copy[key] === 1){
-					clone[key] = node[key];
-				}
-			}
-		
-			if (node.attr){
-				clone.attr = util_extend({}, node.attr);
-			}
-		
-			var nodes = node.nodes;
-			if (nodes != null && nodes.length > 0){
-				clone.nodes = [];
-		
-				var isarray = nodes instanceof Array,
-					length = isarray === true ? nodes.length : 1,
-					i = 0;
-				for(; i< length; i++){
-					clone.nodes[i] = jmask_clone(isarray === true ? nodes[i] : nodes, clone);
-				}
-			}
-		
-			return clone;
-		}
-		
-		
-		function jmask_deepest(node){
-			var current = node,
-				prev;
-			while(current != null){
-				prev = current;
-				current = current.nodes && current.nodes[0];
-			}
-			return prev;
-		}
-		
-		
-		function jmask_getText(node, model, cntx, controller) {
-			if (Dom.TEXTNODE === node.type) {
-				if (typeof node.content === 'function') {
-					return node.content('node', model, cntx, null, controller);
-				}
-				return node.content;
-			}
-		
-			var output = '';
-			if (node.nodes != null) {
-				for(var i = 0, x, imax = node.nodes.length; i < imax; i++){
-					x = node.nodes[i];
-					output += jmask_getText(x, model, cntx, controller);
-				}
-			}
-			return output;
-		}
-		
-		////////function jmask_initHandlers($$, parent){
-		////////	var instance;
-		////////
-		////////	for(var i = 0, x, length = $$.length; i < length; i++){
-		////////		x = $$[i];
-		////////		if (x.type === Dom.COMPONENT){
-		////////			if (typeof x.controller === 'function'){
-		////////				instance = new x.controller();
-		////////				instance.nodes = x.nodes;
-		////////				instance.attr = util_extend(instance.attr, x.attr);
-		////////				instance.compoName = x.compoName;
-		////////				instance.parent = parent;
-		////////
-		////////				x = $$[i] = instance;
-		////////			}
-		////////		}
-		////////		if (x.nodes != null){
-		////////			jmask_initHandlers(x.nodes, x);
-		////////		}
-		////////	}
-		////////}
-		
+		}());
 		
 		// end:source ../src/util/utils.js
 	
