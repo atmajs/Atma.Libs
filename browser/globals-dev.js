@@ -3,14 +3,14 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v%VERSION%
+ * ClassJS v1.0.53
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
  * MIT license
  * http://opensource.org/licenses/MIT
  *
- * (c) 2012, %YEAR% Atma.js and other contributors
+ * (c) 2012, 2014 Atma.js and other contributors
  */
 // end:source /src/license.txt
 // source /src/umd.js
@@ -257,11 +257,13 @@
 				out = {};
 			
 			var type,
-				key
+				key,
+				val;
 	        for(key in proto){
-	            type = proto[key] == null
+				val = proto[key];
+	            type = val == null
 					? null
-					: typeof proto[key]
+					: typeof val
 					;
 					
 	            if (type === 'function')
@@ -275,6 +277,21 @@
 				if (c >= 65 && c <= 90)
 					// A-Z
 					continue;
+				
+				if (type === 'object') {
+					var ctor = val.constructor,
+						ctor_name = ctor && ctor.name
+						;
+					
+					if (ctor_name !== 'Object' && ctor_name && global[ctor_name] === ctor) {
+						// built-in objects
+						out[key] = ctor_name;
+						continue;
+					}
+					
+					out[key] = getProperties(val);
+					continue;
+				}
 				
 	            out[key] = type;
 	        }
@@ -791,6 +808,10 @@
 						case 'number':
 							return typeof aVal !== 'number'
 								? 'Number expected'
+								: null;
+						case 'boolean':
+							return typeof aVal !== 'boolean'
+								? 'Boolean expected'
 								: null;
 					}
 				}
@@ -2409,20 +2430,18 @@
 					object = localStorage.getItem(path);
 				
 				if (object == null) {
-					this.resolve(this);
-					return this;
+					return this.resolve(this);
 				}
 				
 				if (is_String(object)){
 					try {
 						object = JSON.parse(object);
 					} catch(e) {
-						this.onError(e);
+						return this.reject(e);
 					}
 				}
 				
 				this.deserialize(object);
-				
 				return this.resolve(this);
 			},
 			
@@ -2432,20 +2451,19 @@
 				
 				localStorage.setItem(path, store);
 				callback && callback();
-				return this;
+				return this.resolve(this);
 			},
 			
 			del: function(mix){
 				
 				if (mix == null && arguments.length !== 0) {
-					console.error('<localStore:del> - selector is specified, but is undefined');
-					return this;
+					return this.reject('<localStore:del> - selector is specified, but is undefined');
 				}
 				
 				// Single
 				if (arr_isArray(this) === false) {
 					store_del(this._route, mix || this);
-					return this;
+					return this.resolve();
 				}
 				
 				// Collection
@@ -2457,13 +2475,13 @@
 					this.length = 0;
 					
 					store_del(this._route, this);
-					return this;
+					return this.resolve();
 				}
 				
 				var array = this.remove(mix);
 				if (array.length === 0) {
 					// was nothing removed
-					return this;
+					return this.resolve();
 				}
 				
 				return this.save();

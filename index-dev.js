@@ -3,14 +3,14 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v%VERSION%
+ * ClassJS v1.0.53
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
  * MIT license
  * http://opensource.org/licenses/MIT
  *
- * (c) 2012, %YEAR% Atma.js and other contributors
+ * (c) 2012, 2014 Atma.js and other contributors
  */
 // end:source /src/license.txt
 // source /src/umd.js
@@ -256,11 +256,13 @@
 				out = {};
 			
 			var type,
-				key
+				key,
+				val;
 	        for(key in proto){
-	            type = proto[key] == null
+				val = proto[key];
+	            type = val == null
 					? null
-					: typeof proto[key]
+					: typeof val
 					;
 					
 	            if (type === 'function')
@@ -274,6 +276,21 @@
 				if (c >= 65 && c <= 90)
 					// A-Z
 					continue;
+				
+				if (type === 'object') {
+					var ctor = val.constructor,
+						ctor_name = ctor && ctor.name
+						;
+					
+					if (ctor_name !== 'Object' && ctor_name && global[ctor_name] === ctor) {
+						// built-in objects
+						out[key] = ctor_name;
+						continue;
+					}
+					
+					out[key] = getProperties(val);
+					continue;
+				}
 				
 	            out[key] = type;
 	        }
@@ -790,6 +807,10 @@
 						case 'number':
 							return typeof aVal !== 'number'
 								? 'Number expected'
+								: null;
+						case 'boolean':
+							return typeof aVal !== 'boolean'
+								? 'Boolean expected'
 								: null;
 					}
 				}
