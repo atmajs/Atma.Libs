@@ -1,5 +1,5 @@
 (function(globals){function __eval(e,t){"use strict";t&&t.route.params;return eval.call(window,e)}/*!
- * ClassJS v1.0.55
+ * ClassJS v1.0.57
  * Part of the Atma.js Project
  * http://atmajs.com/
  *

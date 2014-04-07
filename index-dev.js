@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.55
+ * ClassJS v1.0.57
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -2483,6 +2483,7 @@
 	        db_getCollection,
 	        db_findSingle,
 	        db_findMany,
+	        db_count,
 	        db_insert,
 	        db_updateSingle,
 	        db_updateMany,
@@ -2562,17 +2563,19 @@
 	            
 	        };
 	        
-	        db_findMany = function(coll, query, callback){
+	        db_findMany = function(coll, query, options, callback){
 	            if (db == null) 
-	                return connect(createDbDelegate(db_findMany, coll, query, callback));
+	                return connect(createDbDelegate(db_findMany, coll, query, options, callback));
 	            
+	            if (options == null) 
+	                options = {};
+	                
 	            query = queryToMongo(query);
 	            db
 	                .collection(coll)
-	                .find(query, function(error, cursor){
+	                .find(query, options, function(error, cursor){
 	                    if (error) 
 	                        return callback(error);
-	                    
 	                    
 	                    cursor.toArray(function(error, items){
 	                        callback(error, items);
@@ -2580,6 +2583,15 @@
 	                    
 	                });
 	        };
+	        
+	        db_count = function(coll, query, callback){
+	            if (db == null) 
+	                return connect(createDbDelegate(db_count, coll, query, callback));
+	            
+	            db
+	                .collection(coll)
+	                .count(query, callback);
+	        }
 	        
 	        db_insert = function(coll, data, callback){
 	            if (db == null)
@@ -3017,11 +3029,11 @@
 	            
 	        obj_inherit(MongoStoreCollection, Deferred, {
 	            
-	            fetch: function(data){
+	            fetch: function(query, options){
 	                if (this._ensureFree() === false)
 	                    return this;
 	                
-	                db_findMany(this._coll, data, fn_proxy(this._fetched, this));
+	                db_findMany(this._coll, query, options, fn_proxy(this._fetched, this));
 	                return this;
 	            },
 	            save: function(){
@@ -3103,9 +3115,20 @@
 	            
 	            
 	            Static: {
-	                fetch: function(data){
-	                    return new this().fetch(data);
-	                }
+	                fetch: function(query, options){
+	                    return new this().fetch(query, options);
+	                },
+	    			count: function(query){
+	    				var dfr = new Deferred;
+	    				db_count(this.prototype._coll, query, function(error, count){
+	    					if (error != null) {
+	    						dfr.reject(count);
+	    						return;
+	    					}
+	    					dfr.resolve(count);
+	    				});
+	    				return dfr;
+	    			}
 	            },
 	            
 	            /* -- private -- */
@@ -3221,7 +3244,7 @@
 	            
 	            var i = -1,
 	                imax = indexes.length,
-	                listener = cb_createListener(imax - 1, complete)
+	                listener = cb_createListener(imax, complete)
 	                ;
 	            
 	            while(++i < imax){
