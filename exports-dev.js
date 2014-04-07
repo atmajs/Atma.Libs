@@ -6097,6 +6097,7 @@
 		                            )), 'node_modules'
 		                        );
 		                    } else {
+		                        npmPath = false;
 		                        console.warn(
 		                            'Could not resolve global NPM Directory from system path (%s)',
 		                            delimiter,
