@@ -3,14 +3,14 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.57
+ * ClassJS v%VERSION%
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
  * MIT license
  * http://opensource.org/licenses/MIT
  *
- * (c) 2012, 2014 Atma.js and other contributors
+ * (c) 2012, %YEAR% Atma.js and other contributors
  */
 // end:source /src/license.txt
 // source /src/umd.js
@@ -505,7 +505,8 @@
 	// source /src/util/json.js
 	// Create from Complex Class Instance a lightweight json object
 	
-	var json_proto_toJSON,
+	var json_key_SER = '__$serialization',
+		json_proto_toJSON,
 		json_proto_arrayToJSON
 		;
 		
@@ -519,7 +520,7 @@
 				key, val, s;
 				
 			if (serialization == null) 
-				serialization = object.__props;
+				serialization = object[json_key_SER];
 			
 			
 			var asKey;
@@ -716,9 +717,17 @@
 		};
 		
 		obj_extend = function(target, source) {
-			for (var key in source) {
-				if (source[key] != null) 
-					target[key] = source[key];
+			if (target == null) 
+				target = {};
+			if (source == null) 
+				return target;
+			
+			var val,
+				key;
+			for(key in source) {
+				val = source[key];
+				if (val != null) 
+					target[key] = val;
 			}
 			return target;
 		};
@@ -1319,118 +1328,120 @@
 	// end:source /src/xhr/XHR.js
 	
 	// source /src/business/Serializable.js
-	function Serializable(data) {
+	var Serializable;
+	
+	(function(){
 		
-		if (this === Class || this == null || this === global) {
+		Serializable = function($serialization) {
 			
-			var Ctor = function(data){
-				Serializable.call(this, data);
-			};
+			if (this === Class || this == null || this === global) {
+				
+				var Ctor = function(data){
+					this[json_key_SER] = obj_extend(this[json_key_SER], $serialization);
+					
+					Serializable.call(this, data);
+				};
+				
+				return Ctor;
+			}
 			
-			Ctor.prototype.__props = data;
+			if ($serialization != null) {
+				
+				if (this.deserialize) 
+					this.deserialize($serialization);
+				else
+					Serializable.deserialize(this, $serialization);
+				
+			}
 			
-			return Ctor;
 		}
 		
-		if (data != null) {
+		Serializable.serialize = function(instance) {
+				
+			if (is_Function(instance.toJSON)) 
+				return instance.toJSON();
 			
-			if (this.deserialize) 
-				this.deserialize(data);
-			else
-				Serializable.deserialize(this, data);
 			
-		}
+			return json_proto_toJSON.call(instance, instance[json_key_SER]);
+		};
 		
-	}
-	
-	Serializable.serialize = function(instance) {
+		Serializable.deserialize = function(instance, json) {
+				
+			if (is_String(json)) {
+				try {
+					json = JSON.parse(json);
+				}catch(error){
+					console.error('<json:deserialize>', json);
+					return instance;
+				}
+			}
 			
-		if (is_Function(instance.toJSON)) 
-			return instance.toJSON();
-		
-		
-		return json_proto_toJSON.call(instance, instance.__props);
-	};
-	
-	Serializable.deserialize = function(instance, json) {
-			
-		if (is_String(json)) {
-			try {
-				json = JSON.parse(json);
-			}catch(error){
-				console.error('<json:deserialize>', json);
+			if (is_Array(json) && is_Function(instance.push)) {
+				instance.length = 0;
+				for (var i = 0, imax = json.length; i < imax; i++){
+					instance.push(json[i]);
+				}
 				return instance;
 			}
-		}
-		
-		if (is_Array(json) && is_Function(instance.push)) {
-			instance.length = 0;
-			for (var i = 0, imax = json.length; i < imax; i++){
-				instance.push(json[i]);
-			}
-			return instance;
-		}
-		
-		var props = instance.__props,
-			asKeys, asKey,
-			key,
-			val,
-			Mix;
-		
-		
-		if (props != null) {
-			var pname = '__desAsKeys';
 			
-			asKeys = props[pname];
-			if (asKeys == null) {
-				asKeys = props[pname] = {};
-				for (key in props) {
-					if (key !== '__desAsKeys' && props[key].hasOwnProperty('key') === true) 
-						asKeys[props[key].key] = key;
-				}
-			}
-		}
-		
-		for (key in json) {
+			var props = instance[json_key_SER],
+				asKeys, asKey,
+				key,
+				val,
+				Mix;
 			
-			val = json[key];
-			asKey = key;
 			
 			if (props != null) {
-				Mix = props.hasOwnProperty(key) 
-					? props[key]
-					: null
-					;
-				if (asKeys[key]) {
-					asKey = asKeys[key];
-				}
-					
-				if (Mix != null) {
-					
-					if (is_Function(Mix)) {
-						instance[asKey] = val instanceof Mix
-							? val
-							: new Mix(val)
-							;
-						continue;
+				var pname = '__desAsKeys';
+				
+				asKeys = props[pname];
+				if (asKeys == null) {
+					asKeys = props[pname] = {};
+					for (key in props) {
+						if (key !== '__desAsKeys' && props[key].hasOwnProperty('key') === true) 
+							asKeys[props[key].key] = key;
 					}
-					
-					var Deserialize = Mix.deserialize;
-					if (is_Function(Deserialize)) {
-						instance[asKey] = new Deserialize(val);
-						continue;
-					}
-					
 				}
 			}
 			
-			instance[asKey] = val;
-		}
+			for (key in json) {
+				
+				val = json[key];
+				asKey = key;
+				
+				if (props != null) {
+					Mix = props.hasOwnProperty(key) 
+						? props[key]
+						: null
+						;
+					if (asKeys[key]) {
+						asKey = asKeys[key];
+					}
+					
+					if (Mix != null) {
+						if (is_Object(Mix)) 
+							Mix = Mix.deserialize;
+						
+						if (is_String(Mix)) 
+							Mix = class_get(Mix);
+						
+						if (is_Function(Mix)) {
+							instance[asKey] = val instanceof Mix
+								? val
+								: new Mix(val)
+								;
+							continue;
+						}
+					}
+				}
+				
+				instance[asKey] = val;
+			}
+			
+			return instance;
+		}	
 		
-		return instance;
-	}
-	
-	
+	}());
 	
 	// end:source /src/business/Serializable.js
 	// source /src/business/Route.js
@@ -10556,9 +10567,9 @@ function __eval(source, include) {
 			if (compo != null) {
 				this.compo = compo;
 				
-				if (compo.__cached) 
+				if (compo.__cached) {
 					compo.render = fn_empty;
-				
+				}
 				return;
 			}
 			
@@ -10674,9 +10685,10 @@ function __eval(source, include) {
 				var element = this.firstChild,
 					compo = this.compo;
 					
-				if (compo.__cached !== void 0) 
+				if (compo.__cached !== void 0) {
+					console.log('from Cache size: ', compo.__cached.length);
 					return compo.__cached;
-				
+				}
 				
 				var meta = compo_getMetaInfo(compo),
 					mode = meta.mode,
@@ -11649,13 +11661,9 @@ function __eval(source, include) {
 				ensureTmplFn: Parser.ensureTemplateFunction
 			},
 			Dom: Dom,
-			
-			// if DEBUG
 			plugin: function(source){
 				eval(source);
 			},
-			// endif
-			
 			on: function(event, fn){
 				if (listeners == null){
 					listeners = {};
@@ -13520,11 +13528,9 @@ function __eval(source, include) {
 					return include.instance();
 				},
 				
-				// if DEBUG
 				plugin: function(source){
 					eval(source);
 				},
-				// endif
 				
 				Dom: {
 					addEventListener: dom_addEventListener
@@ -14343,20 +14349,9 @@ function __eval(source, include) {
 		
 		// end:source ../src/util/object.js
 		// source ../src/util/array.js
-		function arr_each(any, fn) {
-			var isarray = any instanceof Array,
-				i = -1,
-				imax = isarray
-					? any.length
-					: 1
-				;
-			var x;
-			while ( ++i < imax ){
-				x = isarray
-					? any[i]
-					: any
-					;
-				fn(x, i);
+		function arr_each(array, fn) {
+			for (var i = 0, length = array.length; i < length; i++) {
+				fn(array[i], i);
 			}
 		}
 		
@@ -14377,11 +14372,7 @@ function __eval(source, include) {
 		}
 		
 		function arr_isArray(x) {
-			return x != null
-				&& typeof x === 'object'
-				&& x.length != null
-				&& typeof x.slice === 'function'
-				;
+			return x != null && typeof x === 'object' && x.length != null && typeof x.slice === 'function';
 		}
 		
 		var arr_unique = (function() {
@@ -14656,128 +14647,144 @@ function __eval(source, include) {
 		
 		// end:source ../src/util/selector.js
 		// source ../src/util/utils.js
-		var jmask_filter,
-			jmask_find,
-			jmask_clone,
-			jmask_deepest,
-			jmask_getText
-			;
 		
-		(function(){
-			
-			jmask_filter = function(mix, matcher) {
-				if (matcher == null) 
-					return mix;
-				
-				var result = [];
-				arr_each(mix, function(node) {
-					if (selector_match(node, matcher)) 
-						result.push(node);
-				});
-				return result;
-			};
-			
-			/**
-			 * - mix (Node | Array[Node])
-			 */
-			jmask_find = function(mix, matcher, output) {
-				if (mix == null) {
-					return output;
+		function jmask_filter(arr, matcher) {
+			if (matcher == null) {
+				return arr;
+			}
+		
+			var result = [];
+			for (var i = 0, x, length = arr.length; i < length; i++) {
+				x = arr[i];
+				if (selector_match(x, matcher)) {
+					result.push(x);
 				}
-			
-				if (output == null) {
-					output = [];
-				}
-			
-				if (mix instanceof Array){
-					for(var i = 0, length = mix.length; i < length; i++){
-						jmask_find(mix[i], matcher, output);
-					}
-					return output;
-				}
-			
-				if (selector_match(mix, matcher)){
-					output.push(mix);
-				}
-			
-				var next = mix[matcher.nextKey];
-			
-				if (next != null){
-					jmask_find(next, matcher, output);
-				}
-			
+			}
+			return result;
+		}
+		
+		/**
+		 * - mix (Node | Array[Node])
+		 */
+		function jmask_find(mix, matcher, output) {
+			if (mix == null) {
 				return output;
-			};
-			
-			jmask_clone = function(node, parent){
-			
-				var copy = {
-					'type': 1,
-					'tagName': 1,
-					'compoName': 1,
-					'controller': 1
-				};
-			
-				var clone = {
-					parent: parent
-				};
-			
-				for(var key in node){
-					if (copy[key] === 1){
-						clone[key] = node[key];
-					}
-				}
-			
-				if (node.attr){
-					clone.attr = util_extend({}, node.attr);
-				}
-			
-				var nodes = node.nodes;
-				if (nodes != null && nodes.length > 0){
-					clone.nodes = [];
-			
-					var isarray = nodes instanceof Array,
-						length = isarray === true ? nodes.length : 1,
-						i = 0;
-					for(; i< length; i++){
-						clone.nodes[i] = jmask_clone(isarray === true ? nodes[i] : nodes, clone);
-					}
-				}
-			
-				return clone;
-			};
-			
-			
-			jmask_deepest = function(node){
-				var current = node,
-					prev;
-				while(current != null){
-					prev = current;
-					current = current.nodes && current.nodes[0];
-				}
-				return prev;
-			};
-			
-			
-			jmask_getText = function(node, model, cntx, controller) {
-				if (Dom.TEXTNODE === node.type) {
-					if (typeof node.content === 'function') {
-						return node.content('node', model, cntx, null, controller);
-					}
-					return node.content;
-				}
-			
-				var output = '';
-				if (node.nodes != null) {
-					for(var i = 0, x, imax = node.nodes.length; i < imax; i++){
-						x = node.nodes[i];
-						output += jmask_getText(x, model, cntx, controller);
-					}
+			}
+		
+			if (output == null) {
+				output = [];
+			}
+		
+			if (mix instanceof Array){
+				for(var i = 0, length = mix.length; i < length; i++){
+					jmask_find(mix[i], matcher, output);
 				}
 				return output;
+			}
+		
+			if (selector_match(mix, matcher)){
+				output.push(mix);
+			}
+		
+			var next = mix[matcher.nextKey];
+		
+			if (next != null){
+				jmask_find(next, matcher, output);
+			}
+		
+			return output;
+		}
+		
+		function jmask_clone(node, parent){
+		
+			var copy = {
+				'type': 1,
+				'tagName': 1,
+				'compoName': 1,
+				'controller': 1
 			};
 		
-		}());
+			var clone = {
+				parent: parent
+			};
+		
+			for(var key in node){
+				if (copy[key] === 1){
+					clone[key] = node[key];
+				}
+			}
+		
+			if (node.attr){
+				clone.attr = util_extend({}, node.attr);
+			}
+		
+			var nodes = node.nodes;
+			if (nodes != null && nodes.length > 0){
+				clone.nodes = [];
+		
+				var isarray = nodes instanceof Array,
+					length = isarray === true ? nodes.length : 1,
+					i = 0;
+				for(; i< length; i++){
+					clone.nodes[i] = jmask_clone(isarray === true ? nodes[i] : nodes, clone);
+				}
+			}
+		
+			return clone;
+		}
+		
+		
+		function jmask_deepest(node){
+			var current = node,
+				prev;
+			while(current != null){
+				prev = current;
+				current = current.nodes && current.nodes[0];
+			}
+			return prev;
+		}
+		
+		
+		function jmask_getText(node, model, cntx, controller) {
+			if (Dom.TEXTNODE === node.type) {
+				if (typeof node.content === 'function') {
+					return node.content('node', model, cntx, null, controller);
+				}
+				return node.content;
+			}
+		
+			var output = '';
+			if (node.nodes != null) {
+				for(var i = 0, x, imax = node.nodes.length; i < imax; i++){
+					x = node.nodes[i];
+					output += jmask_getText(x, model, cntx, controller);
+				}
+			}
+			return output;
+		}
+		
+		////////function jmask_initHandlers($$, parent){
+		////////	var instance;
+		////////
+		////////	for(var i = 0, x, length = $$.length; i < length; i++){
+		////////		x = $$[i];
+		////////		if (x.type === Dom.COMPONENT){
+		////////			if (typeof x.controller === 'function'){
+		////////				instance = new x.controller();
+		////////				instance.nodes = x.nodes;
+		////////				instance.attr = util_extend(instance.attr, x.attr);
+		////////				instance.compoName = x.compoName;
+		////////				instance.parent = parent;
+		////////
+		////////				x = $$[i] = instance;
+		////////			}
+		////////		}
+		////////		if (x.nodes != null){
+		////////			jmask_initHandlers(x.nodes, x);
+		////////		}
+		////////	}
+		////////}
+		
 		
 		// end:source ../src/util/utils.js
 	
@@ -21211,9 +21218,9 @@ function __eval(source, include) {
 	
 	function normalize_pathsSlashes(str) {
 		
-		if (str[str.length - 1] === '/') 
+		if (str[str.length - 1] === '/') {
 			return str.substring(0, str.length - 1);
-		
+		}
 		return str;
 	}
 	
@@ -21311,17 +21318,11 @@ function __eval(source, include) {
 		
 		
 		obj.extension = match == null ? null : match[1];
+	
 	}
 	
-	function parse_hash(obj){
-		var i = obj.value.indexOf('#');
-		if (i === -1) 
-			return;
-		
-		obj.hash = obj.value.substring(i + 1);
-		obj.value = obj.value.substring(0, i);
-	}
-	
+
+
 
     var URI = function(uri) {
         if (uri == null) 
@@ -21339,11 +21340,8 @@ function __eval(source, include) {
         parse_protocol(this);
         parse_host(this);
 
-		parse_hash(this);
         parse_search(this);
-		
         parse_file(this);
-		
 
 		
         // normilize path - "/some/path"

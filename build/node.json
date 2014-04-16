@@ -8,7 +8,7 @@
 		"libs": [
 			"class/class.node",
 			"include/include.node",
-			"mask.node",
+			"mask-node/mask.node",
 			"ruta",
 			"ruqq/arr",
 			"ruqq/utils",

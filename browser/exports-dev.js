@@ -3,14 +3,14 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.57
+ * ClassJS v%VERSION%
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
  * MIT license
  * http://opensource.org/licenses/MIT
  *
- * (c) 2012, 2014 Atma.js and other contributors
+ * (c) 2012, %YEAR% Atma.js and other contributors
  */
 // end:source /src/license.txt
 // source /src/umd.js
@@ -506,7 +506,8 @@
 	// source /src/util/json.js
 	// Create from Complex Class Instance a lightweight json object
 	
-	var json_proto_toJSON,
+	var json_key_SER = '__$serialization',
+		json_proto_toJSON,
 		json_proto_arrayToJSON
 		;
 		
@@ -520,7 +521,7 @@
 				key, val, s;
 				
 			if (serialization == null) 
-				serialization = object.__props;
+				serialization = object[json_key_SER];
 			
 			
 			var asKey;
@@ -717,9 +718,17 @@
 		};
 		
 		obj_extend = function(target, source) {
-			for (var key in source) {
-				if (source[key] != null) 
-					target[key] = source[key];
+			if (target == null) 
+				target = {};
+			if (source == null) 
+				return target;
+			
+			var val,
+				key;
+			for(key in source) {
+				val = source[key];
+				if (val != null) 
+					target[key] = val;
 			}
 			return target;
 		};
@@ -1320,118 +1329,120 @@
 	// end:source /src/xhr/XHR.js
 	
 	// source /src/business/Serializable.js
-	function Serializable(data) {
+	var Serializable;
+	
+	(function(){
 		
-		if (this === Class || this == null || this === global) {
+		Serializable = function($serialization) {
 			
-			var Ctor = function(data){
-				Serializable.call(this, data);
-			};
+			if (this === Class || this == null || this === global) {
+				
+				var Ctor = function(data){
+					this[json_key_SER] = obj_extend(this[json_key_SER], $serialization);
+					
+					Serializable.call(this, data);
+				};
+				
+				return Ctor;
+			}
 			
-			Ctor.prototype.__props = data;
+			if ($serialization != null) {
+				
+				if (this.deserialize) 
+					this.deserialize($serialization);
+				else
+					Serializable.deserialize(this, $serialization);
+				
+			}
 			
-			return Ctor;
 		}
 		
-		if (data != null) {
+		Serializable.serialize = function(instance) {
+				
+			if (is_Function(instance.toJSON)) 
+				return instance.toJSON();
 			
-			if (this.deserialize) 
-				this.deserialize(data);
-			else
-				Serializable.deserialize(this, data);
 			
-		}
+			return json_proto_toJSON.call(instance, instance[json_key_SER]);
+		};
 		
-	}
-	
-	Serializable.serialize = function(instance) {
+		Serializable.deserialize = function(instance, json) {
+				
+			if (is_String(json)) {
+				try {
+					json = JSON.parse(json);
+				}catch(error){
+					console.error('<json:deserialize>', json);
+					return instance;
+				}
+			}
 			
-		if (is_Function(instance.toJSON)) 
-			return instance.toJSON();
-		
-		
-		return json_proto_toJSON.call(instance, instance.__props);
-	};
-	
-	Serializable.deserialize = function(instance, json) {
-			
-		if (is_String(json)) {
-			try {
-				json = JSON.parse(json);
-			}catch(error){
-				console.error('<json:deserialize>', json);
+			if (is_Array(json) && is_Function(instance.push)) {
+				instance.length = 0;
+				for (var i = 0, imax = json.length; i < imax; i++){
+					instance.push(json[i]);
+				}
 				return instance;
 			}
-		}
-		
-		if (is_Array(json) && is_Function(instance.push)) {
-			instance.length = 0;
-			for (var i = 0, imax = json.length; i < imax; i++){
-				instance.push(json[i]);
-			}
-			return instance;
-		}
-		
-		var props = instance.__props,
-			asKeys, asKey,
-			key,
-			val,
-			Mix;
-		
-		
-		if (props != null) {
-			var pname = '__desAsKeys';
 			
-			asKeys = props[pname];
-			if (asKeys == null) {
-				asKeys = props[pname] = {};
-				for (key in props) {
-					if (key !== '__desAsKeys' && props[key].hasOwnProperty('key') === true) 
-						asKeys[props[key].key] = key;
-				}
-			}
-		}
-		
-		for (key in json) {
+			var props = instance[json_key_SER],
+				asKeys, asKey,
+				key,
+				val,
+				Mix;
 			
-			val = json[key];
-			asKey = key;
 			
 			if (props != null) {
-				Mix = props.hasOwnProperty(key) 
-					? props[key]
-					: null
-					;
-				if (asKeys[key]) {
-					asKey = asKeys[key];
-				}
-					
-				if (Mix != null) {
-					
-					if (is_Function(Mix)) {
-						instance[asKey] = val instanceof Mix
-							? val
-							: new Mix(val)
-							;
-						continue;
+				var pname = '__desAsKeys';
+				
+				asKeys = props[pname];
+				if (asKeys == null) {
+					asKeys = props[pname] = {};
+					for (key in props) {
+						if (key !== '__desAsKeys' && props[key].hasOwnProperty('key') === true) 
+							asKeys[props[key].key] = key;
 					}
-					
-					var Deserialize = Mix.deserialize;
-					if (is_Function(Deserialize)) {
-						instance[asKey] = new Deserialize(val);
-						continue;
-					}
-					
 				}
 			}
 			
-			instance[asKey] = val;
-		}
+			for (key in json) {
+				
+				val = json[key];
+				asKey = key;
+				
+				if (props != null) {
+					Mix = props.hasOwnProperty(key) 
+						? props[key]
+						: null
+						;
+					if (asKeys[key]) {
+						asKey = asKeys[key];
+					}
+					
+					if (Mix != null) {
+						if (is_Object(Mix)) 
+							Mix = Mix.deserialize;
+						
+						if (is_String(Mix)) 
+							Mix = class_get(Mix);
+						
+						if (is_Function(Mix)) {
+							instance[asKey] = val instanceof Mix
+								? val
+								: new Mix(val)
+								;
+							continue;
+						}
+					}
+				}
+				
+				instance[asKey] = val;
+			}
+			
+			return instance;
+		}	
 		
-		return instance;
-	}
-	
-	
+	}());
 	
 	// end:source /src/business/Serializable.js
 	// source /src/business/Route.js
@@ -9209,13 +9220,9 @@ function __eval(source, include) {
 				ensureTmplFn: Parser.ensureTemplateFunction
 			},
 			Dom: Dom,
-			
-			// if DEBUG
 			plugin: function(source){
 				eval(source);
 			},
-			// endif
-			
 			on: function(event, fn){
 				if (listeners == null){
 					listeners = {};
@@ -11210,11 +11217,9 @@ function __eval(source, include) {
 					return include.instance();
 				},
 				
-				// if DEBUG
 				plugin: function(source){
 					eval(source);
 				},
-				// endif
 				
 				Dom: {
 					addEventListener: dom_addEventListener
@@ -19357,9 +19362,9 @@ function __eval(source, include) {
 	
 	function normalize_pathsSlashes(str) {
 		
-		if (str[str.length - 1] === '/') 
+		if (str[str.length - 1] === '/') {
 			return str.substring(0, str.length - 1);
-		
+		}
 		return str;
 	}
 	
@@ -19457,17 +19462,11 @@ function __eval(source, include) {
 		
 		
 		obj.extension = match == null ? null : match[1];
+	
 	}
 	
-	function parse_hash(obj){
-		var i = obj.value.indexOf('#');
-		if (i === -1) 
-			return;
-		
-		obj.hash = obj.value.substring(i + 1);
-		obj.value = obj.value.substring(0, i);
-	}
-	
+
+
 
     var URI = function(uri) {
         if (uri == null) 
@@ -19485,11 +19484,8 @@ function __eval(source, include) {
         parse_protocol(this);
         parse_host(this);
 
-		parse_hash(this);
         parse_search(this);
-		
         parse_file(this);
-		
 
 		
         // normilize path - "/some/path"
