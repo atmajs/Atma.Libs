@@ -1,6 +1,6 @@
 #### Atma.js Libraries
 
-Package contains different types of builds. Mainly for npm usage.
+Package contains different build-types for NodeJS and Browsers 
 
 Included libraries
 - class
@@ -14,6 +14,7 @@ Included Compos
 - layout
 
 
+##### NodeJS
 For now all builds differs in the way they export the libraries - globals, namespace(atma), or CommonJS.
 
 
@@ -55,3 +56,10 @@ These are minified source, to load development versions use:
 'atma-libs/globals-dev'
 ```
 
+##### Browser
+
+Browser versions can be found in `browser/` directory.
+
+
+----
+(c) 2014 MIT - Atma.js Project
