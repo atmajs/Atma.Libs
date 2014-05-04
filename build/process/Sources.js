@@ -29,6 +29,11 @@ include
 				for (var i = 0, x, imax = this.pckg.length; i < imax; i++){
 					x = this.pckg[i];
 					
+					if (typeof x.source !== 'string') {
+						logger.error('Source is not a string');
+						continue;
+					}
+					
 					libs += x.source;
 				}
 				

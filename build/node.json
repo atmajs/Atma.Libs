@@ -6,9 +6,9 @@
 	
 	"libraries": {
 		"libs": [
-			"class/class.node",
-			"include/include.node",
-			"mask-node/mask.node",
+			"class/class.node::class",
+			"include/include.node::include",
+			"mask-node/mask.node::mask",
 			"ruta",
 			"ruqq/arr",
 			"ruqq/utils",
