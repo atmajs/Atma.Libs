@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.60
+ * ClassJS v1.0.61
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -98,39 +98,62 @@
 	}
 	// end:source /src/util/is.js
 	// source /src/util/array.js
-	function arr_each(array, callback) {
+	var arr_each,
+		arr_isArray,
+		arr_remove
+		;
 		
-		if (arr_isArray(array)) {
-			for (var i = 0, imax = array.length; i < imax; i++){
-				callback(array[i], i);
+	(function(){
+	
+		arr_each = function(array, callback) {
+			
+			if (arr_isArray(array)) {
+				for (var i = 0, imax = array.length; i < imax; i++){
+					callback(array[i], i);
+				}
+				return;
 			}
-			return;
+			
+			callback(array);
+		};
+		
+		arr_isArray = function(array) {
+			return array != null
+				&& typeof array === 'object'
+				&& typeof array.length === 'number'
+				&& typeof array.splice === 'function';
+		};
+		
+		arr_remove = function(array, fn){
+			var imax = array.length,
+				i = -1;
+			while ( ++i < imax){
+				if (fn(array[i]) === true) {
+					array.splice(i, 1);
+					i--;
+					imax--;
+				}
+			}
+		};
+		
+		/* polyfill */
+		if (typeof Array.isArray !== 'function') {
+			Array.isArray = function(array){
+				if (array instanceof Array){
+					return true;
+				}
+				
+				if (array == null || typeof array !== 'object') {
+					return false;
+				}
+				
+				
+				return array.length !== void 0 && typeof array.slice === 'function';
+			};
 		}
 		
-		callback(array);
-	}
+	}());
 	
-	function arr_isArray(array) {
-		return array != null
-			&& typeof array === 'object'
-			&& typeof array.length === 'number'
-			&& typeof array.splice === 'function';
-	}
-	
-	if (typeof Array.isArray !== 'function') {
-		Array.isArray = function(array){
-			if (array instanceof Array){
-				return true;
-			}
-			
-			if (array == null || typeof array !== 'object') {
-				return false;
-			}
-			
-			
-			return array.length !== void 0 && typeof array.slice === 'function';
-		};
-	}
 	// end:source /src/util/array.js
 	// source /src/util/class.js
 	var class_register,
@@ -867,6 +890,23 @@
 	
 	(function(){
 		
+		obj_patch = function(obj, patch){
+			
+			for(var key in patch){
+				
+				var patcher = patches[key];
+				
+				if (patcher) 
+					patcher[fn_WALKER](obj, patch[key], patcher[fn_MODIFIER]);
+				else
+					console.error('Unknown or not implemented patcher', key);
+				
+			}
+			return obj;
+		};
+		
+		// === private
+		
 		function walk_mutator(obj, data, fn) {
 			for (var key in data) 
 				fn(obj_getProperty(obj, key), data[key], key);
@@ -916,9 +956,6 @@
 			 val[mix > 0 ? 'pop' : 'shift']();
 		}
 		function arr_pull(val, mix, prop) {
-			return console
-				.error('<patch> pull Not Implemented');
-		
 			arr_remove(val, function(item){
 				return query_match(item, mix);
 			});
@@ -944,35 +981,35 @@
 			return val;
 		}
 		
+		var query_match;
+		(function(){
+			/** @TODO improve object matcher */
+			query_match = function(obj, mix){
+				for (var key in mix) {
+					if (obj[key] !== mix[key]) 
+						return false;
+				}
+				return true;
+			};
+		}());
+		
+		
 		var fn_WALKER = 0,
 			fn_MODIFIER = 1
 			;
 			
 		var patches = {
 			'$push': [walk_mutator, fn_IoC(arr_checkArray, arr_push)],
-			'$pop': [walk_mutator, fn_IoC(arr_checkArray, arr_pop)],
+			'$pop':  [walk_mutator, fn_IoC(arr_checkArray, arr_pop)],
 			'$pull': [walk_mutator, fn_IoC(arr_checkArray, arr_pull)],
 			
-			'$inc': [walk_modifier, val_inc],
-			'$set': [walk_modifier, val_set],
+			'$inc':   [walk_modifier, val_inc],
+			'$set':   [walk_modifier, val_set],
 			'$unset': [walk_modifier, val_unset],
-			'$bit': [walk_modifier, val_unset],
+			'$bit':   [walk_modifier, val_unset],
 		};
 		
-		obj_patch = function(obj, patch){
-			
-			for(var key in patch){
-				
-				var patcher = patches[key];
-				
-				if (patcher) 
-					patcher[fn_WALKER](obj, patch[key], patcher[fn_MODIFIER]);
-				else
-					console.error('Unknown or not implemented patcher', key);
-				
-			}
-			return obj;
-		};
+		
 		
 	}());
 	// end:source /src/util/patchObject.js
@@ -3148,6 +3185,7 @@
 		},
 		isWeb = !! (global.location && global.location.protocol && /^https?:/.test(global.location.protocol)),
 		reg_subFolder = /([^\/]+\/)?\.\.\//,
+		reg_hasProtocol = /^file:|https?:/i,
 		cfg = {
 			path: null,
 			loader: null,
@@ -3387,22 +3425,16 @@
 			if (cfg.path && url[0] === '/') 
 				url = cfg.path + url.substring(1);
 			
-			switch (url.substring(0, 5)) {
-				case 'file:':
-				case 'http:':
-					return url;
-			}
-		
+			if (reg_hasProtocol.test(url)) 
+				return path_collapse(url);
+			
 			if (url.substring(0, 2) === './') 
 				url = url.substring(2);
 			
 			if (url[0] === '/' && parent != null && parent.base != null) {
 				url = path_combine(parent.base, url);
-				switch (url.substring(0, 5)) {
-					case 'file:':
-					case 'http:':
-						return url;
-				}
+				if (reg_hasProtocol.test(url)) 
+					return path_collapse(url);
 			}
 				
 			if (url[0] === '/') {
@@ -3412,12 +3444,7 @@
 				url = parent.location + url;
 			}
 		
-		
-			while (url.indexOf('../') !== -1) {
-				url = url.replace(reg_subFolder, '');
-			}
-		
-			return url;
+			return path_collapse(url);
 		};
 		
 		path_isRelative = function(path) {
@@ -3431,7 +3458,7 @@
 					// f
 				case 104:
 					// h
-					return /^file:|https?:/.test(path) === false;
+					return reg_hasProtocol.test(path) === false;
 			}
 			
 			return true;
@@ -3465,6 +3492,13 @@
 			}
 			
 			return out;
+		};
+		
+		function path_collapse(url) {
+			while (url.indexOf('../') !== -1) {
+				url = url.replace(reg_subFolder, '');
+			}
+			return url;
 		}
 		
 	}());
