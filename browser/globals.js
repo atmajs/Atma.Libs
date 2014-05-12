@@ -1,5 +1,5 @@
 (function(globals){function __eval(e,t){"use strict";t&&t.route.params;return eval.call(window,e)}function obj_extend(e,t){for(var n in t)null!=t[n]&&(null==globals[n]||"object"!=typeof globals[n]||"object"!=typeof t[n]?e[n]=t[n]:obj_extend(globals[n],t[n]))}/*!
- * ClassJS v1.0.61
+ * ClassJS v1.0.62
  * Part of the Atma.js Project
  * http://atmajs.com/
  *

@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.61
+ * ClassJS v1.0.62
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
