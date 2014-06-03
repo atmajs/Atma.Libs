@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.62
+ * ClassJS v1.0.63
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -454,8 +454,7 @@
 	        };
 	    }
 	
-		function inherit(_class, _base, _extends, original, _overrides) {
-			
+		function inherit(_class, _base, _extends, original, _overrides, defaults) {
 			var prototype = original,
 				proto = original;
 	
@@ -473,18 +472,21 @@
 			if (_base != null) 
 				proto[PROTO] = _base.prototype;
 			
-			if (_overrides != null) {
-				for (var key in _overrides) {
-					prototype[key] = proto_override(prototype[key], _overrides[key]);
-				}
+			for (var key in defaults) {
+				if (prototype[key] == null) 
+					prototype[key] = defaults[key];
 			}
+			for (var key in _overrides) {
+				prototype[key] = proto_override(prototype[key], _overrides[key]);
+			}
+			
 			
 			_class.prototype = prototype;
 		}
 	
 	
 		// browser that doesnt support __proto__ 
-		function inherit_protoLess(_class, _base, _extends, original, _overrides) {
+		function inherit_protoLess(_class, _base, _extends, original, _overrides, defaults) {
 			
 			if (_base != null) {
 				var tmp = function() {};
@@ -503,14 +505,12 @@
 				});
 			}
 			
-			if (_overrides != null) {
-				var prototype = _class.prototype;
-				for (var key in _overrides) {
-					prototype[key] = proto_override(prototype[key], _overrides[key]);
-				}
+			var prototype = _class.prototype;
+			obj_defaults(prototype, defaults);
+			
+			for (var key in _overrides) {
+				prototype[key] = proto_override(prototype[key], _overrides[key]);
 			}
-			
-			
 			proto_extend(_class, original); 
 		}
 		
@@ -595,10 +595,13 @@
 						if (toJSON == null) 
 							break;
 						
-						if (toJSON === json_proto_toJSON || toJSON === json_proto_arrayToJSON) {
-							json[asKey] = val.toJSON();
-							continue;
-						}
+						json[asKey] = val.toJSON();
+						continue;
+						//@removed - serialize any if toJSON is implemented
+						//if (toJSON === json_proto_toJSON || toJSON === json_proto_arrayToJSON) {
+						//	json[asKey] = val.toJSON();
+						//	continue;
+						//}
 						
 						break;
 				}
@@ -950,7 +953,7 @@
 					},
 					{
 						toString: function(){
-							return 'Expected property'
+							return 'Unexpected property'
 								+ (this.property
 								   ? '`' + this.property + '`'
 								   : '')
@@ -1013,7 +1016,8 @@
 	}());
 	// end:source /src/util/object.js
 	// source /src/util/patchObject.js
-	var obj_patch;
+	var obj_patch,
+		obj_patchValidate;
 	
 	(function(){
 		
@@ -1022,14 +1026,29 @@
 			for(var key in patch){
 				
 				var patcher = patches[key];
-				
 				if (patcher) 
 					patcher[fn_WALKER](obj, patch[key], patcher[fn_MODIFIER]);
 				else
 					console.error('Unknown or not implemented patcher', key);
-				
 			}
 			return obj;
+		};
+		
+		obj_patchValidate = function(patch){
+			if (patch == null) 
+				return 'Undefined';
+			
+			var has = false;
+			for(var key in patch){
+				has = true;
+				
+				if (patches[key] == null) 
+					return 'Unsupported patcher: ' + key;
+			}
+			if (has === false) 
+				return 'No data';
+			
+			return null;
 		};
 		
 		// === private
@@ -1841,6 +1860,35 @@
 					callback
 				);
 			},
+			
+			pipe: function(dfr /* ..methods */){
+				var imax = arguments.length,
+					done = imax === 1,
+					fail = imax === 1,
+					i = 0, x;
+				while( ++i < imax ){
+					x = arguments[i];
+					switch(x){
+						case 'done':
+							done = true;
+							break;
+						case 'fail':
+							fail = true;
+							break;
+						default:
+							console.error('Unsupported pipe channel', arguments[i])
+							break;
+					}
+				}
+				done && this.done(pipe('resolve'));
+				fail && this.fail(pipe('reject'));
+				function pipe(method) {
+					return function(){
+						dfr[method].apply(dfr, arguments);
+					};
+				}
+				return this;
+			}
 		};
 	
 		// PRIVATE
@@ -2039,11 +2087,10 @@
 		if (_overrides != null) 
 			delete data.Override;
 		
-		if (data.toJSON === void 0) 
-			data.toJSON = json_proto_toJSON;
-		
-	
 		if (_base == null && _extends == null && _self == null) {
+		
+			if (data.toJSON === void 0) 
+				data.toJSON = json_proto_toJSON;
 			
 			_class = _construct == null
 				? function() {}
@@ -2130,12 +2177,15 @@
 		
 	
 		class_extendProtoObjects(data, _base, _extends);
-		class_inherit(_class, _base, _extends, data, _overrides);
-	
-	
+		//if (data.toJSON === void 0) 
+		//	data.toJSON = json_proto_toJSON;
+			
+		class_inherit(_class, _base, _extends, data, _overrides, {
+			toJSON: json_proto_toJSON
+		});
+		
 		data = null;
 		_static = null;
-	
 		return _class;
 	};
 	// end:source /src/Class.js
@@ -3393,6 +3443,10 @@
 					
 					if (this._id == null)
 						return this._completed('<class:patch> `_id` is not defined');
+					
+					var error = obj_patchValidate(patch);
+					if (error != null) 
+						return this._completed(error)
 					
 					obj_patch(this, patch);
 					db_patchSingle(
