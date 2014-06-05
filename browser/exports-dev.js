@@ -1833,7 +1833,8 @@
 			},
 			
 			done: function(callback) {
-				
+				if (this._rejected != null) 
+					return this;
 				return dfr_bind(
 					this,
 					this._resolved,
@@ -1843,7 +1844,8 @@
 			},
 			
 			fail: function(callback) {
-				
+				if (this._resolved != null) 
+					return this;
 				return dfr_bind(
 					this,
 					this._rejected,
@@ -3616,8 +3618,6 @@
 		};
 		
 		path_resolveUrl = function(url, parent) {
-			if (cfg.path && url[0] === '/') 
-				url = cfg.path + url.substring(1);
 			
 			if (reg_hasProtocol.test(url)) 
 				return path_collapse(url);
@@ -3630,10 +3630,15 @@
 				if (reg_hasProtocol.test(url)) 
 					return path_collapse(url);
 			}
-				
+			if (url[0] === '/' && cfg.path) {
+				url = cfg.path + url.substring(1);
+				if (reg_hasProtocol.test(url)) 
+					return path_collapse(url);
+			}
 			if (url[0] === '/') {
-				if (isWeb === false || cfg.lockedToFolder === true) 
+				if (isWeb === false || cfg.lockedToFolder === true) {
 					url = url.substring(1);
+				}
 			} else if (parent != null && parent.location != null) {
 				url = parent.location + url;
 			}
