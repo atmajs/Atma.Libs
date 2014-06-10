@@ -1,1 +1,1 @@
-(function(l){l.atma=this}).call({},"undefined"!=typeof global?global:window);
+(function(e){e.atma=this}).call({},"undefined"!=typeof global?global:window);

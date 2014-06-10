@@ -1,7 +1,7 @@
 {
 	"routes": { 
-		"libs": "../../{0}/lib/{1}.js",
-		"compos": "../../compos/{0}/lib/{1}.js"
+		"libs": "../../../{0}/lib/{1}.js",
+		"compos": "../../../compos/{0}/lib/{1}.js"
 	},
 	
 	"libraries": {
