@@ -61,41 +61,47 @@
 	// end:source /src/vars.js
 	
 	// source /src/util/is.js
-	function is_Function(x) {
-		return typeof x === 'function';
-	}
+	var is_Function,
+		is_Object,
+		is_Array,
+		is_String,
+		is_notEmptyString,
+		is_rawObject,
+		is_NullOrGlobal;
+	(function(){
 	
-	function is_Object(x) {
-		return x != null &&  typeof x === 'object';
-	}
-	
-	function is_Array(x) {
-		return x != null
-			&& typeof x.length === 'number'
-			&& typeof x.slice === 'function';
-	}
-	
-	function is_String(x) {
-		return typeof x === 'string';
-	}
-	
-	function is_notEmptyString(x) {
-		return typeof x === 'string' && x !== '';
-	}
-	
-	function is_rawObject(obj) {
-		if (obj == null) 
-			return false;
+		is_Function = function(x) {
+			return typeof x === 'function';
+		};
+		is_Object = function(x) {
+			return x != null &&  typeof x === 'object';
+		};
+		is_Array = function(x) {
+			return x != null
+				&& typeof x.length === 'number'
+				&& typeof x.slice === 'function';
+		};
+		is_String = function(x) {
+			return typeof x === 'string';
+		};
+		is_notEmptyString = function(x) {
+			return typeof x === 'string' && x !== '';
+		};
+		is_rawObject = function(obj) {
+			if (obj == null) 
+				return false;
+			
+			if (typeof obj !== 'object')
+				return false;
+			
+			return obj.constructor === Object;
+		};
+		is_NullOrGlobal = function(ctx){
+			return ctx === void 0 || ctx === global;
+		};
 		
-		if (typeof obj !== 'object')
-			return false;
-		
-		return obj.constructor === Object;
-	}
+	}());
 	
-	function is_NullOrGlobal(ctx){
-		return ctx === void 0 || ctx === global;
-	}
 	// end:source /src/util/is.js
 	// source /src/util/array.js
 	var arr_each,
@@ -1822,6 +1828,16 @@
 				this._resolved = null;
 			},
 			
+			isResolved: function(){
+				return this._resolved != null;
+			},
+			isRejected: function(){
+				return this._rejected != null;
+			},
+			isBusy: function(){
+				return this._resolved == null && this._rejected == null;
+			},
+			
 			resolve: function() {
 				var done = this._done,
 					always = this._always
@@ -1858,8 +1874,8 @@
 				return fn_proxy(this.reject, this);
 			},
 			
-			then: function(onSuccess, onError){
-				return this.done(onSuccess).fail(onError);
+			then: function(filterSuccess, filterError){
+				return this.pipe(filterSuccess, filterError);
 			},
 			
 			done: function(callback) {
@@ -1885,7 +1901,6 @@
 			},
 			
 			always: function(callback) {
-				
 				return dfr_bind(
 					this,
 					this._rejected || this._resolved,
@@ -1902,12 +1917,11 @@
 						fail_ = arguments.length > 1
 							? arguments[1]
 							: null;
-					
-					this.then(
-						delegate(dfr, 'resolve', done_),
-						delegate(dfr, 'reject', fail_)
-					);
-					
+						
+					this
+						.done(delegate(dfr, 'resolve', done_))
+						.fail(delegate(dfr, 'reject',  fail_))
+						;
 					return dfr;
 				}
 				
@@ -1930,8 +1944,8 @@
 							break;
 					}
 				}
-				done && this.done(pipe(dfr, 'resolve'));
-				fail && this.fail(pipe(dfr, 'reject'));
+				done && this.done(dfr.resolveDelegate());
+				fail && this.fail(dfr.rejectDelegate());
 				
 				function pipe(dfr, method) {
 					return function(){
@@ -1939,13 +1953,10 @@
 					};
 				}
 				function delegate(dfr, name, fn) {
-					if (fn == null) 
-						return dfr[name + 'Delegate']();
-					
 					return function(){
 						var override = fn.apply(this, arguments);
 						if (override != null) {
-							if (override instanceof Deferred) {
+							if (isDeferred(override) === true) {
 								override.pipe(dfr);
 								return;
 							}
@@ -1996,21 +2007,30 @@
 			}
 			arr.length = 0;
 		}
+		function isDeferred(x){
+			if (x == null || typeof x !== 'object') 
+				return false;
+			
+			if (x instanceof Deferred) 
+				return true;
+			
+			return typeof x.done === 'function'
+				&& typeof x.fail === 'function'
+				;
+		}
 		
 	}());
 	// end:source /src/business/Deferred.js
 	// source /src/business/EventEmitter.js
-	var EventEmitter = (function(){
+	var EventEmitter;
+	(function(){
 	 
-		function Emitter() {
+		EventEmitter = function() {
 			this._listeners = {};
-		}
-	 
-		
-	    Emitter.prototype = {
-	        constructor: Emitter,
-			
-	        on: function(event, callback) {
+		};
+	    EventEmitter.prototype = {
+	        constructor: EventEmitter,
+			on: function(event, callback) {
 	            if (callback != null){
 					(this._listeners[event] || (this._listeners[event] = [])).push(callback);
 				}
@@ -2037,28 +2057,9 @@
 				};
 			},
 	        
-	        trigger: function() {
-	            var args = _Array_slice.call(arguments),
-	                event = args.shift(),
-	                fns = this._listeners[event],
-	                fn, imax, i = 0;
-	                
-	            if (fns == null)
-					return this;
-				
-				for (imax = fns.length; i < imax; i++) {
-					fn = fns[i];
-					fn_apply(fn, this, args);
-					
-					if (fn._once === true){
-						fns.splice(i, 1);
-						i--;
-						imax--;
-					}
-				}
+			emit: event_trigger,
+	        trigger: event_trigger,
 			
-	            return this;
-	        },
 	        off: function(event, callback) {
 				var listeners = this._listeners[event];
 	            if (listeners == null)
@@ -2071,24 +2072,41 @@
 				
 				var imax = listeners.length,
 					i = -1;
-					
 				while (++i < imax) {
 					
 					if (listeners[i] === callback) {
-						
 						listeners.splice(i, 1);
 						i--;
 						imax--;
 					}
 					
 				}
-			
 	            return this;
 			}
 	    };
 	    
-	    return Emitter;
-	    
+		function event_trigger() {
+			var args = _Array_slice.call(arguments),
+				event = args.shift(),
+				fns = this._listeners[event],
+				fn, imax, i = 0;
+				
+			if (fns == null)
+				return this;
+			
+			for (imax = fns.length; i < imax; i++) {
+				fn = fns[i];
+				fn_apply(fn, this, args);
+				
+				if (fn._once === true){
+					fns.splice(i, 1);
+					i--;
+					imax--;
+				}
+			}
+		
+			return this;
+		}
 	}());
 	
 	// end:source /src/business/EventEmitter.js
@@ -3406,7 +3424,7 @@
 (function (root, factory) {
     'use strict';
 
-	var _global, _exports, _document;
+	var _global, _exports;
 	
 	if (typeof exports !== 'undefined' && (root === exports || root == null)){
 		// raw nodejs module
@@ -3420,10 +3438,14 @@
 		_exports = root || _global;
 	}
 	
-	_document = _global.document;
+	if (typeof include !== 'undefined' && typeof include.js === 'function') {
+		// allow only one `include` per application
+		_exports.include = include;
+		_exports.includeLib = includeLib;
+		return;
+	}
 	
-	
-	factory(_global, _exports, _document);
+	factory(_global, _exports, _global.document);
 
 }(this, function (global, exports, document) {
     'use strict';
@@ -3448,7 +3470,7 @@
 		},
 		isWeb = !! (global.location && global.location.protocol && /^https?:/.test(global.location.protocol)),
 		reg_subFolder = /([^\/]+\/)?\.\.\//,
-		reg_hasProtocol = /^file:|https?:/i,
+		reg_hasProtocol = /^(file|https?):/i,
 		cfg = {
 			path: null,
 			loader: null,
@@ -3672,12 +3694,12 @@
 			return path
 				.replace(/\\/g, '/')
 				// remove double slashes, but not near protocol
-				.replace(/([^:\/])\/{2,}/g, '/')
+				.replace(/([^:\/])\/{2,}/g, '$1/')
 				;
 		};
 		
 		path_win32Normalize = function(path){
-			path = path.replace(/\\/g, '/');
+			path = path_normalize(path);
 			if (path.substring(0, 5) === 'file:')
 				return path;
 			
@@ -3777,12 +3799,12 @@
 	
 	(function(){
 		
-		tree_resolveUsage = function(resource, usage){
+		tree_resolveUsage = function(resource, usage, next){
 			var use = [],
 				imax = usage.length,
 				i = -1,
 				
-				obj, path, name, index
+				obj, path, name, index, parent
 				;
 			while( ++i < imax ) {
 				
@@ -3793,7 +3815,14 @@
 					path = path.substring(index + 1);
 				}
 				
-				obj = use_resolveExports(name, resource.parent);
+				parent = use_resolveParent(name, resource.parent, resource);
+				if (parent.state !== 4){
+					resource.state = 3;
+					parent.on(4, next, parent, 'push');
+					return null;
+				}
+				
+				obj = parent.exports;
 				
 				if (name !== path) 
 					obj = obj_getProperty(obj, path);
@@ -3803,21 +3832,29 @@
 					&& console.warn('<include:use> Used resource has no exports', name, resource.url);
 				// endif
 				
-				
 				use[i] = obj;
 			}
-			
 			return use;
 		};
 		
 		
-		function use_resolveExports(name, resource){
+		function use_resolveParent(name, resource, initiator){
 			
 			if (resource == null) {
 				// if DEBUG
-				console.warn('<include:use> Not Found. Ensure to have it included before with correct alias', name);
+				console.warn('<include> Usage Not Found:', name);
+				console.warn('- Ensure to have it included before with the correct alias')
+				console.warn('- Initiator Stacktrace:');
+				
+				var arr = [], res = initiator;
+				while(res != null){
+					arr.push(res.url);
+					res = res.parent;
+				}
+				console.warn(arr.join('\n'));
 				// endif
-				return;
+				
+				return null;
 			}
 			
 			
@@ -3825,17 +3862,17 @@
 				i = -1,
 				imax = includes.length,
 				
-				include, exports
+				include, exports, alias
 				;
 				
-			while( ++i < imax) {
+			while( ++i < imax ) {
 				include = includes[i];
-				
-				if (include.route.alias === name) 
-					return include.resource.exports;
+				alias = include.route.alias || Routes.parseAlias(include.route);
+				if (alias === name) 
+					return include.resource;
 			}
 			
-			return use_resolveExports(name, resource.parent);
+			return use_resolveParent(name, resource.parent, initiator);
 		}
 		
 		
@@ -4249,6 +4286,7 @@
     			XHR(resource, function(resource, response) {
     				if (!response) {
     					console.error('Not Loaded:', resource.url);
+    					console.error('- Initiator:', resource.parent && resource.parent.url || '<root resource>');
     				}
     
     				resource.source = response;
@@ -4496,10 +4534,9 @@
 					resource = x.resource;
 					route = x.route;
 	
-					if (typeof resource.exports === 'undefined'){
+					if (typeof resource.exports === 'undefined')
 						continue;
-					}
-	
+					
 					var type = resource.type;
 					switch (type) {
 					case 'js':
@@ -4523,9 +4560,20 @@
 			} 
 			
 			var response = this.response || emptyResponse;
-			
-			if (this._use) 
-				return callback.apply(null, [response].concat(this._use));
+			var that = this;
+			if (this._use == null && this._usage != null){
+				this._use = tree_resolveUsage(this, this._usage, function(){
+					that.state = 4;
+					that.resolve(callback);
+					that.readystatechanged(4);
+				});
+				if (this.state < 4)
+					return;
+			}
+			if (this._use) {
+				callback.apply(null, [response].concat(this._use));
+				return;
+			}
 			
 			callback(response);
 		}
@@ -4542,15 +4590,27 @@
 		stub_release(Include.prototype);
 		
 		obj_inherit(Include, IncludeDeferred, {
+			// Array: exports
+			_use: null,
+			
+			// Array: names
+			_usage: null,
 			
 			isBrowser: true,
 			isNode: false,
 			
 			setCurrent: function(data) {
-	
-				var resource = new Resource('js', {
-					path: data.id
-				}, data.namespace, null, null, data.id);
+				var url = data.url;
+				if (url[0] === '/' && this.base)
+					url = this.base + url.substring(1);
+						
+				var resource = new Resource(
+					'js'
+					, { path: url }
+					, data.namespace
+					, null
+					, null
+					, url);
 	
 				if (resource.state < 3) {
 					console.error("<include> Resource should be loaded", data);
@@ -4559,7 +4619,6 @@
 				/**@TODO - probably state shoulb be changed to 2 at this place */
 				resource.state = 3;
 				global.include = resource;
-	
 			},
 			
 			cfg: function(arg) {
@@ -4624,13 +4683,28 @@
 				}
 				return obj;
 			},
+			/** @TODO - `id` property seems to be unsed and always equal to `url` */
 			register: function(_bin) {
 				
-				var key,
+				var base = this.base,
+					key,
 					info,
 					infos,
 					imax,
 					i;
+				
+				function transform(info){
+					if (base == null) 
+						return info;
+					if (info.url[0] === '/')
+						info.url = base + info.url.substring(1);
+	
+					if (info.parent[0] === '/')
+						info.parent = base + info.parent.substring(1);
+					
+					info.id = info.url;
+					return info;
+				}
 				
 				for (key in _bin) {
 					infos = _bin[key];
@@ -4639,7 +4713,7 @@
 					
 					while ( ++i < imax ) {
 						
-						info = infos[i];
+						info = transform(infos[i]);
 						
 						var id = info.id,
 							url = info.url,
@@ -4667,6 +4741,7 @@
 						resource.type = key;
 						resource.url = url || id;
 						resource.parent = parent;
+						resource.base = parent && parent.base || base;
 	
 						switch (key) {
 						case 'load':
@@ -4709,12 +4784,17 @@
 				
 				resource = new Resource();
 				resource.state = 4;
-				resource.location = path_getDir(url);
+				resource.location = path_getDir(path_normalize(url));
 				
 				return resource;
 			},
 	
-			getResource: incl_getResource,
+			getResource: function(url, type){
+				if (this.base && url[0] === '/')
+					url = this.base + url.substring(1);
+				
+				return incl_getResource(url, type)
+			},
 			getResources: function(){
 				return bin;
 			},
@@ -4767,8 +4847,7 @@
 					return this;
 				}
 				
-				this._use = tree_resolveUsage(this, arguments);
-				
+				this._usage = arguments;
 				return this;
 			},
 			
@@ -4826,11 +4905,9 @@
 		function incl_getResource(url, type) {
 			var id = url;
 			
-			if (url.charCodeAt(0) !== 47) {
-				// /
+			if (path_isRelative(url) === true) 
 				id = '/' + id;
-			}
-	
+			
 			if (type != null){
 				return bin[type][id];
 			}
@@ -5117,7 +5194,7 @@
 			this.base = parent && parent.base;
 	
 			if (id == null && url) 
-				id = (url[0] === '/' ? '' : '/') + url;
+				id = (path_isRelative(url) ? '/' : '') + url;
 			
 			var resource = bin[type] && bin[type][id];
 			if (resource) {
@@ -5205,19 +5282,24 @@
 				return resource;
 			},
 			include: function(type, pckg) {
-				var that = this;
+				var that = this,
+					children = [],
+					child;
 				Routes.each(type, pckg, function(namespace, route, xpath) {
 	
 					if (that.route != null && that.route.path === route.path) {
 						// loading itself
 						return;
 					}
-					
-					that
-						.create(type, route, namespace, xpath)
-						.on(4, that.childLoaded);
-	
+					child = that.create(type, route, namespace, xpath);
+					children.push(child);
 				});
+				
+				var i = -1,
+					imax = children.length;
+				while ( ++i < imax ){
+					children[i].on(4, this.childLoaded);
+				}
 	
 				return this;
 			},
@@ -5378,7 +5460,7 @@ function __eval(source, include) {
 }
 // end:source ../src/global-vars.js// source /src/license.txt
 /*!
- * MaskJS v0.8.12
+ * MaskJS v0.9.2
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -5410,9 +5492,8 @@ function __eval(source, include) {
     
 
     function construct(){
-
         return factory(_global, _exports, _document);
-    };
+    }
 
     
     if (typeof define === 'function' && define.amd) {
@@ -5439,7 +5520,6 @@ function __eval(source, include) {
 			';': /\\>/g
 		},
 		hasOwnProp = {}.hasOwnProperty,
-		listeners = null,
 		
 		__cfg = {
 			
@@ -5539,6 +5619,12 @@ function __eval(source, include) {
 	
 					key = key.substring(index + 1);
 					handler = custom_Utils[utility];
+					
+					if (handler == null) {
+						log_error('Undefined custom util `%s`', utility);
+						continue;
+					}
+					
 					value = handler(key, model, ctx, element, controller, name, type);
 				}
 	
@@ -5663,7 +5749,8 @@ function __eval(source, include) {
 	// end:source /src/util/template.js
     
 	// source /src/util/array.js
-	var arr_pushMany;
+	var arr_pushMany,
+		arr_remove;
 	
 	(function(){
 		
@@ -5679,7 +5766,18 @@ function __eval(source, include) {
 				arr[il + j] = arrSource[j];
 			}
 		};
-		
+		arr_remove = function(arr, item){
+			if (arr == null) 
+				return;
+			var imax = arr.length,
+				i = -1;
+			while( ++i < imax ){
+				if (arr[i] === item) {
+					arr.splice(i, 1);
+					return;
+				}
+			}
+		};
 	}());
 	// end:source /src/util/array.js
 	// source /src/util/string.js
@@ -5840,46 +5938,221 @@ function __eval(source, include) {
     
     // end:source /src/util/object.js
 	// source /src/util/function.js
-	
-	function fn_proxy(fn, ctx) {
-	
-		return function() {
-			return fn_apply(fn, ctx, arguments);
-		};
-	}
-	
-	function fn_apply(fn, ctx, _arguments){
+	var fn_proxy,
+		fn_apply,
+		fn_doNothing
+		;
+	(function(){
 		
-		switch (_arguments.length) {
-			case 0:
-				return fn.call(ctx);
-			case 1:
-				return fn.call(ctx, _arguments[0]);
-			case 2:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1]);
-			case 3:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1],
-					_arguments[2]);
-			case 4:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1],
-					_arguments[2],
-					_arguments[3]);
+		fn_proxy = function(fn, ctx) {
+			return function(){
+				return fn_apply(fn, ctx, arguments);
+			};
 		};
 		
-		return fn.apply(ctx, _arguments);
-	}
-	
-	
-	function fn_doNothing(){
+		fn_apply = function(fn, ctx, _arguments){
+			
+			switch (_arguments.length) {
+				case 0:
+					return fn.call(ctx);
+				case 1:
+					return fn.call(ctx, _arguments[0]);
+				case 2:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1]);
+				case 3:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1],
+						_arguments[2]);
+				case 4:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1],
+						_arguments[2],
+						_arguments[3]);
+			}
+			
+			return fn.apply(ctx, _arguments);
+		};
 		
-	}
+		fn_doNothing = function(){};
+	
+	}());
 	// end:source /src/util/function.js
+	// source /src/util/listeners.js
+	var listeners_on,
+		listeners_off,
+		listeners_emit;
+	(function(){
+		
+		listeners_on = function(event, fn) {
+			(bin[event] || (bin[event] = [])).push(fn);
+		};
+		listeners_off = function(event, fn){
+			if (fn == null) {
+				bin[event] = [];
+				return;
+			}
+			arr_remove(bin[event], fn);
+		};
+		listeners_emit = function(event){
+		
+			var fns = bin[event];
+			if (fns == null) 
+				return;
+			
+			var imax = fns.length,
+				i = -1,
+				args = _Array_slice.call(arguments, 1)
+				;
+				
+			while ( ++i < imax) 
+				fns[i].apply(null, args);
+		};
+		
+		// === private
+		
+		var bin = {
+			compoCreated: null,
+			error: null
+		};
+	}());
+	// end:source /src/util/listeners.js
+	// source /src/util/reporters.js
+	var throw_,
+		parser_error,
+		parser_warn,
+		log_warn,
+		log_error;
+		
+	(function(){
+		
+		
+		throw_ = function(error){
+			log_error(error);
+			listeners_emit('error', error);
+		};
+		
+		parser_error = function(msg, str, i, token, state, file){
+			var error = createMsg('error', msg, str, i, token, state, file);
+			
+			log_error(error.message);
+			log_warn(error.stack);
+			listeners_emit('error', error);
+		};
+		parser_warn = function(msg, str, i, token, state, file){
+			var error = createMsg('warn', msg, str, i, token, state, file);
+			log_warn(error.message);
+			log_warn(error.stack);
+			listeners_emit('error', error);
+		};
+		
+		log_error = function(){
+			log('error', arguments);
+		};
+		log_warn = function(){
+			log('warn', arguments);
+		};
+		
+		function log(type, arguments_){
+			var args = _Array_slice.call(arguments_);
+			args.unshift('<maskjs:' + type.toUpperCase() +'>');
+			
+			console[type].apply(console, args);
+		}
+		
+		var ParserError = createError('Error'),
+			ParserWarn  = createError('Warning');
+		
+		function createError(type) {
+			function ParserError(msg, orig, index){
+				this.type = 'Parser' + type;
+				this.message = msg;
+				this.original = orig;
+				this.index = index;
+				this.stack = prepairStack();
+			}
+			inherit(ParserError, Error);
+			return ParserError;
+		}
+		
+		function prepairStack(){
+			var stack = new Error().stack;
+			if (stack == null) 
+				return null;
+			
+			return stack
+				.split('\n')
+				.slice(6)
+				.join('\n');
+		}
+		function inherit(Ctor, Base){
+			if (Object.create) 
+				Ctor.prototype = Object.create(Base.prototype);
+		}
+		function createMsg(type, msg, str, index, token, state, filename){
+			msg += formatToken(token)
+				+ formatFilename(str, index, filename)
+				+ formatStopped(type, str, index)
+				+ formatState(state)
+				;
+			
+			var Ctor = type === 'error'
+				? ParserError
+				: ParserWarn;
+				
+			return new Ctor(msg, str, index);
+		}
+		function formatToken(token){
+			if (token == null) 
+				return '';
+			
+			if (typeof token === 'number') 
+				token = String.fromCharCode(token);
+				
+			return ' Invalid token: `'+ token + '`';
+		}
+		function formatFilename(str, index, filename) {
+			if (index == null && !filename) 
+				return '';
+			
+			var lines = str.substring(0, index).split('\n'),
+				line = lines.length,
+				row = index + 1 - lines.slice(0, line - 2).join('\n').length;
+			
+			return ' at '
+				+ (filename || '')
+				+ '(' + line + ':' + row + ')';
+		}
+		function formatState(state){
+			var states = {
+				'2': 'tag',
+				'3': 'tag',
+				'5': 'attribute key',
+				'6': 'attribute value',
+				'8': 'literal',
+				'var': 'VarStatement',
+				'expr': 'Expression'
+			};
+			if (state == null || states[state] == null) 
+				return '';
+			
+			return '\n    , when parsing ' + states[state];
+		}
+		function formatStopped(type, str, index){
+			if (index == null) 
+				return '';
+			
+			var stopped = str.substring(index);
+			if (stopped.length > 30) 
+				stopped = stopped.substring(0, 30) + '...';
+			
+			return '\n    Parser ' + type + ' at: ' + stopped;
+		}
+	}());
+	// end:source /src/util/reporters.js
     
 	// source /src/custom/exports.js
 	var custom_Utils,
@@ -5952,7 +6225,10 @@ function __eval(source, include) {
 			};
 		
 			customUtil_get = function(name) {
-				return name != null ? repository[name] : repository;
+				return name != null
+					? repository[name]
+					: repository
+					;
 			};
 		
 			// = private
@@ -6089,29 +6365,39 @@ function __eval(source, include) {
 			op_LogicalLessEqual = '<=', //15,
 			op_Member = '.', // 16
 		
-			punc_ParantheseOpen = 20,
-			punc_ParantheseClose = 21,
-			punc_Comma = 22,
-			punc_Dot = 23,
-			punc_Question = 24,
-			punc_Colon = 25,
+			punc_ParantheseOpen 	= 20,
+			punc_ParantheseClose 	= 21,
+			punc_BracketOpen 		= 22,
+			punc_BracketClose 		= 23,
+			punc_BraceOpen 			= 24,
+			punc_BraceClose 		= 25,
+			punc_Comma 				= 26,
+			punc_Dot 				= 27,
+			punc_Question 			= 28,
+			punc_Colon 				= 29,
+			punc_Semicolon 			= 30,
 		
-			go_ref = 30,
-			go_string = 31,
-			go_number = 32;
+			go_ref = 31,
+			go_acs = 32,
+			go_string = 33,
+			go_number = 34,
+			go_objectKey = 35;
 		
 		var type_Body = 1,
 			type_Statement = 2,
 			type_SymbolRef = 3,
 			type_FunctionRef = 4,
 			type_Accessor = 5,
-			type_Value = 6,
+			type_AccessorExpr = 6,
+			type_Value = 7,
 		
 		
-			type_Number = 7,
-			type_String = 8,
-			type_UnaryPrefix = 9,
-			type_Ternary = 10;
+			type_Number = 8,
+			type_String = 9,
+			type_Object = 10,
+			type_Array = 11,
+			type_UnaryPrefix = 12,
+			type_Ternary = 13;
 		
 		var state_body = 1,
 			state_arguments = 2;
@@ -6146,9 +6432,12 @@ function __eval(source, include) {
 		var Ast_Body,
 			Ast_Statement,
 			Ast_Value,
+			Ast_Array,
+			Ast_Object,
 			Ast_FunctionRef,
 			Ast_SymbolRef,
 			Ast_Accessor,
+			Ast_AccessorExpr,
 			Ast_UnaryPrefix,
 			Ast_TernaryStatement
 			;
@@ -6163,10 +6452,10 @@ function __eval(source, include) {
 				this.join = null;
 			};
 			
-			
 			Ast_Statement = function(parent) {
 				this.parent = parent;
 			};
+			
 			Ast_Statement.prototype = {
 				constructor: Ast_Statement,
 				type: type_Statement,
@@ -6174,13 +6463,30 @@ function __eval(source, include) {
 				body: null
 			};
 			
-			
 			Ast_Value = function(value) {
 				this.type = type_Value;
 				this.body = value;
 				this.join = null;
 			};
 			
+			Ast_Array = function(parent){
+				this.type = type_Array;
+				this.parent = parent;
+				this.body = new Ast_Body(this);
+			};
+			
+			Ast_Object = function(parent){
+				this.type = type_Object;
+				this.parent = parent;
+				this.props = {};
+			}
+			Ast_Object.prototype = {
+				nextProp: function(prop){
+					var body = new Ast_Statement(this);
+					this.props[prop] = body;
+					return body;
+				},
+			};
 			
 			Ast_FunctionRef = function(parent, ref) {
 				this.parent = parent;
@@ -6199,18 +6505,29 @@ function __eval(source, include) {
 				}
 			};
 			
-			
 			Ast_SymbolRef = function(parent, ref) {
-				this.parent = parent;
 				this.type = type_SymbolRef;
+				this.parent = parent;
 				this.body = ref;
 				this.next = null;
 			};
-			
-			Ast_Accessor = function(parent, astRef){
+			Ast_Accessor = function(parent, ref) {
+				this.type = type_Accessor;
 				this.parent = parent;
-				this.body = astRef;
+				this.body = ref;
 				this.next = null;
+			};
+			Ast_AccessorExpr = function(parent){
+				this.parent = parent;
+				this.body = new Ast_Statement(this);
+				this.body.body = new Ast_Body(this.body);
+				this.next = null;
+			};
+			Ast_AccessorExpr.prototype  = {
+				type: type_AccessorExpr,
+				getBody: function(){
+					return this.body.body;
+				}
 			};
 			
 			
@@ -6247,26 +6564,27 @@ function __eval(source, include) {
 			
 				
 			ast_append = function(current, next) {
-				if (null == current) 
-					console.error('<Mask:Ast> Current undefined', next);
+				switch(current.type) {
+					case type_Body:
+						current.body.push(next);
+						return next;
+					
+					case type_Statement:
+						if (next.type === type_Accessor || next.type === type_AccessorExpr) {
+							return (current.next = next)
+						}
+						/* fall through */
+					case type_UnaryPrefix:
+						return (current.body = next);
+					
+					case type_SymbolRef:
+					case type_FunctionRef:
+					case type_Accessor:
+					case type_AccessorExpr:
+						return (current.next = next);
+				}
 				
-				var type = current.type;
-			
-				if (type_Body === type){
-					current.body.push(next);
-					return next;
-				}
-			
-				if (type_Statement === type || type_UnaryPrefix === type){
-					return current.body = next;
-				}
-			
-				if (type_SymbolRef === type || type_FunctionRef === type){
-					return current.next = next;
-				}
-			
-				console.error('Unsupported - append:', current, next);
-				return next;
+				return util_throw('Invalid expression');
 			};
 			
 			
@@ -6355,17 +6673,23 @@ function __eval(source, include) {
 		}());
 		// end:source 2.ast.utils.js
 		// source 3.util.js
-		var _throw,
-		
-			util_resolveRef
-			;
+		var util_resolveRef,
+			util_throw;
 		
 		(function(){
+			
+			util_throw = function(msg, token){
+				return parser_error(msg
+					, template
+					, index
+					, token
+					, 'expr'
+				);
+			};
 			
 			util_resolveRef = function(astRef, model, ctx, controller) {
 				var current = astRef,
 					key = astRef.body,
-					
 					object,
 					value,
 					args,
@@ -6476,10 +6800,13 @@ function __eval(source, include) {
 						
 			
 						current = current.next;
-						key = current.body;
+						key = current.type === type_AccessorExpr
+							? expression_evaluate(current.body, model, ctx, controller)
+							: current.body
+							;
+						
 						object = value;
 						value = value[key];
-			
 						
 						if (value == null) 
 							break;
@@ -6489,7 +6816,8 @@ function __eval(source, include) {
 			
 				if (value == null){
 					if (current == null || current.next != null){
-						_throw('Mask - Accessor error - ', key);
+						// notify that value is not in model, ctx, controller;
+						log_warn('<mask:expression> Accessor error:', key);
 					}
 				}
 			
@@ -6497,249 +6825,264 @@ function __eval(source, include) {
 			};
 		
 			
-			_throw = function(message, token) {
-				console.error('Expression parser:', message, token, template.substring(index));
-			};
-			
 			
 		}());
 		
 		
 		// end:source 3.util.js
 		// source 4.parser.helper.js
-		function parser_skipWhitespace() {
-			var c;
-			while (index < length) {
-				c = template.charCodeAt(index);
-				if (c > 32) {
-					return c;
-				}
-				index++;
-			}
-			return null;
-		}
-		
-		
-		function parser_getString(c) {
-			var isEscaped = false,
-				_char = c === 39 ? "'" : '"',
-				start = index,
-				nindex, string;
-		
-			while ((nindex = template.indexOf(_char, index)) > -1) {
-				index = nindex;
-				if (template.charCodeAt(nindex - 1) !== 92 /*'\\'*/ ) {
-					break;
-				}
-				isEscaped = true;
-				index++;
-			}
-		
-			string = template.substring(start, index);
-			if (isEscaped === true) {
-				string = string.replace(regexpEscapedChar[_char], _char);
-			}
-			return string;
-		}
-		
-		function parser_getNumber() {
-			var start = index,
-				code, isDouble;
-			while (true) {
-		
-				code = template.charCodeAt(index);
-				if (code === 46) {
-					// .
-					if (isDouble === true) {
-						_throw('Unexpected punc');
-						return null;
-					}
-					isDouble = true;
-				}
-				if ((code >= 48 && code <= 57 || code === 46) && index < length) {
+		var parser_skipWhitespace,
+			parser_getString,
+			parser_getNumber,
+			parser_getArray,
+			parser_getObject,
+			parser_getRef,
+			parser_getDirective
+			;
+			
+		(function(){
+			parser_skipWhitespace = function() {
+				var c;
+				while (index < length) {
+					c = template.charCodeAt(index);
+					if (c > 32) 
+						return c;
 					index++;
-					continue;
 				}
-				break;
-			}
-		
-			return +template.substring(start, index);
-		}
-		
-		function parser_getRef() {
-			var start = index,
-				c = template.charCodeAt(index),
-				ref;
-		
-			if (c === 34 || c === 39) {
-				// ' | "
-				index++;
-				ref = parser_getString(c);
-				index++;
-				return ref;
-			}
-		
-			while (true) {
-				
-				if (index === length) 
-					break;
-				
-				c = template.charCodeAt(index);
-				
-				if (c === 36) {
-					// $
-					index++;
-					continue;
-				}
-				
-				if (
-					c > 47 && // ()+-*,/
-					c !== 58 && // :
-					c !== 60 && // <
-					c !== 61 && // =
-					c !== 62 && // >
-					c !== 63 && // ?
-					c !== 124 // |
-					) {
-		
-					index++;
-					continue;
-				}
-		
-				break;
-			}
-		
-			return template.substring(start, index);
-		}
-		
-		function parser_getDirective(code) {
-			if (code == null && index === length) {
 				return null;
-			}
-		
-			switch (code) {
-				case 40:
-					// (
-					return punc_ParantheseOpen;
-				case 41:
-					// )
-					return punc_ParantheseClose;
-				case 44:
-					// ,
-					return punc_Comma;
-				case 46:
-					// .
-					return punc_Dot;
-				case 43:
-					// +
-					return op_Plus;
-				case 45:
-					// -
-					return op_Minus;
-				case 42:
-					// *
-					return op_Multip;
-				case 47:
-					// /
-					return op_Divide;
-				case 37:
-					// %
-					return op_Modulo;
-		
-				case 61:
-					// =
-					if (template.charCodeAt(++index) !== code) {
-						_throw('Not supported (Apply directive) - view can only access model/controllers');
-						return null;
+			};
+			parser_getString = function(c) {
+				var isEscaped = false,
+					_char = c === 39 ? "'" : '"',
+					start = index,
+					nindex, string;
+			
+				while ((nindex = template.indexOf(_char, index)) > -1) {
+					index = nindex;
+					if (template.charCodeAt(nindex - 1) !== 92 /*'\\'*/ ) {
+						break;
 					}
-					
-					if (template.charCodeAt(index + 1) === code) {
+					isEscaped = true;
+					index++;
+				}
+			
+				string = template.substring(start, index);
+				if (isEscaped === true) {
+					string = string.replace(regexpEscapedChar[_char], _char);
+				}
+				return string;
+			};
+			
+			parser_getNumber = function() {
+				var start = index,
+					code, isDouble;
+				while (true) {
+			
+					code = template.charCodeAt(index);
+					if (code === 46) {
+						// .
+						if (isDouble === true) {
+							util_throw('Invalid number', code);
+							return null;
+						}
+						isDouble = true;
+					}
+					if ((code >= 48 && code <= 57 || code === 46) && index < length) {
 						index++;
-						return op_LogicalEqual_Strict;
+						continue;
 					}
+					break;
+				}
+				return +template.substring(start, index);
+			};
+			
+			
+			parser_getRef = function() {
+				var start = index,
+					c = template.charCodeAt(index),
+					ref;
+			
+				if (c === 34 || c === 39) {
+					// ' | "
+					index++;
+					ref = parser_getString(c);
+					index++;
+					return ref;
+				}
+			
+				while (true) {
 					
-					return op_LogicalEqual;
-		
-				case 33:
-					// !
-					if (template.charCodeAt(index + 1) === 61) {
+					if (index === length) 
+						break;
+					
+					c = template.charCodeAt(index);
+					
+					if (c === 36 || c === 95) {
+						// $ _
+						index++;
+						continue;
+					}
+					if ((48 <= c && c <= 57) ||		// 0-9
+						(65 <= c && c <= 90) ||		// A-Z
+						(97 <= c && c <= 122)) {	// a-z
+						index++;
+						continue;
+					}
+					// - [removed] (exit on not allowed chars) 5ba755ca
+					break;
+				}
+				return template.substring(start, index);
+			};
+			
+			parser_getDirective = function(code) {
+				if (code == null && index === length) 
+					return null;
+				
+				switch (code) {
+					case 40:
+						// (
+						return punc_ParantheseOpen;
+					case 41:
+						// )
+						return punc_ParantheseClose;
+					case 123:
+						// {
+						return punc_BraceOpen;
+					case 125:
+						// }
+						return punc_BraceClose;
+					case 91:
+						// [
+						return punc_BracketOpen;
+					case 93:
+						// ]
+						return punc_BracketClose;
+					case 44:
+						// ,
+						return punc_Comma;
+					case 46:
+						// .
+						return punc_Dot;
+					case 59:
+						// ;
+						return punc_Semicolon;
+					case 43:
+						// +
+						return op_Plus;
+					case 45:
+						// -
+						return op_Minus;
+					case 42:
+						// *
+						return op_Multip;
+					case 47:
+						// /
+						return op_Divide;
+					case 37:
+						// %
+						return op_Modulo;
+			
+					case 61:
 						// =
-						index++;
-						
+						if (template.charCodeAt(++index) !== code) {
+							util_throw(
+								'Assignment violation: View can only access model/controllers', '='
+							);
+							return null;
+						}
+						if (template.charCodeAt(index + 1) === code) {
+							index++;
+							return op_LogicalEqual_Strict;
+						}
+						return op_LogicalEqual;
+					case 33:
+						// !
 						if (template.charCodeAt(index + 1) === 61) {
 							// =
 							index++;
-							return op_LogicalNotEqual_Strict;
+							
+							if (template.charCodeAt(index + 1) === 61) {
+								// =
+								index++;
+								return op_LogicalNotEqual_Strict;
+							}
+							
+							return op_LogicalNotEqual;
 						}
-						
-						return op_LogicalNotEqual;
-					}
-					return op_LogicalNot;
-		
-				case 62:
-					// >
-					if (template.charCodeAt(index + 1) === 61) {
-						index++;
-						return op_LogicalGreaterEqual;
-					}
-					return op_LogicalGreater;
-		
-				case 60:
-					// <
-					if (template.charCodeAt(index + 1) === 61) {
-						index++;
-						return op_LogicalLessEqual;
-					}
-					return op_LogicalLess;
-		
-				case 38:
-					// &
-					if (template.charCodeAt(++index) !== code) {
-						_throw('Single Binary Operator AND');
-						return null;
-					}
-					return op_LogicalAnd;
-		
-				case 124:
-					// |
-					if (template.charCodeAt(++index) !== code) {
-						_throw('Single Binary Operator OR');
-						return null;
-					}
-					return op_LogicalOr;
-				
-				case 63:
-					// ?
-					return punc_Question;
-		
-				case 58:
-					// :
-					return punc_Colon;
-		
-			}
-		
-			if ((code >= 65 && code <= 90) || code >= 97 && code <= 122 || code === 95 || code === 36) {
-				// A-Z a-z _ $
-				return go_ref;
-			}
-		
-			if (code >= 48 && code <= 57) {
-				// 0-9 .
-				return go_number;
-			}
-		
-			if (code === 34 || code === 39) {
-				// " '
-				return go_string;
-			}
-		
-			_throw('Unexpected / Unsupported directive');
-			return null;
-		}
+						return op_LogicalNot;
+					case 62:
+						// >
+						if (template.charCodeAt(index + 1) === 61) {
+							index++;
+							return op_LogicalGreaterEqual;
+						}
+						return op_LogicalGreater;
+					case 60:
+						// <
+						if (template.charCodeAt(index + 1) === 61) {
+							index++;
+							return op_LogicalLessEqual;
+						}
+						return op_LogicalLess;
+					case 38:
+						// &
+						if (template.charCodeAt(++index) !== code) {
+							util_throw(
+								'Not supported: Bitwise AND', code
+							);
+							return null;
+						}
+						return op_LogicalAnd;
+					case 124:
+						// |
+						if (template.charCodeAt(++index) !== code) {
+							util_throw(
+								'Not supported: Bitwise OR', code
+							);
+							return null;
+						}
+						return op_LogicalOr;
+					case 63:
+						// ?
+						return punc_Question;
+					case 58:
+						// :
+						return punc_Colon;
+				}
+			
+				if ((code >= 65 && code <= 90) ||
+					(code >= 97 && code <= 122) ||
+					(code === 95) ||
+					(code === 36)) {
+					// A-Z a-z _ $
+					return go_ref;
+				}
+			
+				if (code >= 48 && code <= 57) {
+					// 0-9 .
+					return go_number;
+				}
+			
+				if (code === 34 || code === 39) {
+					// " '
+					return go_string;
+				}
+			
+				util_throw(
+					'Unexpected or unsupported directive', code
+				);
+				return null;
+			};
+		}());
 		// end:source 4.parser.helper.js
 		// source 5.parser.js
-		function expression_parse(expr) {
-		
+		/*
+		 * earlyExit - only first statement/expression is consumed
+		 */
+		function expression_parse(expr, earlyExit) {
+			if (earlyExit == null) 
+				earlyExit = false;
+			
 			template = expr;
 			index = 0;
 			length = expr.length;
@@ -6757,16 +7100,34 @@ function __eval(source, include) {
 					continue;
 				}
 		
-				if (index >= length) {
+				if (index >= length) 
 					break;
-				}
-		
+				
 				directive = parser_getDirective(c);
 		
 				if (directive == null && index < length) {
 					break;
 				}
-		
+				if (directive === punc_Semicolon) {
+					if (earlyExit === true) 
+						return [ast, index];
+					
+					break;
+				}
+				
+				if (earlyExit === true) {
+					var p = current.parent;
+					if (p != null && p.type === type_Body && p.parent == null) {
+						// is in root body
+						if (directive === go_ref) 
+							return [ast, index];
+					}
+				}
+				
+				if (directive === punc_Semicolon) {
+					break;
+				}
+				
 				switch (directive) {
 					case punc_ParantheseOpen:
 						current = ast_append(current, new Ast_Statement(current));
@@ -6774,8 +7135,6 @@ function __eval(source, include) {
 		
 						index++;
 						continue;
-		
-		
 					case punc_ParantheseClose:
 						var closest = type_Body;
 						if (state === state_arguments) {
@@ -6792,26 +7151,42 @@ function __eval(source, include) {
 						}
 		
 						if (current == null) {
-							_throw('OutOfAst Exception - body closed');
+							util_throw('OutOfAst Exception', c);
 							break outer;
 						}
-		
 						index++;
 						continue;
-		
-		
+					
+					case punc_BraceOpen:
+						current = ast_append(current, new Ast_Object(current));
+						directive = go_objectKey;
+						index++;
+						break;
+					case punc_BraceClose:
+						while (current != null && current.type !== type_Object){
+							current = current.parent;
+						}
+						index++;
+						continue;
 					case punc_Comma:
 						if (state !== state_arguments) {
 							
 							state = state_body;
 							do {
 								current = current.parent;
-							} while (current != null && current.type !== type_Body);
+							} while (current != null &&
+								current.type !== type_Body &&
+								current.type !== type_Object
+							);
 							index++;
-							
 							if (current == null) {
-								_throw('Unexpected punctuation, comma');
+								throw_util('Unexpected comma', c);
 								break outer;	
+							}
+							
+							if (current.type === type_Object) {
+								directive = go_objectKey;
+								break;
 							}
 							
 							continue;
@@ -6821,7 +7196,7 @@ function __eval(source, include) {
 						} while (current != null && current.type !== type_FunctionRef);
 		
 						if (current == null) {
-							_throw('OutOfAst Exception - next argument');
+							util_throw('OutOfAst Exception', c);
 							break outer;
 						}
 		
@@ -6833,14 +7208,11 @@ function __eval(source, include) {
 					case punc_Question:
 						ast = new Ast_TernaryStatement(ast);
 						current = ast.case1;
-		
 						index++;
 						continue;
-		
-		
+					
 					case punc_Colon:
 						current = ast.case2;
-		
 						index++;
 						continue;
 		
@@ -6850,9 +7222,36 @@ function __eval(source, include) {
 						if (c >= 48 && c <= 57) {
 							directive = go_number;
 						} else {
-							directive = go_ref;
+							directive = current.type === type_Body
+								? go_ref
+								: go_acs
+								;
 							index++;
 						}
+						break;
+					case punc_BracketOpen:
+						if (current.type === type_SymbolRef ||
+							current.type === type_AccessorExpr ||
+							current.type === type_Accessor
+							) {
+							current = ast_append(current, new Ast_AccessorExpr(current))
+							current = current.getBody();
+							index++;
+							continue;
+						}
+						current = ast_append(current, new Ast_Array(current));
+						current = current.body;
+						index++;
+						continue;
+					case punc_BracketClose:
+						do {
+							current = current.parent;
+						} while (current != null &&
+							current.type !== type_AccessorExpr &&
+							current.type !== type_Array
+						);
+						index++;
+						continue;
 				}
 		
 		
@@ -6891,8 +7290,9 @@ function __eval(source, include) {
 						}
 		
 						if (current.body == null) {
-							_throw('Unexpected operator', current);
-							break outer;
+							return util_throw(
+								'Unexpected operator', c
+							);
 						}
 		
 						current.join = directive;
@@ -6902,7 +7302,9 @@ function __eval(source, include) {
 						} while (current != null && current.type !== type_Body);
 		
 						if (current == null) {
-							console.error('Unexpected parent', current);
+							return util_throw(
+								'Unexpected operator' , c
+							);
 						}
 		
 		
@@ -6911,8 +7313,9 @@ function __eval(source, include) {
 					case go_string:
 					case go_number:
 						if (current.body != null && current.join == null) {
-							_throw('Directive Expected');
-							break outer;
+							return util_throw(
+								'Directive expected', c 
+							);
 						}
 						if (go_string === directive) {
 							index++;
@@ -6928,23 +7331,25 @@ function __eval(source, include) {
 						continue;
 		
 					case go_ref:
+					case go_acs:
 						var ref = parser_getRef();
 						
-						if (ref === 'null') 
-							ref = null;
-						
-						if (ref === 'false') 
-							ref = false;
-						
-						if (ref === 'true') 
-							ref = true;
+						if (directive === go_ref) {
+								
+							if (ref === 'null') 
+								ref = null;
 							
-						
-						if (typeof ref !== 'string') {
-							ast_append(current, new Ast_Value(ref));
-							continue;
+							if (ref === 'false') 
+								ref = false;
+							
+							if (ref === 'true') 
+								ref = true;
+								
+							if (typeof ref !== 'string') {
+								ast_append(current, new Ast_Value(ref));
+								continue;
+							}
 						}
-		
 						while (index < length) {
 							c = template.charCodeAt(index);
 							if (c < 33) {
@@ -6966,14 +7371,38 @@ function __eval(source, include) {
 							current = fn.newArgument();
 							continue;
 						}
-		
-						current = ast_append(current, new Ast_SymbolRef(current, ref));
+						
+						var Ctor = directive === go_ref
+							? Ast_SymbolRef
+							: Ast_Accessor
+						current = ast_append(current, new Ctor(current, ref));
 						break;
+					case go_objectKey:
+						if (parser_skipWhitespace() === 125)
+							continue;
+						
+						
+						var key = parser_getRef();
+						
+						if (parser_skipWhitespace() !== 58) {
+							//:
+							return util_throw(
+								'Object parser. Semicolon expeted', c
+							); 
+						}
+						index++;
+						current = current.nextProp(key);
+						directive = go_ref;
+						continue;
 				}
 			}
 		
-			if (current.body == null && current.type === type_Statement) {
-				_throw('Unexpected end of expression');
+			if (current.body == null &&
+				current.type === type_Statement) {
+				
+				return util_throw(
+					'Unexpected end of expression', c
+				); 
 			}
 		
 			ast_handlePrecedence(ast);
@@ -7000,10 +7429,12 @@ function __eval(source, include) {
 			}else{
 				ast = mix;
 			}
-		
+			if (ast == null) 
+				return null;
+			
 			var type = ast.type,
 				i, x, length;
-		
+			
 			if (type_Body === type) {
 				var value, prev;
 		
@@ -7087,14 +7518,41 @@ function __eval(source, include) {
 			}
 		
 			if (type_Statement === type) {
-				return expression_evaluate(ast.body, model, ctx, controller);
+				result = expression_evaluate(ast.body, model, ctx, controller);
+				if (ast.next == null) 
+					return result;
+				
+				//debugger;
+				return util_resolveRef(ast.next, result);
 			}
 		
 			if (type_Value === type) {
 				return ast.body;
 			}
+			if (type_Array === type) {
+				var body = ast.body.body,
+					imax = body.length,
+					i = -1;
+				
+				result = new Array(imax);
+				while( ++i < imax ){
+					result[i] = expression_evaluate(body[i], model, ctx, controller);
+				}
+				return result;
+			}
+			if (type_Object === type) {
+				result = {};
+				var props = ast.props;
+				for(var key in props){
+					result[key] = expression_evaluate(props[key], model, ctx, controller);
+				}
+				return result;
+			}
 		
-			if (type_SymbolRef === type || type_FunctionRef === type) {
+			if (type_SymbolRef 		=== type ||
+				type_FunctionRef 	=== type ||
+				type_AccessorExpr 	=== type ||
+				type_Accessor 		=== type) {
 				return util_resolveRef(ast, model, ctx, controller);
 			}
 			
@@ -7146,29 +7604,39 @@ function __eval(source, include) {
 			
 			function _extractVars(expr) {
 		
-				if (expr == null) {
+				if (expr == null) 
 					return null;
-				}
-		
-				var refs, x;
-		
-				if (type_Body === expr.type) {
-		
-					for (var i = 0, length = expr.body.length; i < length; i++) {
-						x = _extractVars(expr.body[i]);
+				
+				var exprType = expr.type,
+					refs, x;
+				if (type_Body === exprType) {
+					
+					var body = expr.body,
+						imax = body.length,
+						i = -1;
+					while ( ++i < imax ){
+						x = _extractVars(body[i]);
 						refs = _append(refs, x);
 					}
 				}
 		
-				if (type_SymbolRef === expr.type) {
+				if (type_SymbolRef === exprType ||
+					type_Accessor === exprType ||
+					type_AccessorExpr === exprType) {
+					
 					var path = expr.body,
-						next = expr.next;
+						next = expr.next,
+						nextType;
 		
 					while (next != null) {
-						if (type_FunctionRef === next.type) {
+						nextType = next.type;
+						if (type_FunctionRef === nextType) {
 							return _extractVars(next);
 						}
-						if (type_SymbolRef !== next.type) {
+						if ((type_SymbolRef !== nextType) &&
+							(type_Accessor !== nextType) &&
+							(type_AccessorExpr !== nextType)) {
+							
 							console.error('Ast Exception: next should be a symbol/function ref');
 							return null;
 						}
@@ -7182,7 +7650,7 @@ function __eval(source, include) {
 				}
 		
 		
-				switch (expr.type) {
+				switch (exprType) {
 					case type_Statement:
 					case type_UnaryPrefix:
 					case type_Ternary:
@@ -7192,7 +7660,7 @@ function __eval(source, include) {
 				}
 				
 				// get also from case1 and case2
-				if (type_Ternary === expr.type) {
+				if (type_Ternary === exprType) {
 					x = _extractVars(ast.case1);
 					refs = _append(refs, x);
 		
@@ -7201,9 +7669,12 @@ function __eval(source, include) {
 				}
 		
 		
-				if (type_FunctionRef === expr.type) {
-					for(var i = 0, length = expr.arguments.length; i < length; i++){
-						x = _extractVars(expr.arguments[i]);
+				if (type_FunctionRef === exprType) {
+					var args = expr.arguments,
+						imax = args.length,
+						i = -1;
+					while ( ++i < imax ){
+						x = _extractVars(args[i]);
 						refs = _append(refs, x);
 					}
 					
@@ -7212,6 +7683,8 @@ function __eval(source, include) {
 					outer: while ((parent = parent.parent)) {
 						switch (parent.type) {
 							case type_SymbolRef:
+							case type_Accessor:
+							case type_AccessorExpr:
 								x = parent.body + (x == null ? '' : '.' + x);
 								break;
 							case type_Body:
@@ -7356,10 +7829,15 @@ function __eval(source, include) {
 	                imax = body.length,
 	                i = -1
 	                ;
+				var group = new Ast_Body;
 	            while( ++i < imax ){
-	                args[i] = expression_evaluate(body[i], model, ctx, controller);
+					group.body.push(body[i]);
+					if (body[i].join != null) 
+						continue;
+					
+	                args.push(expression_evaluate(group, model, ctx, controller));
+					group.body.length = 0;
 	            }
-				
 				return args;
 			}
 		};
@@ -7460,7 +7938,7 @@ function __eval(source, include) {
 				
 			if ('of' === type) {
 				if (is_Array(value) === false) {
-					console.warn('<ForStatement> Value is not enumerable', value);
+					log_error('<ForStatement> Value is not enumerable', value);
 					return null;
 				}
 				
@@ -7469,12 +7947,12 @@ function __eval(source, include) {
 			
 			if ('in' === type) {
 				if (typeof value !== 'object') {
-					console.warn('<ForStatement> Value is not an object', value);
+					log_warn('<ForStatement> Value is not an object', value);
 					return null;
 				}
 				
 				if (is_Array(value)) 
-					console.log('<mask:for> Consider to use `for..of` for Arrays')
+					log_warn('<mask:for> Consider to use `for..of` for Arrays');
 				
 				return loop_Object(nodes, value, prop1, prop2);
 			}
@@ -7930,6 +8408,39 @@ function __eval(source, include) {
 		}
 	};
 	// end:source 7.import.js
+	// source 8.var.js
+	custom_Tags['var'] = VarStatement;
+	
+	function VarStatement(){}
+	
+	VarStatement.prototype = {
+		renderStart: function(model, ctx){
+			var parent = this.parent,
+				scope = parent.scope,
+				key, val;
+				
+			if (scope == null)
+				scope = parent.scope = {};
+			
+			this.model = {};
+			for(key in this.attr){
+				val = ExpressionUtil.eval(this.attr[key], model, ctx, parent);
+				this.model[key] = scope[key] = val;
+			}
+			this.attr = {};
+		},
+		onRenderStartClient: function(){
+			var parent = this.parent,
+				scope = parent.scope;
+			if (scope == null)
+				scope = parent.scope = {};
+				
+			for(var key in this.model){
+				scope[key] = this.model[key];
+			}
+		}
+	};
+	// end:source 8.var.js
 	// end:source /src/statements/exports.js
 	// source /src/dom/exports.js
 	var Dom;
@@ -7960,16 +8471,12 @@ function __eval(source, include) {
 		}
 		// end:source 1.utils.js
 		// source 2.Node.js
-		
 		function Node(tagName, parent) {
 			this.type = Dom.NODE;
-		
 			this.tagName = tagName;
 			this.parent = parent;
-			this.attr = {};
-			
+			this.attr = {};	
 		}
-		
 		Node.prototype = {
 			constructor: Node,
 			type: dom_NODE,
@@ -7979,7 +8486,7 @@ function __eval(source, include) {
 			nodes: null,
 			expression: null,
 			appendChild: _appendChild,
-			
+			stringify: null,
 			__single: null
 		};
 		// end:source 2.Node.js
@@ -8080,23 +8587,30 @@ function __eval(source, include) {
 	
 			_serialize;
 	
-		// source cursor.js
-		var cursor_bracketsEnd,
-			cursor_quotesEnd
+		// source ./cursor.js
+		var cursor_groupEnd,
+			cursor_quoteEnd,
+			cursor_refEnd;
 			;
 		
 		(function(){
 			
-			cursor_bracketsEnd = function(template, index, length, startCode, endCode){
+			cursor_groupEnd = function(str, i, imax, startCode, endCode){
 				
-				var c, count = 0;
-				
-				for( ; index < length; index++){
-					c = template.charCodeAt(index);
+				var count = 0,
+					start = i,
+					c;
+				for( ; i < imax; i++){
+					c = str.charCodeAt(i);
 					
-					if (c === 34) {
-						// "
-						index = cursor_quotesEnd(template, index + 1, length, '"');
+					if (c === 34 || c === 39) {
+						// "|'
+						i = cursor_quoteEnd(
+							str
+							, i + 1
+							, imax
+							, c === 34 ? '"' : "'"
+						);
 						continue;
 					}
 					
@@ -8107,30 +8621,153 @@ function __eval(source, include) {
 					
 					if (c === endCode) {
 						if (--count === -1) 
-							return index;
+							return i;
 					}
 				}
-				
-				_throw(template, index, null, 'Not closed brackets `' + String.fromCharCode(startCode) + '`');
-				return index;
+				parser_warn('Group was not closed', str, start);
+				return imax;
 			};
 			
-			cursor_quotesEnd = function(template, index, length, char_){
-				var nindex;
-		
-				while ((nindex = template.indexOf(char_, index)) !== -1) {
-					index = nindex;
-					if (template.charCodeAt(nindex - 1) !== 92 /*'\\'*/ ) 
-						break;
+			cursor_refEnd = function(str, i, imax){
+				var c;
+				while (i < imax){
+					c = str.charCodeAt(i);
 					
-					index++;
+					if (c === 36 || c === 95) {
+						// $ _
+						i++;
+						continue;
+					}
+					if ((48 <= c && c <= 57) ||		// 0-9
+						(65 <= c && c <= 90) ||		// A-Z
+						(97 <= c && c <= 122)) {	// a-z
+						i++;
+						continue;
+					}
+					
+					break;
 				}
-				
-				return index;
+				return i;
+			}
+			
+			cursor_quoteEnd = function(str, i, imax, char_){
+				var start = i;
+				while ((i = str.indexOf(char_, i)) !== -1) {
+					if (str.charCodeAt(i - 1) !== 92)
+						// \ 
+						return i;
+					i++;
+				}
+				parser_warn('Quote was not closed', str, start);
+				return imax;
 			};
 			
 		}());
-		// end:source cursor.js
+		// end:source ./cursor.js
+		// source ./parsers/var.js
+		var parser_var;
+		(function(){
+			parser_var = function(template, index, length, parent){
+				var node = new Node('var', parent);
+				var start,
+					c;
+				
+				node.stringify = stingify;
+				var go_varName = 1,
+					go_assign = 2,
+					go_value = 3,
+					go_next = 4,
+					state = go_varName,
+					token,
+					key;
+				while(true) {
+					if (index < length && (c = template.charCodeAt(index)) < 33) {
+						index++;
+						continue;
+					}
+					
+					if (state === go_varName) {
+						start = index;
+						index = cursor_refEnd(template, index, length);
+						key = template.substring(start, index);
+						state = go_assign;
+						continue;
+					}
+					
+					if (state === go_assign) {
+						if (c !== 61 ) {
+							// =
+							parser_error(
+								'Assignment expected'
+								, template
+								, index
+								, c
+								, 'var'
+							);
+							return [node, index];
+						}
+						state = go_value;
+						index++;
+						continue;
+					}
+					
+					if (state === go_value) {
+						start = index;
+						index++;
+						switch(c){
+							case 123:
+							case 91:
+								// { [
+								index = cursor_groupEnd(template, index, length, c, c + 2);
+								break;
+							case 39:
+							case 34:
+								// ' "
+								index = cursor_quoteEnd(template, index, length, c === 39 ? "'" : '"')
+								break;
+							default:
+								while (index < length) {
+									c = template.charCodeAt(index);
+									if (c === 44 || c === 59) {
+										//, ;
+										break;
+									}
+									index++;
+								}
+								index--;
+								break;
+						}
+						index++;
+						node.attr[key] = template.substring(start, index);
+						state = go_next;
+						continue;
+					}
+					if (state === go_next) {
+						if (c === 44) {
+							// ,
+							state = go_varName;
+							index++;
+							continue;
+						}
+						break;
+					}
+				}
+				return [node, index];
+			};
+			
+			function stingify(){
+				var attr = this.attr;
+				var str = 'var ';
+				for(var key in attr){
+					if (str !== 'var ') 
+						str += ',';
+					
+					str += key + '=' + attr[key];
+				};
+				return str + ';';
+			}
+		}());
+		// end:source ./parsers/var.js
 	
 		function ensureTemplateFunction(template) {
 			var index = -1;
@@ -8150,23 +8787,28 @@ function __eval(source, include) {
 			if (index === -1) 
 				return template;
 			
-			var array = [],
+			var length = template.length,
+				array = [],
 				lastIndex = 0,
 				i = 0,
 				end;
 	
 	
 			while (true) {
-				end = template.indexOf(interp_CLOSE, index + 2);
+				end = cursor_groupEnd(
+					template
+					, index + 2
+					, length
+					, interp_code_OPEN
+					, interp_code_CLOSE
+				);
 				if (end === -1) 
 					break;
 				
-	
 				array[i++] = lastIndex === index
 					? ''
 					: template.substring(lastIndex, index);
 				array[i++] = template.substring(index + 2, end);
-	
 	
 				lastIndex = index = end + 1;
 	
@@ -8176,12 +8818,11 @@ function __eval(source, include) {
 					
 					index++;
 				}
-	
 				if (index === -1) 
 					break;
 			}
 	
-			if (lastIndex < template.length) 
+			if (lastIndex < length) 
 				array[i] = template.substring(lastIndex);
 			
 	
@@ -8208,31 +8849,15 @@ function __eval(source, include) {
 					return string;
 				}
 	
-				return util_interpolate(array, type, model, ctx, element, controller, name);
+				return util_interpolate(
+					array
+					, type
+					, model
+					, ctx
+					, element
+					, controller
+					, name);
 			};
-	
-		}
-	
-	
-		function _throw(template, index, state, token) {
-			var parsing = {
-					2: 'tag',
-					3: 'tag',
-					5: 'attribute key',
-					6: 'attribute value',
-					8: 'literal'
-				}[state],
-	
-				lines = template.substring(0, index).split('\n'),
-				line = lines.length,
-				row = lines[line - 1].length,
-	
-				message = ['Mask - Unexpected:', token, 'at(', line, ':', row, ') [ in', parsing, ']'];
-	
-			console.error(message.join(' '), {
-				stopped: template.substring(index),
-				template: template
-			});
 		}
 	
 		var go_tag = 2,
@@ -8346,6 +8971,15 @@ function __eval(source, include) {
 							//	? new Component(token, current, custom_Tags[token])
 							//	: new Node(token, current);
 							
+							if ('var' === token) {
+								var tuple = parser_var(template, index, length, current);
+								current.appendChild(tuple[0]);
+								index = tuple[1];
+								state = go_tag;
+								token = null;
+								continue;
+							}
+							
 							next = new Node(token, current);
 							
 							current.appendChild(next);
@@ -8378,6 +9012,7 @@ function __eval(source, include) {
 								current.attr[key] = key;
 							}
 						}
+						c = null;
 						break;
 					}
 	
@@ -8437,35 +9072,34 @@ function __eval(source, include) {
 	
 						index++;
 	
-	
-	
 						var isEscaped = false,
 							isUnescapedBlock = false,
-							nindex, _char = c === 39 ? "'" : '"';
+							_char = c === 39 ? "'" : '"';
 	
 						start = index;
 	
-						while ((nindex = template.indexOf(_char, index)) > -1) {
-							index = nindex;
-							if (template.charCodeAt(nindex - 1) !== 92 /*'\\'*/ ) {
+						while ((index = template.indexOf(_char, index)) > -1) {
+							if (template.charCodeAt(index - 1) !== 92 /*'\\'*/ ) {
 								break;
 							}
 							isEscaped = true;
 							index++;
 						}
-	
-						if (start === index) {
+						if (index === -1) {
+							parser_warn('Literal has no ending', template, start);
+							index = length;
+						}
+						
+						if (index === start) {
 							nextC = template.charCodeAt(index + 1);
 							if (nextC === 124 || nextC === c) {
 								// | (obsolete) or triple quote
 								isUnescapedBlock = true;
 								start = index + 2;
-								index = nindex = template.indexOf((nextC === 124 ? '|' : _char) + _char + _char, start);
+								index = template.indexOf((nextC === 124 ? '|' : _char) + _char + _char, start);
 	
-								if (index === -1) {
+								if (index === -1) 
 									index = length;
-								}
-	
 							}
 						}
 	
@@ -8475,8 +9109,6 @@ function __eval(source, include) {
 						}
 	
 						token = ensureTemplateFunction(token);
-	
-	
 						index += isUnescapedBlock ? 3 : 1;
 						continue;
 					}
@@ -8518,13 +9150,17 @@ function __eval(source, include) {
 							// =;
 							index++;
 							state = go_attrVal;
+							
+							if (last === state_tag && key == null) {
+								parser_warn('Unexpected tag assignment', template, index, c, state);
+							}
 							continue;
 						}
 						
 						else if (c === 40) {
 							// (
 							start = 1 + index;
-							index = 1 + cursor_bracketsEnd(template, start, length, c, 41 /* ) */);
+							index = 1 + cursor_groupEnd(template, start, length, c, 41 /* ) */);
 							current.expression = template.substring(start, index - 1);
 							current.type = Dom.STATEMENT;
 							continue;
@@ -8568,8 +9204,8 @@ function __eval(source, include) {
 						// if DEBUG
 						if (c === 0x0027 || c === 0x0022 || c === 0x002F || c === 0x003C || c === 0x002C) {
 							// '"/<,
-							_throw(template, index, state, String.fromCharCode(c));
-							break;
+							parser_warn('', template, index, c, state);
+							break outer;
 						}
 						// endif
 	
@@ -8597,39 +9233,66 @@ function __eval(source, include) {
 	
 					token = template.substring(start, index);
 	
-					// if DEBUG
-					if (!token) {
-						_throw(template, index, state, '<empty token>');
+					
+					if (token === '') {
+						parser_warn('String expected', template, index, c, state);
 						break;
 					}
-					if (isInterpolated === true && state === state_tag) {
-						_throw(template, index, state, 'Tag Names cannt be interpolated (in dev)');
-						break;
+					
+					if (isInterpolated === true) {
+						if (state === state_tag) {
+							parser_warn('Invalid interpolation (in tag name)'
+								, template
+								, index
+								, token
+								, state);
+							break;
+						}
+						if (state === state_attr) {
+							if (key === 'id' || last === go_attrVal) {
+								token = ensureTemplateFunction(token);
+							}
+							else if (key === 'class') {
+								// interpolate later
+							}
+							else {
+								parser_warn('Invalid interpolation (in attr name)'
+									, template
+									, index
+									, token
+									, state);
+								break;
+							}
+						}
 					}
-					// endif
-	
-	
-					if (isInterpolated === true && (state === state_attr && key === 'class') === false) {
-						token = ensureTemplateFunction(token);
-					}
-	
+					
 				}
 	
-				////if (isNaN(c)) {
-				////	_throw(template, index, state, 'Parse IndexOverflow');
-				////
-				////}
+				if (c !== c) {
+					parser_warn('IndexOverflow'
+						, template
+						, index
+						, c
+						, state
+					);
+				}
 	
 				// if DEBUG
-				if (current.parent != null && current.parent !== fragment && current.parent.__single !== true && current.nodes != null) {
-					console.warn('Mask - ', current.parent.tagName, JSON.stringify(current.parent.attr), 'was not proper closed.');
+				var parent = current.parent;
+				if (parent != null &&
+					parent !== fragment &&
+					parent.__single !== true &&
+					current.nodes != null) {
+					parser_warn('Tag was not closed: ' + current.parent.tagName, template)
 				}
 				// endif
 	
 				
-				return fragment.nodes != null && fragment.nodes.length === 1
-					? fragment.nodes[0]
-					: fragment;
+				var nodes = fragment.nodes;
+				return nodes != null && nodes.length === 1
+					? nodes[0]
+					: fragment
+					;
 			},
 			
 			// obsolete
@@ -8651,11 +9314,11 @@ function __eval(source, include) {
 			},
 			setInterpolationQuotes: function(start, end) {
 				if (!start || start.length !== 2) {
-					console.error('Interpolation Start must contain 2 Characters');
+					log_error('Interpolation Start must contain 2 Characters');
 					return;
 				}
 				if (!end || end.length !== 1) {
-					console.error('Interpolation End must be of 1 Character');
+					log_error('Interpolation End must be of 1 Character');
 					return;
 				}
 	
@@ -8691,21 +9354,6 @@ function __eval(source, include) {
 		
 			
 		// source util.js
-		function listeners_emit(name) {
-			if (listeners == null || listeners[name] == null) 
-				return;
-			
-			var fns = listeners.compoCreated,
-				imax = fns.length,
-				i = -1,
-				args = _Array_slice.call(arguments, 1)
-				;
-				
-			while ( ++i < imax) 
-				fns[i].apply(null, args);
-			
-		}
-		
 		function build_resumeDelegate(controller, model, cntx, container, childs){
 			var anchor = container.appendChild(document.createComment(''));
 			
@@ -8713,8 +9361,6 @@ function __eval(source, include) {
 				return build_resumeController(controller, model, cntx, anchor, childs);
 			};
 		}
-		
-		
 		function build_resumeController(controller, model, cntx, anchor, childs) {
 			
 			
@@ -9015,11 +9661,16 @@ function __eval(source, include) {
 						attr[key] = attr[key]('attr', model, ctx, container, controller, key);
 				}
 			
-				if (listeners != null) 
-					listeners_emit('compoCreated', compo, model, ctx, container);
+				
+				listeners_emit(
+					'compoCreated'
+					, compo
+					, model
+					, ctx
+					, container);
 					
 			
-				if (typeof compo.renderStart === 'function') 
+				if (is_Function(compo.renderStart)) 
 					compo.renderStart(model, ctx, container);
 				
 				
@@ -9555,16 +10206,12 @@ function __eval(source, include) {
 			plugin: function(source){
 				eval(source);
 			},
-			on: function(event, fn){
-				if (listeners == null){
-					listeners = {};
-				}
-	
-				(listeners[event] || (listeners[event] = [])).push(fn);
-			},
+			
+			on: listeners_on,
+			off: listeners_off,
 	
 			/*
-			 *	Stub for reload.js, which will be used by includejs.autoreload
+			 *	Stub for the reload.js, which will be used by includejs.autoreload
 			 */
 			delegateReload: function(){},
 	
@@ -9651,7 +10298,6 @@ function __eval(source, include) {
 					_minimize = _indent === 0 || settings && settings.minimizeAttributes;
 				}
 		
-		
 				return run(input);
 			};
 		
@@ -9671,24 +10317,20 @@ function __eval(source, include) {
 		
 		
 			function run(node, indent, output) {
-		
 				var outer, i;
-		
+				
 				if (indent == null) 
 					indent = 0;
-				
-		
+					
 				if (output == null) {
 					outer = true;
 					output = [];
 				}
 		
 				var index = output.length;
-		
-				if (node.type === Dom.FRAGMENT){
+				if (node.type === Dom.FRAGMENT)
 					node = node.nodes;
-				}
-		
+				
 				if (node instanceof Array) {
 					for (i = 0; i < node.length; i++) {
 						processNode(node[i], indent, output);
@@ -9703,13 +10345,15 @@ function __eval(source, include) {
 					output[i] = spaces + output[i];
 				}
 		
-				if (outer) {
+				if (outer) 
 					return output.join(_indent === 0 ? '' : '\n');
-				}
-		
 			}
 		
 			function processNode(node, currentIndent, output) {
+				if (typeof node.stringify === 'function') {
+					output.push(node.stringify(_minimize));
+					return;
+				}
 				if (typeof node.content === 'string') {
 					output.push(wrapString(node.content));
 					return;
@@ -9897,7 +10541,11 @@ function __eval(source, include) {
 						}
 						return;
 					}
-					console.error('Previous Node should be "% if=\'condition\'"', prev, this.parent);
+					
+					throw_(
+						'`% else` should be after `% if=\'condition\'`, got: '
+						   + (prev && (prev.compoName || prev.tagName))
+					);
 					return;
 				}
 				
@@ -10171,7 +10819,7 @@ function __eval(source, include) {
 	
 	// end:source /src/handlers/utils.js
 
-	// source /src/libs/compo.js
+	// source /mask-compo/lib/compo.embed.js
 	
 	var Compo = exports.Compo = (function(mask){
 		'use strict';
@@ -10647,6 +11295,194 @@ function __eval(source, include) {
 		
 		
 		// end:source ../src/util/domLib.js
+		// source ../src/util/compo.js
+		var compo_dispose,
+			compo_detachChild,
+			compo_ensureTemplate,
+			compo_attachDisposer,
+			compo_createConstructor,
+			compo_removeElements
+			;
+		
+		(function(){
+			
+			compo_dispose = function(compo) {
+				
+				if (compo.dispose != null) 
+					compo.dispose();
+				
+				Anchor.removeCompo(compo);
+			
+				var compos = compo.components,
+					i = (compos && compos.length) || 0;
+			
+				while ( --i > -1 ) {
+					compo_dispose(compos[i]);
+				}
+			};
+			
+			compo_detachChild = function(childCompo){
+				
+				var parent = childCompo.parent;
+				if (parent == null) 
+					return;
+				
+				var arr = childCompo.$,
+					elements = parent.$ || parent.elements,
+					i;
+					
+				if (elements && arr) {
+					var jmax = arr.length,
+						el, j;
+					
+					i = elements.length;
+					while( --i > -1){
+						el = elements[i];
+						j = jmax;
+						
+						while(--j > -1){
+							if (el === arr[j]) {
+								
+								elements.splice(i, 1);
+								break;
+							}
+						}
+					}
+				}
+				
+				var compos = parent.components;
+				if (compos != null) {
+					
+					i = compos.length;
+					while(--i > -1){
+						if (compos[i] === childCompo) {
+							compos.splice(i, 1);
+							break;
+						}
+					}
+			
+					if (i === -1)
+						console.warn('<compo:remove> - i`m not in parents collection', childCompo);
+				}
+			};
+			
+			
+			
+			compo_ensureTemplate = function(compo) {
+				if (compo.nodes != null) 
+					return;
+				
+				// obsolete
+				if (compo.attr.template != null) {
+					compo.template = compo.attr.template;
+					
+					delete compo.attr.template;
+				}
+				
+				var template = compo.template;
+				if (template == null) 
+					return;
+				
+				if (is_String(template)) {
+					if (template.charCodeAt(0) === 35 && /^#[\w\d_-]+$/.test(template)) {
+						// #
+						var node = document.getElementById(template.substring(1));
+						if (node == null) {
+							console.error('<compo> Template holder not found by id:', template);
+							return;
+						}
+						template = node.innerHTML;
+					}
+					
+					template = mask.parse(template);
+				}
+			
+				if (typeof template === 'object') 
+					compo.nodes = template;
+			};
+			
+				
+			compo_attachDisposer = function(compo, disposer) {
+			
+				if (compo.dispose == null) {
+					compo.dispose = disposer;
+					return;
+				}
+				
+				var prev = compo.dispose;
+				compo.dispose = function(){
+					disposer.call(this);
+					prev.call(this);
+				};
+			};
+			
+				
+			
+			compo_createConstructor = function(Ctor, proto) {
+				var compos = proto.compos,
+					pipes = proto.pipes,
+					attr = proto.attr;
+					
+				if (compos == null
+						&& pipes == null
+						&& proto.attr == null) {
+					
+					return Ctor;
+				}
+			
+				/* extend compos / attr to keep
+				 * original prototyped values untouched
+				 */
+				return function CompoBase(){
+			
+					if (compos != null) {
+						// use this.compos instead of compos from upper scope
+						// : in case compos from proto was extended after
+						this.compos = obj_copy(this.compos);
+					}
+			
+					if (pipes != null) 
+						Pipes.addController(this);
+					
+					if (attr != null) 
+						this.attr = obj_copy(this.attr);
+					
+					if (is_Function(Ctor)) 
+						Ctor.call(this);
+				};
+			};
+			
+			compo_removeElements = function(compo) {
+				if (compo.$) {
+					compo.$.remove();
+					return;
+				}
+				
+				var els = compo.elements;
+				if (els) {
+					var i = -1,
+						imax = els.length;
+					while ( ++i < imax ) {
+						if (els[i].parentNode) 
+							els[i].parentNode.removeChild(els[i]);
+					}
+					return;
+				}
+				
+				var compos = compo.components;
+				if (compos) {
+					var i = -1,
+						imax = compos.length;
+					while ( ++i < imax ){
+						compo_removeElements(compos[i]);
+					}
+				}
+			}
+		
+			
+		}());
+		
+		// end:source ../src/util/compo.js
 	
 		// source ../src/compo/children.js
 		var Children_ = {
@@ -11126,194 +11962,6 @@ function __eval(source, include) {
 				return klass;
 			}
 		
-			// source Compo.util.js
-			var compo_dispose,
-				compo_detachChild,
-				compo_ensureTemplate,
-				compo_attachDisposer,
-				compo_createConstructor,
-				compo_removeElements
-				;
-			
-			(function(){
-				
-				compo_dispose = function(compo) {
-					
-					if (compo.dispose != null) 
-						compo.dispose();
-					
-					Anchor.removeCompo(compo);
-				
-					var compos = compo.components,
-						i = (compos && compos.length) || 0;
-				
-					while ( --i > -1 ) {
-						compo_dispose(compos[i]);
-					}
-				};
-				
-				compo_detachChild = function(childCompo){
-					
-					var parent = childCompo.parent;
-					if (parent == null) 
-						return;
-					
-					var arr = childCompo.$,
-						elements = parent.$ || parent.elements,
-						i;
-						
-					if (elements && arr) {
-						var jmax = arr.length,
-							el, j;
-						
-						i = elements.length;
-						while( --i > -1){
-							el = elements[i];
-							j = jmax;
-							
-							while(--j > -1){
-								if (el === arr[j]) {
-									
-									elements.splice(i, 1);
-									break;
-								}
-							}
-						}
-					}
-					
-					var compos = parent.components;
-					if (compos != null) {
-						
-						i = compos.length;
-						while(--i > -1){
-							if (compos[i] === childCompo) {
-								compos.splice(i, 1);
-								break;
-							}
-						}
-				
-						if (i === -1)
-							console.warn('<compo:remove> - i`m not in parents collection', childCompo);
-					}
-				};
-				
-				
-				
-				compo_ensureTemplate = function(compo) {
-					if (compo.nodes != null) 
-						return;
-					
-					// obsolete
-					if (compo.attr.template != null) {
-						compo.template = compo.attr.template;
-						
-						delete compo.attr.template;
-					}
-					
-					var template = compo.template;
-					if (template == null) 
-						return;
-					
-					if (is_String(template)) {
-						if (template.charCodeAt(0) === 35 && /^#[\w\d_-]+$/.test(template)) {
-							// #
-							var node = document.getElementById(template.substring(1));
-							if (node == null) {
-								console.error('<compo> Template holder not found by id:', template);
-								return;
-							}
-							template = node.innerHTML;
-						}
-						
-						template = mask.parse(template);
-					}
-				
-					if (typeof template === 'object') 
-						compo.nodes = template;
-				};
-				
-					
-				compo_attachDisposer = function(compo, disposer) {
-				
-					if (compo.dispose == null) {
-						compo.dispose = disposer;
-						return;
-					}
-					
-					var prev = compo.dispose;
-					compo.dispose = function(){
-						disposer.call(this);
-						prev.call(this);
-					};
-				};
-				
-					
-				
-				compo_createConstructor = function(Ctor, proto) {
-					var compos = proto.compos,
-						pipes = proto.pipes,
-						attr = proto.attr;
-						
-					if (compos == null
-							&& pipes == null
-							&& proto.attr == null) {
-						
-						return Ctor;
-					}
-				
-					/* extend compos / attr to keep
-					 * original prototyped values untouched
-					 */
-					return function CompoBase(){
-				
-						if (compos != null) {
-							// use this.compos instead of compos from upper scope
-							// : in case compos from proto was extended after
-							this.compos = obj_copy(this.compos);
-						}
-				
-						if (pipes != null) 
-							Pipes.addController(this);
-						
-						if (attr != null) 
-							this.attr = obj_copy(this.attr);
-						
-						if (is_Function(Ctor)) 
-							Ctor.call(this);
-					};
-				};
-				
-				compo_removeElements = function(compo) {
-					if (compo.$) {
-						compo.$.remove();
-						return;
-					}
-					
-					var els = compo.elements;
-					if (els) {
-						var i = -1,
-							imax = els.length;
-						while ( ++i < imax ) {
-							if (els[i].parentNode) 
-								els[i].parentNode.removeChild(els[i]);
-						}
-						return;
-					}
-					
-					var compos = compo.components;
-					if (compos) {
-						var i = -1,
-							imax = compos.length;
-						while ( ++i < imax ){
-							compo_removeElements(compos[i]);
-						}
-					}
-				}
-			
-				
-			}());
-			
-			// end:source Compo.util.js
 			// source Compo.static.js
 			obj_extend(Compo, {
 				create: function(proto){
@@ -12329,8 +12977,8 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
-	// end:source /src/libs/compo.js
-	// source /src/libs/jmask.js
+	// end:source /mask-compo/lib/compo.embed.js
+	// source /mask-j/lib/jmask.embed.js
 	
 	var jmask = exports.jmask = (function(mask){
 		'use strict';
@@ -13419,8 +14067,8 @@ function __eval(source, include) {
 	
 	}(Mask));
 	
-	// end:source /src/libs/jmask.js
-	// source /src/libs/mask.binding.js
+	// end:source /mask-j/lib/jmask.embed.js
+	// source /mask-binding/lib/binding.embed.js
 	
 	(function(mask, Compo){
 		'use strict'
@@ -17146,7 +17794,7 @@ function __eval(source, include) {
 	
 	}(Mask, Compo));
 	
-	// end:source /src/libs/mask.binding.js
+	// end:source /mask-binding/lib/binding.embed.js
 
 
 	Mask.Compo = Compo;
@@ -17180,8 +17828,21 @@ function __eval(source, include) {
 	 *
 	 * Strict means - like in regex start-end /^$/
 	 * */
-	var	_cfg_isStrict = true;
+	var	_cfg_isStrict = true,
+		_Array_slice = Array.prototype.slice;
 	// end:source ../src/vars.js
+	// source ../src/utils/log.js
+	var log_error;
+	(function(){
+		
+		log_error = function(){
+			var args = _Array_slice.call(arguments);
+			
+			console.error.apply(console, ['Ruta'].concat(args));
+		};
+		
+	}());
+	// end:source ../src/utils/log.js
 	// source ../src/utils/path.js
 	var path_normalize,
 		path_split,
@@ -17325,39 +17986,83 @@ function __eval(source, include) {
 	(function(){
 	
 		query_deserialize = function(query, delimiter) {
-			delimiter == null && (delimiter = '/');
-		
+			if (delimiter == null) 
+				delimiter = '&';
+			
 			var obj = {},
 				parts = query.split(delimiter),
 				i = 0,
 				imax = parts.length,
-				x;
-		
+				x, val;
+				
 			for (; i < imax; i++) {
 				x = parts[i].split('=');
-		
-				obj[x[0]] = x[1] == null
+				val = x[1] == null
 					? ''
-					: decodeURIComponent(x[1])
+					: decode(x[1])
 					;
-		
+				obj_setProperty(obj, x[0], val);
 			}
 			return obj;
 		};
-		
 		query_serialize = function(params, delimiter) {
-			delimiter == null && (delimiter = '/');
-		
+			if (delimiter == null) 
+				delimiter = '&';
+			
 			var query = '',
-				key;
-		
-			for (key in params) {
-				query = query + (query ? delimiter : '') + key + '=' + encodeURIComponent(params[key]);
+				key, val;
+			for(key in params) {
+				val = params[key];
+				if (val == null) 
+					continue;
+				
+				// serialize as flag
+				if (typeof val === 'boolean') 
+					val = null;
+				
+				query = query + (query ? delimiter : '') + key;
+				if (val != null) 
+					query += '=' + encode(val);
 			}
 		
 			return query;
 		};
 		
+		// = private
+		
+		function obj_setProperty(obj, property, value) {
+			var chain = property.split('.'),
+				imax = chain.length,
+				i = -1,
+				key;
+		
+			while ( ++i <  imax - 1) {
+				key = chain[i];
+				
+				if (obj[key] == null) 
+					obj[key] = {};
+				
+				obj = obj[key];
+			}
+		
+			obj[chain[i]] = value;
+		}
+		function decode(str) {
+			try {
+				return decodeURIComponent(str);
+			} catch(error) {
+				log_error('decode:URI malformed');
+				return '';
+			}
+		}
+		function encode(str) {
+			try {
+				return encodeURIComponent(str);
+			} catch(error) {
+				log_error('encode:URI malformed');
+				return '';
+			}
+		}
 	}());
 	
 	
@@ -17398,7 +18103,7 @@ function __eval(source, include) {
 				;
 			
 			if (pStart === -1 || pEnd === -1) {
-				console.error('<ruta> Expected alias part with regexp', str);
+				log_error('Expected alias part with regexp', str);
 				return null;
 			}
 			
@@ -17450,7 +18155,7 @@ function __eval(source, include) {
 				query: query === -1
 					? null
 					: query_deserialize(url.substring(query + 1), '&')
-			}
+			};
 		};
 		
 		
@@ -17494,7 +18199,7 @@ function __eval(source, include) {
 							;
 						if (definition.charCodeAt(definition.length - 1) !== 41) {
 							// )
-							console.error('<ruta> rgx parse - expect group closing');
+							log_error('parser - expect group closing');
 							end ++;
 						}
 						
@@ -17560,7 +18265,8 @@ function __eval(source, include) {
 					
 			
 					// if DEBUG
-					!isOptional && !gettingMatcher && console.log('<ruta> strict part found after optional', definition);
+					if (!isOptional && !gettingMatcher) 
+						log_error('Strict part found after optional', definition);
 					// endif
 			
 			
@@ -17703,7 +18409,7 @@ function __eval(source, include) {
 						return obj[key];
 				}
 			}
-		}())
+		}());
 		// end:source parse.js
 		// source match.js
 		var route_match,
@@ -17941,7 +18647,7 @@ function __eval(source, include) {
 		
 			window.onhashchange = function() {
 				that.changed(location.hash);
-			}
+			};
 		
 			return that;
 		}
@@ -18050,7 +18756,7 @@ function __eval(source, include) {
 				this.emitter = new HashEmitter(this);
 			
 			if (this.emitter == null) 
-				console.error('Router can not be initialized - (nor History API / nor Hashchage');
+				log_error('Router can not be initialized - (nor HistoryAPI / nor hashchange');
 		}
 		
 		Location.prototype = {
@@ -18071,9 +18777,12 @@ function __eval(source, include) {
 				this.emitter.navigate(url);
 			},
 			current: function(){
-				var path = this.emitter.current();
-				
-				return this.collection.get(path);
+				return this.collection.get(
+					this.currentPath()
+				);
+			},
+			currentPath: function(){
+				return this.emitter.current();
 			}
 		};
 		
@@ -18122,18 +18831,26 @@ function __eval(source, include) {
 			router_ensure()
 				.navigate(path);
 		},
-		
 		current: function(){
-			
-			return router_ensure()
-				.current();
+			return router_ensure().current();
+		},
+		currentPath: function(){
+			return router_ensure().currentPath();
 		},
 		
 		parse: Routes.parse,
 		
 		$utils: {
+			/*
+			 * Format URI path from CLI command:
+			 * some action -foo bar === /some/action?foo=bar
+			 */
+			pathFromCLI: path_fromCLI,
 			
-			pathFromCLI: path_fromCLI
+			query: {
+				serialize: query_serialize,
+				deserialize: query_deserialize
+			}
 		}
 	};
 	
@@ -18142,15 +18859,10 @@ function __eval(source, include) {
 	// end:source ../src/ruta.js
 	
 	// source ../src/mask/attr/anchor-dynamic.js
-	
-	
 	(function() {
 		
-			
-		mask.registerAttrHandler('x-dynamic', function(node, value, model, cntx, tag){
-			
+		mask.registerAttrHandler('x-dynamic', function(node, value, model, ctx, tag){
 			tag.onclick = navigate;
-			
 		}, 'client');
 		
 		function navigate(event) {

@@ -73,25 +73,25 @@ include
 						return output + 'globals' + mode + '.js'
 				}
 				
-				console.error('ERROR - undefined type -', type);
+				throw Error('ERROR - undefined type -', type);
 			},
 			
 			save: function(){
 				
 				
 				function write(type) {
-					var src = this.sources[type];
+					var source = this.sources[type];
 					
 					new io
 						.File(this.filename(type, 'dev'))
-						.write(src);
+						.write(source)
+						;
 					
 					var file = new io.File(this.filename(type));
 						
-					file.content = src;
+					file.content = source;
 					Uglify(file, { minify: true });
 					file.write();
-					
 				}
 				
 				write.call(this, 'common');
