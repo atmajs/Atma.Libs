@@ -1810,9 +1810,23 @@
 	}());
 	// end:source /src/business/Route.js
 	// source /src/business/Deferred.js
-	function Deferred(){}
+	var Deferred;
 	
 	(function(){
+		//Deferred = function(fn){
+		//	if (!(this == null || this.constructor === Deferred)) 
+		//		return;
+		//	
+		//	if (typeof fn !== 'function') 
+		//		return;
+		//	
+		//	var dfr = this == null || this.constructor !== Deferred
+		//		? new Deferred()
+		//		: this;
+		//	
+		//	fn(dfr.resolveDelegate(), dfr.rejectDelegate(), dfr);
+		//};
+		Deferred = function(){}
 		
 		Deferred.prototype = {
 			_isAsync: true,
@@ -2281,10 +2295,12 @@
 	// end:source /src/Class.js
 	
 	// source /src/business/Await.js
-	var Await = (function(){
+	var Await;
+	
+	(function(){
 		
-		return Class({
-			Base: Deferred,
+		Await = Class({
+			Extends: Deferred.prototype,
 		
 			_wait: 0,
 			_timeout: null,
@@ -5534,7 +5550,8 @@ function __eval(source, include) {
 	// end:source /src/scope-vars.js
     // source /src/util/is.js
     var is_Function,
-        is_Array
+        is_Array,
+        is_Object
         ;
     
     (function(){
@@ -5542,13 +5559,15 @@ function __eval(source, include) {
         is_Function = function(x){
             return typeof x === 'function';
         };
-        
         is_Array = function(x){
             return x != null
                 && typeof x === 'object'
                 && typeof x.length === 'number'
                 && typeof x.splice === 'function'
                 ;
+        };
+        is_Object = function(x){
+            return x != null && typeof x === 'object';
         };
         
     }());
@@ -9944,6 +9963,72 @@ function __eval(source, include) {
 		
 	}(custom_Attributes, custom_Tags, Dom.Component));
 	// end:source /src/build/builder.dom.js
+	
+	/* Features */
+	// source /src/feature/run.js
+	var mask_run;
+	
+	(function(){
+		mask_run = function(){
+			var args = _Array_slice.call(arguments),
+				container,
+				model,
+				Ctr,
+				imax,
+				i,
+				mix;
+			
+			imax = args.length;
+			i = -1;
+			while ( ++i < imax ) {
+				mix = args[i];
+				if (mix instanceof Node) {
+					container = mix;
+					continue;
+				}
+				if (is_Function(mix)) {
+					Ctr = mix;
+					continue;
+				}
+				if (is_Object(mix)) {
+					model = mix;
+					continue;
+				}
+			}
+			
+			if (container == null) 
+				container = document.body;
+				
+			var controller = is_Function(Ctr)
+				? new Ctr
+				: new Dom.Component
+				;
+			
+			var scripts = document.getElementsByTagName('script'),
+				script, found = false;
+			imax = scripts.length;
+			i = -1;
+			while( ++i < imax ){
+				script = scripts[i];
+				if (script.getAttribute('type') !== 'text/mask') 
+					continue;
+				if (script.getAttribute('data-run') !== 'true') 
+					continue;
+				
+				var fragment = Mask.render(
+					script.textContent, model, null, null, controller
+				);
+				script.parentNode.insertBefore(fragment, script);
+				found = true;
+			}
+			
+			
+			Compo.signal.emitIn(controller, 'domInsert');
+			return controller;
+		};
+	}());
+	// end:source /src/feature/run.js
+	
 	// source /src/mask.js
 	
 	/**
@@ -9983,10 +10068,8 @@ function __eval(source, include) {
 						template = cache[template] = parser_parse(template);
 					}
 				}
-				
-				if (ctx == null) {
+				if (ctx == null) 
 					ctx = {};
-				}
 				
 				return builder_build(template, model, ctx, container, controller);
 			},
@@ -10003,6 +10086,14 @@ function __eval(source, include) {
 			parse: parser_parse,
 	
 			build: builder_build,
+			
+			/*
+			 * - ?model:Object
+			 * - ?Controller: Function
+			 * - ?container: Node (@default: body)
+			 */
+			run: mask_run,
+			
 			/**
 			 * mask.registerHandler(tagName, tagHandler) -> void
 			 * - tagName (String): Any tag name. Good practice for custom handlers it when its name begins with ':'
@@ -10265,8 +10356,7 @@ function __eval(source, include) {
 	Mask.renderDom = Mask.render;
 	
 	// end:source /src/mask.js
-
-
+	
 
 	// source /src/formatter/stringify.lib.js
 	(function(mask){
@@ -10819,6 +10909,8 @@ function __eval(source, include) {
 	
 	// end:source /src/handlers/utils.js
 
+	/* Libraries */
+	
 	// source /mask-compo/lib/compo.embed.js
 	
 	var Compo = exports.Compo = (function(mask){
@@ -15487,9 +15579,10 @@ function __eval(source, include) {
 					
 						
 					if (!provider.objectWay.get(provider, provider.expression)) {
-						
+						// object has no value, so check the dom
 						setTimeout(function(){
 							if (provider.domWay.get(provider))
+								// and apply when exists
 								provider.domChanged();	
 						})
 						
@@ -15967,58 +16060,70 @@ function __eval(source, include) {
 		// end:source ../src/mask-handler/validate.group.js
 	
 		// source ../src/mask-util/bind.js
-		
 		/**
 		 *	Mask Custom Utility - for use in textContent and attribute values
 		 */
-		
 		(function(){
 			
 			function attr_strReplace(attrValue, currentValue, newValue) {
-				if (!attrValue) {
+				if (!attrValue) 
 					return newValue;
-				}
 				
-				if (currentValue == null || currentValue === '') {
+				if (!currentValue) 
 					return attrValue + ' ' + newValue;
-				}
 				
 				return attrValue.replace(currentValue, newValue);
 			}
 		
-			function create_refresher(type, expr, element, currentValue, attrName) {
-		
+			function refresherDelegate_NODE(element){
+				return function(value) {
+					element.textContent = value;
+				};
+			}
+			function refresherDelegate_ATTR(element, attrName, currentValue) {
 				return function(value){
-					switch (type) {
-						case 'node':
-							element.textContent = value;
-							break;
-						case 'attr':
-							var _typeof = typeof element[attrName],
-								currentAttr, attr;
+					var currentAttr = element.getAttribute(attrName),
+						attr = attr_strReplace(currentAttr, currentValue, value);
 		
-		
-							// handle properties first
-							if ('boolean' === _typeof) {
-								currentValue = element[attrName] = !!value;
-								return;
-							}
-		
-							if ('string' === _typeof) {
-								currentValue = element[attrName] = attr_strReplace(element[attrName], currentValue, value);
-								return;
-							}
-		
-							currentAttr = element.getAttribute(attrName);
-							attr = attr_strReplace(currentAttr, currentValue, value);
-		
-		
-							element.setAttribute(attrName, attr);
-							currentValue = value;
-							break;
+					element.setAttribute(attrName, attr);
+					currentValue = value;
+				};
+			}
+			function refresherDelegate_PROP(element, attrName, currentValue) {
+				return function(value){
+					switch(typeof element[attrName]) {
+						case 'boolean':
+							currentValue = element[attrName] = !!value;
+							return;
+						case 'number':
+							currentValue = element[attrName] = Number(value);
+							return;
+						case 'string':
+							currentValue = element[attrName] = attr_strReplace(element[attrName], currentValue, value);
+							return;
+						default:
+							console.warn('Unsupported elements property type', attrName);
+							return;
 					}
 				};
-		
+			}
+			
+			function create_refresher(type, expr, element, currentValue, attrName) {
+				if ('node' === type) {
+					return refresherDelegate_NODE(element);
+				}
+				if ('attr' === type) {
+					switch(attrName) {
+						case 'value':
+						case 'disabled':
+						case 'checked':
+						case 'selected':
+						case 'selectedIndex':
+							return refresherDelegate_PROP(element, attrName, currentValue);
+					}
+					return refresherDelegate_ATTR(element, attrName, currentValue);
+				}
+				throw Error('Unexpected binder type: ' + type);
 			}
 		
 		
@@ -17795,7 +17900,8 @@ function __eval(source, include) {
 	}(Mask, Compo));
 	
 	// end:source /mask-binding/lib/binding.embed.js
-
+	
+	
 
 	Mask.Compo = Compo;
 	Mask.jmask = jmask;

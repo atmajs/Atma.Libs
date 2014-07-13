@@ -1,8 +1,8 @@
 include
 
 	.js(
-		'process/Sources.js',
-		'publish.js'
+		'./process/Sources.js',
+		'./publish.js'
 	)
 	.load(
 		'node.json',
@@ -48,7 +48,17 @@ include
 					return;
 				}
 				
-				dir.copyTo('libraries/' + name + '/');
+				var names = [
+					name + '.js',
+					name + '.min.js',
+					name + '.min.js.map'
+				].forEach(function(name){
+					
+					var uri = dir.uri.combine(name);
+					
+					if (io.File.exists(uri)) 
+						io.File.copyTo(uri, 'browser/libraries/')
+				});
 			});
 		}
 		
@@ -57,7 +67,7 @@ include
 			
 			process(libsBrowser, function(){
 				
-				//-processCopy(libraries);
+				processCopy(libraries);
 				
 				if (app.config.$cli.params.publish){
 					publish(function(error){

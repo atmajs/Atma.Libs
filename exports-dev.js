@@ -1809,9 +1809,23 @@
 	}());
 	// end:source /src/business/Route.js
 	// source /src/business/Deferred.js
-	function Deferred(){}
+	var Deferred;
 	
 	(function(){
+		//Deferred = function(fn){
+		//	if (!(this == null || this.constructor === Deferred)) 
+		//		return;
+		//	
+		//	if (typeof fn !== 'function') 
+		//		return;
+		//	
+		//	var dfr = this == null || this.constructor !== Deferred
+		//		? new Deferred()
+		//		: this;
+		//	
+		//	fn(dfr.resolveDelegate(), dfr.rejectDelegate(), dfr);
+		//};
+		Deferred = function(){}
 		
 		Deferred.prototype = {
 			_isAsync: true,
@@ -2278,10 +2292,12 @@
 	// end:source /src/Class.js
 	
 	// source /src/business/Await.js
-	var Await = (function(){
+	var Await;
+	
+	(function(){
 		
-		return Class({
-			Base: Deferred,
+		Await = Class({
+			Extends: Deferred.prototype,
 		
 			_wait: 0,
 			_timeout: null,

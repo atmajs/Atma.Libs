@@ -4,7 +4,7 @@
     "version": "0.9.44",
     "homepage": "http://atmajs.com/",
     "contributors": [],
-    "author": "Alex Kit <source.kit@gmail.com>",
+    "author": "Alex Kit <alex.kit@atmajs.com>",
     "repository": {
         "type": "git",
         "url": "https://github.com/atmajs/Atma.Libs.git"
@@ -17,7 +17,10 @@
     ],
     "dependencies": {},
     "devDependencies": {},
-    "scripts": {},
+    "scripts": {
+        "build": "atma custom build/process",
+        "publish": "atma custom build/process --publish"
+    },
     "keywords": [],
     "engines": {
         "node": ">0.8.9"
