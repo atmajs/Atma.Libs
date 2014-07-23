@@ -7202,7 +7202,7 @@ function __eval(source, include) {
 							);
 							index++;
 							if (current == null) {
-								throw_util('Unexpected comma', c);
+								util_throw('Unexpected comma', c);
 								break outer;	
 							}
 							
@@ -7659,7 +7659,7 @@ function __eval(source, include) {
 							(type_Accessor !== nextType) &&
 							(type_AccessorExpr !== nextType)) {
 							
-							console.error('Ast Exception: next should be a symbol/function ref');
+							log_error('Ast Exception: next should be a symbol/function ref');
 							return null;
 						}
 		
@@ -8304,12 +8304,12 @@ function __eval(source, include) {
 				}
 				
 				if (child.tagName !== 'case') {
-					console.warn('<mask:switch> Case expected', child.tagName);
+					log_warn('<mask:switch> Case expected', child.tagName);
 					continue;
 				}
 				expr = child.expression;
 				if (!expr) {
-					console.warn('<mask:switch:case> Expression expected');
+					log_warn('<mask:switch:case> Expression expected');
 					continue;
 				}
 				
@@ -8402,13 +8402,13 @@ function __eval(source, include) {
 				name = args[0]
 				;
 			if (typeof name !== 'string') {
-				console.error('<mask:import> Invalid argument', expr);
+				log_error('<mask:import> Invalid argument', expr);
 				return;
 			}
 		
 			while (true) {
 				
-				if (controller.compoName == 'include') 
+				if (controller.compoName === 'include') 
 					break;
 				
 				controller = controller.parent;
@@ -8944,7 +8944,7 @@ function __eval(source, include) {
 							
 							if (index === 1) {
 								// if DEBUG
-								console.warn('<mask:parse> block comment has no end');
+								log_warn('<mask:parse> block comment has no end');
 								// endif
 								index = length;
 							}
@@ -9441,7 +9441,7 @@ function __eval(source, include) {
 					}
 					
 					if (attrFn != null) {
-						attrFn(node, controller.attr[key], model, cntx, elements[0], controller);
+						attrFn(anchor, controller.attr[key], model, cntx, elements[0], controller);
 					}
 				}
 			}
@@ -9459,9 +9459,9 @@ function __eval(source, include) {
 		
 			if (childs != null && childs !== elements){
 				var il = childs.length,
-					jl = elements.length;
-		
-				j = -1;
+					jl = elements.length,
+					j  = -1;
+					
 				while(++j < jl){
 					childs[il + j] = elements[j];
 				}
@@ -9558,7 +9558,7 @@ function __eval(source, include) {
 						return doc.createElement(name);
 					// if DEBUG
 					} catch(error) {
-						console.error(name, 'element cannot be created. If this should be a custom handler tag, then controller is not defined');
+						log_error(name, 'element cannot be created. If this should be a custom handler tag, then controller is not defined');
 						return null;
 					}
 					// endif
@@ -9852,7 +9852,7 @@ function __eval(source, include) {
 						// Dom.COMPONENT
 						type = 4;
 					} else {
-						console.error('<mask: statement is undefined', node.tagName);
+						log_error('<mask: statement is undefined', node.tagName);
 						return container;
 					}
 					
@@ -10057,8 +10057,8 @@ function __eval(source, include) {
 	
 				// if DEBUG
 				if (container != null && typeof container.appendChild !== 'function'){
-					console.error('.render(template[, model, ctx, container, controller]', 'Container should implement .appendChild method');
-					console.warn('Args:', arguments);
+					log_error('.render(template[, model, ctx, container, controller]', 'Container should implement .appendChild method');
+					log_warn('Args:', arguments);
 				}
 				// endif
 	
@@ -10244,7 +10244,7 @@ function __eval(source, include) {
 			
 			registerUtility: function (utilityName, fn) {
 				// if DEBUG
-				console.warn('@registerUtility - deprecated - use registerUtil(utilName, mix)', utilityName);
+				log_warn('@registerUtility - deprecated - use registerUtil(utilName, mix)', utilityName);
 				// endif
 				this.registerUtility = this.registerUtil;
 				this.registerUtility(utilityName, fn);
@@ -10252,7 +10252,7 @@ function __eval(source, include) {
 			
 			getUtility: function(util){
 				// if DEBUG
-				console.warn('@getUtility - deprecated - use getUtil(utilName)', util);
+				log_warn('@getUtility - deprecated - use getUtil(utilName)', util);
 				// endif
 				this.getUtility = this.getUtil;
 				
@@ -10748,7 +10748,8 @@ function __eval(source, include) {
 				x;
 	
 			// if DEBUG
-			(isNaN(index) || isNaN(length)) && console.error('Repeat attribute(from..to) invalid', compo.attr.repeat);
+			if (index !== index || length !== length) 
+				log_error('Repeat attribute(from..to) invalid', compo.attr.repeat);
 			// endif
 	
 			compo.nodes = [];
@@ -10792,7 +10793,7 @@ function __eval(source, include) {
 	
 		var ListProto = {
 			append: function(model){
-				var item = new Component();
+				var item = new Dom.Component();
 				item.nodes = this.template;
 				item.model = model;
 	
@@ -10822,7 +10823,7 @@ function __eval(source, include) {
 		function TemplateHandler() {}
 		TemplateHandler.prototype.render = function() {
 			if (this.attr.id == null) {
-				console.warn('Template Should be defined with ID attribute for future lookup');
+				log_warn('Template Should be defined with ID attribute for future lookup');
 				return;
 			}
 	
@@ -10868,7 +10869,7 @@ function __eval(source, include) {
 	
 					// @TODO = load template from remote
 					if (this.nodes == null) {
-						console.warn('Template could be not imported', this.attr.id);
+						log_warn('Template could be not imported', this.attr.id);
 					}
 				}
 			}
@@ -10892,7 +10893,7 @@ function __eval(source, include) {
 				var html = jmask(this.nodes).text(model, cntx, this);
 		
 				if (!html) {
-					console.warn('No HTML for node', this);
+					log_warn('No HTML for node', this);
 					return;
 				}
 				
@@ -10918,7 +10919,7 @@ function __eval(source, include) {
 	
 	var Compo = exports.Compo = (function(mask){
 		'use strict';
-		// source ../src/scope-vars.js
+		// source /src/scope-vars.js
 		var Dom = mask.Dom,
 		
 			_array_slice = Array.prototype.slice,
@@ -10963,7 +10964,7 @@ function __eval(source, include) {
 		// if DEBUG
 		if (global.document != null && domLib == null) {
 			
-			console.warn('jQuery-Zepto-Kimbo etc. was not loaded before MaskJS:Compo, please use Compo.config.setDOMLibrary to define dom engine');
+			log_warn('jQuery-Zepto-Kimbo etc. was not loaded before MaskJS:Compo, please use Compo.config.setDOMLibrary to define dom engine');
 		}
 		// endif
 		
@@ -10973,9 +10974,10 @@ function __eval(source, include) {
 				: _mask_ensureTmplFnOrig(value)
 				;
 		}
-		// end:source ../src/scope-vars.js
+		// end:source /src/scope-vars.js
 	
-		// source ../src/util/is.js
+		// source /src/util/exports.js
+		// source ./is.js
 		function is_Function(x) {
 			return typeof x === 'function';
 		}
@@ -11012,8 +11014,8 @@ function __eval(source, include) {
 			return obj.constructor === Object;
 		}
 		
-		// end:source ../src/util/is.js
-		// source ../src/util/polyfill.js
+		// end:source ./is.js
+		// source ./polyfill.js
 		if (!Array.prototype.indexOf) {
 			Array.prototype.indexOf = function(x){
 				for (var i = 0, imax = this.length; i < imax; i++){
@@ -11024,8 +11026,8 @@ function __eval(source, include) {
 				return -1;
 			}
 		}
-		// end:source ../src/util/polyfill.js
-		// source ../src/util/object.js
+		// end:source ./polyfill.js
+		// source ./object.js
 		var obj_extend,
 			obj_copy
 			;
@@ -11060,8 +11062,8 @@ function __eval(source, include) {
 			
 		}());
 		
-		// end:source ../src/util/object.js
-		// source ../src/util/array.js
+		// end:source ./object.js
+		// source ./array.js
 		
 		var arr_each,
 			arr_remove
@@ -11079,40 +11081,36 @@ function __eval(source, include) {
 			
 			arr_remove = function(array, child){
 				if (array == null){
-					console.error('Can not remove myself from parent', child);
+					log_error('Can not remove myself from parent', child);
 					return;
 				}
-			
 				var index = array.indexOf(child);
-			
 				if (index === -1){
-					console.error('Can not remove myself from parent', child, index);
+					log_error('Can not remove myself from parent', child);
 					return;
 				}
-			
 				array.splice(index, 1);
 			};
 			
 			
 		}());
 		
-		// end:source ../src/util/array.js
-		// source ../src/util/function.js
+		// end:source ./array.js
+		// source ./function.js
 		var fn_proxy,
-			fn_apply
+			fn_apply,
+			fn_doNothing
 			;
 		
 		(function(){
 		
 			fn_proxy = function(fn, ctx) {
-			
 				return function() {
 					return fn_apply(fn, ctx, arguments);
 				};
 			};
 			
 			fn_apply = function(fn, ctx, arguments_){
-				
 				switch (arguments_.length) {
 					case 0:
 						return fn.call(ctx);
@@ -11133,15 +11131,17 @@ function __eval(source, include) {
 							arguments_[1],
 							arguments_[2],
 							arguments_[3]);
-				};
-				
+				}
 				return fn.apply(ctx, arguments_);
 			};
 			
+			fn_doNothing = function(){
+				return false;
+			};
 		}());
 		
-		// end:source ../src/util/function.js
-		// source ../src/util/selector.js
+		// end:source ./function.js
+		// source ./selector.js
 		var selector_parse,
 			selector_match
 			;
@@ -11150,7 +11150,7 @@ function __eval(source, include) {
 			
 			selector_parse = function(selector, type, direction) {
 				if (selector == null)
-					console.error('<compo>selector is undefined', type);
+					log_error('<compo>selector is undefined', type);
 				
 				if (typeof selector === 'object')
 					return selector;
@@ -11250,8 +11250,8 @@ function __eval(source, include) {
 			
 		}());
 		
-		// end:source ../src/util/selector.js
-		// source ../src/util/traverse.js
+		// end:source ./selector.js
+		// source ./traverse.js
 		var find_findSingle;
 		
 		(function(){
@@ -11290,8 +11290,8 @@ function __eval(source, include) {
 			
 		}());
 		
-		// end:source ../src/util/traverse.js
-		// source ../src/util/dom.js
+		// end:source ./traverse.js
+		// source ./dom.js
 		var dom_addEventListener,
 			
 			node_tryDispose,
@@ -11357,8 +11357,8 @@ function __eval(source, include) {
 			
 		}());
 		
-		// end:source ../src/util/dom.js
-		// source ../src/util/domLib.js
+		// end:source ./dom.js
+		// source ./domLib.js
 		/**
 		 *	Combine .filter + .find
 		 */
@@ -11389,14 +11389,20 @@ function __eval(source, include) {
 		}());
 		
 		
-		// end:source ../src/util/domLib.js
-		// source ../src/util/compo.js
+		// end:source ./domLib.js
+		// source ./compo.js
 		var compo_dispose,
 			compo_detachChild,
 			compo_ensureTemplate,
+			compo_ensureAttributes,
 			compo_attachDisposer,
 			compo_createConstructor,
-			compo_removeElements
+			compo_removeElements,
+			compo_prepairAsync,
+			compo_errored,
+			
+			compo_meta_prepairAttributeHandler,
+			compo_meta_executeAttributeHandler
 			;
 		
 		(function(){
@@ -11457,7 +11463,7 @@ function __eval(source, include) {
 					}
 			
 					if (i === -1)
-						console.warn('<compo:remove> - i`m not in parents collection', childCompo);
+						log_warn('<compo:remove> - i`m not in parents collection', childCompo);
 				}
 			};
 			
@@ -11483,7 +11489,7 @@ function __eval(source, include) {
 						// #
 						var node = document.getElementById(template.substring(1));
 						if (node == null) {
-							console.error('<compo> Template holder not found by id:', template);
+							log_error('<compo> Template holder not found by id:', template);
 							return;
 						}
 						template = node.innerHTML;
@@ -11519,8 +11525,8 @@ function __eval(source, include) {
 					attr = proto.attr;
 					
 				if (compos == null
-						&& pipes == null
-						&& proto.attr == null) {
+					&& pipes == null
+					&& proto.attr == null) {
 					
 					return Ctor;
 				}
@@ -11542,8 +11548,8 @@ function __eval(source, include) {
 					if (attr != null) 
 						this.attr = obj_copy(this.attr);
 					
-					if (is_Function(Ctor)) 
-						Ctor.call(this);
+					
+					Ctor.call(this);
 				};
 			};
 			
@@ -11572,14 +11578,157 @@ function __eval(source, include) {
 						compo_removeElements(compos[i]);
 					}
 				}
-			}
+			};
 		
+			compo_prepairAsync = function(dfr, compo, ctx){
+				var resume = Compo.pause(compo, ctx)
+				dfr.then(resume, function(error){
+					compo_errored(compo, error);
+					resume();
+				});
+			};
+			
+			compo_errored = function(compo, error){
+				compo.nodes = mask.parse('.-mask-compo-errored > "~[.]"');
+				compo.model = error.message || String(error);
+				compo.renderEnd = fn_doNothing;
+			};
+			
+			// == Meta Attribute Handler
+			(function(){
+				
+				compo_meta_prepairAttributeHandler = function(Proto){
+					if (Proto.meta == null) 
+						Proto.meta = {};
+					
+					var metas = Proto.meta.attributes,
+						fn = null;
+					if (metas) {
+						var hash = {};
+						for(var key in metas) {
+							_handleProperty_Delegate(Proto, key, metas[key], hash);
+						}
+						fn = _handleAll_Delegate(hash);
+					}
+					Proto.meta.handleAttributes = fn;
+				};
+				compo_meta_executeAttributeHandler = function(compo){
+					var fn = compo.meta && compo.meta.handleAttributes;
+					return fn == null ? true : fn(compo);
+				};
+				
+				function _handleAll_Delegate(hash){
+					return function(compo){
+						var attr = compo.attr,
+							key, fn, val, error;
+						for(key in hash){
+							fn    = hash[key];
+							val   = attr[key];
+							error = fn(compo, val);
+							
+							if (error == null)
+								continue;
+							
+							_errored(compo, error, key, val)
+							return false;
+						}
+						return true;
+					};
+				}
+				function _handleProperty_Delegate(Proto, metaKey, metaVal, hash) {
+					var optional = metaKey.charCodeAt(0) === 63, // ?
+						attrName = optional
+							? metaKey.substring(1)
+							: metaKey;
+					
+					var property = attrName.replace(/-(\w)/g, _toCamelCase_Replacer),
+						fn = metaVal;
+					
+					if (typeof metaVal === 'string') 
+						fn = _ensureFns[metaVal];
+						
+					else if (metaVal instanceof RegExp) 
+						fn = _ensureFns_Delegate.regexp(metaVal);
+					
+					else if (typeof metaVal === 'function') 
+						fn = metaVal;
+					
+					else if (metaVal == null) 
+						fn = _ensureFns_Delegate.any();
+					
+					if (fn == null) {
+						log_error('Function expected for the attr. handler', metaKey);
+						return;
+					}
+					
+					Proto[property] = null;
+					Proto = null;
+					hash [attrName] = function(compo, attrVal){
+						if (attrVal == null) 
+							return optional ? null : Error('Expected');
+						
+						var val = fn.call(compo, attrVal, compo);
+						if (val instanceof Error) 
+							return val;
+						
+						compo[property] = val;
+						return null;
+					};
+				}
+				
+				function _toCamelCase_Replacer(full, char_){
+					return char_.toUpperCase();
+				}
+				function _errored(compo, error, key, val) {
+					error.message = compo.compoName + ' - attribute `' + key + '`: ' + error.message;
+					compo_errored(compo, error);
+					log_error(error.message, '. Current: ', val);
+				}
+				var _ensureFns = {
+					'string': function(x) {
+						return typeof x === 'string' ? x : Error('String');
+					},
+					'number': function(x){
+						var num = Number(x);
+						return num === num ? num : Error('Number');
+					},
+					'boolean': function(x){
+						if (x === 'true'  || x === '1') return true;
+						if (x === 'false' || x === '0') return false;
+						return Error('Boolean');
+					}
+				};
+				var _ensureFns_Delegate = {
+					regexp: function(rgx){
+						return function(x){
+							return rgx.test(x) ? x : Error('RegExp');
+						};
+					},
+					any: function(){
+						return function(x){ return x; };
+					}
+				};
+			}());
 			
 		}());
 		
-		// end:source ../src/util/compo.js
+		// end:source ./compo.js
+		// source ./dfr.js
+		var dfr_isBusy;
+		(function(){
+			dfr_isBusy = function(dfr){
+				if (dfr == null || typeof dfr.then !== 'function') 
+					return false;
+				
+				// Class.Deferred support, @todo Promise|jQuery dfr etc.
+				return this._resolved != null || this._rejected != null;
+			};
+		}());
+		// end:source ./dfr.js
+		
+		// end:source /src/util/exports.js
 	
-		// source ../src/compo/children.js
+		// source /src/compo/children.js
 		var Children_ = {
 		
 			/**
@@ -11611,8 +11760,8 @@ function __eval(source, include) {
 						selector = data;
 					}
 					if (data == null || selector == null) {
-						console.error('Unknown component child', name, compos[name]);
-						console.warn('Is this object shared within multiple compo classes? Define it in constructor!');
+						log_error('Unknown component child', name, compos[name]);
+						log_warn('Is this object shared within multiple compo classes? Define it in constructor!');
 						return;
 					}
 		
@@ -11641,8 +11790,8 @@ function __eval(source, include) {
 			}
 		};
 		
-		// end:source ../src/compo/children.js
-		// source ../src/compo/events.js
+		// end:source /src/compo/children.js
+		// source /src/compo/events.js
 		var Events_ = {
 			on: function(component, events, $element) {
 				if ($element == null) {
@@ -11691,8 +11840,8 @@ function __eval(source, include) {
 		},
 			EventDecorator = null;
 		
-		// end:source ../src/compo/events.js
-		// source ../src/compo/events.deco.js
+		// end:source /src/compo/events.js
+		// source /src/compo/events.deco.js
 		var EventDecos = (function() {
 		
 			var hasTouch = (function() {
@@ -11738,8 +11887,8 @@ function __eval(source, include) {
 		
 		}());
 		
-		// end:source ../src/compo/events.deco.js
-		// source ../src/compo/pipes.js
+		// end:source /src/compo/events.deco.js
+		// source /src/compo/pipes.js
 		var Pipes = (function() {
 			
 			var _collection = {};
@@ -11763,7 +11912,7 @@ function __eval(source, include) {
 						pipe, signal;
 		
 					if (dot === -1) {
-						console.error('define pipeName "click: pipeName.pipeSignal"');
+						log_error('define pipeName "click: pipeName.pipeSignal"');
 						return;
 					}
 		
@@ -11774,7 +11923,7 @@ function __eval(source, include) {
 		
 		
 					// if DEBUG
-					!event && console.error('Signal: event type is not set', attrValue);
+					!event && log_error('Signal: event type is not set', attrValue);
 					// endif
 		
 		
@@ -11792,7 +11941,7 @@ function __eval(source, include) {
 		
 			function pipe_attach(pipeName, controller) {
 				if (controller.pipes[pipeName] == null) {
-					console.error('Controller has no pipes to be added to collection', pipeName, controller);
+					log_error('Controller has no pipes to be added to collection', pipeName, controller);
 					return;
 				}
 		
@@ -11826,7 +11975,7 @@ function __eval(source, include) {
 		
 				// if DEBUG
 				if (pipes == null) {
-					console.error('Controller has no pipes', controller);
+					log_error('Controller has no pipes', controller);
 					return;
 				}
 				// endif
@@ -11855,7 +12004,7 @@ function __eval(source, include) {
 					
 					if (controllers == null) {
 						//if DEBUG
-						console.warn('Pipe.emit: No signals were bound to:', pipeName);
+						log_warn('Pipe.emit: No signals were bound to:', pipeName);
 						//endif
 						return;
 					}
@@ -11893,7 +12042,7 @@ function __eval(source, include) {
 		
 					// if DEBUG
 					if (!called)
-						console.warn('Pipe `%s` has not slots for `%s`', pipeName, signal);
+						log_warn('Pipe `%s` has not slots for `%s`', pipeName, signal);
 					// endif
 				}
 			};
@@ -11910,9 +12059,9 @@ function __eval(source, include) {
 		
 		}());
 		
-		// end:source ../src/compo/pipes.js
+		// end:source /src/compo/pipes.js
 	
-		// source ../src/compo/anchor.js
+		// source /src/compo/anchor.js
 		
 		/**
 		 *	Get component that owns an element
@@ -11925,7 +12074,7 @@ function __eval(source, include) {
 			return {
 				create: function(compo){
 					if (compo.ID == null){
-						console.warn('Component should have an ID');
+						log_warn('Component should have an ID');
 						return;
 					}
 		
@@ -11970,7 +12119,7 @@ function __eval(source, include) {
 		
 		
 					// if DEBUG
-					findID && console.warn('No controller for ID', findID);
+					findID && log_warn('No controller for ID', findID);
 					// endif
 					return null;
 				},
@@ -11987,75 +12136,66 @@ function __eval(source, include) {
 		
 		}());
 		
-		// end:source ../src/compo/anchor.js
-		// source ../src/compo/Compo.js
-		var Compo = (function() {
+		// end:source /src/compo/anchor.js
+		// source /src/compo/Compo.js
+		var Compo;
+		(function() {
 		
 			var hasInclude = !!(global.include
 				|| (typeof global.atma !== 'undefined' && global.atma.include)
 				|| (typeof exports !== 'undefined' && exports.include))
 				;
 		
-			function Compo(controller) {
+			Compo = function(Proto) {
 				if (this instanceof Compo){
 					// used in Class({Base: Compo})
 					return null;
 				}
 		
-				var klass;
+				var klass, key;
 		
-				if (controller == null){
-					controller = {};
-				}
+				if (Proto == null)
+					Proto = {};
 				
 				if (hasInclude && global.include) 
-					controller.__resource = global.include.url;
+					Proto.__resource = global.include.url;
 				
-		
-				if (controller.attr != null) {
-					
-					for (var key in controller.attr) {
-						controller.attr[key] = _mask_ensureTmplFn(controller.attr[key]);
+				if (Proto.attr != null) {
+					for (key in Proto.attr) {
+						Proto.attr[key] = _mask_ensureTmplFn(Proto.attr[key]);
 					}
-					
 				}
 				
-				var slots = controller.slots;
+				var slots = Proto.slots;
 				if (slots != null) {
-					for (var key in slots) {
+					for (key in slots) {
 						if (typeof slots[key] === 'string'){
 							//if DEBUG
-							typeof controller[slots[key]] !== 'function' && console.error('Not a Function @Slot.',slots[key]);
+							if (is_Function(Proto[slots[key]]) === false)
+								log_error('Not a Function @Slot.',slots[key]);
 							// endif
-							slots[key] = controller[slots[key]];
+							slots[key] = Proto[slots[key]];
 						}
 					}
 				}
+				compo_meta_prepairAttributeHandler(Proto);
 				
-				if (controller.hasOwnProperty('constructor')){
-					klass = controller.constructor;
+				klass = Proto.hasOwnProperty('constructor')
+					? Proto.constructor
+					: function CompoBase() {}
+					;
+				
+				klass = compo_createConstructor(klass, Proto);
+		
+				for(key in CompoProto){
+					if (Proto[key] == null)
+						Proto[key] = CompoProto[key];
 				}
 		
-		
-				klass = compo_createConstructor(klass, controller);
-		
-				if (klass == null){
-					klass = function CompoBase(){};
-				}
-		
-				for(var key in Proto){
-					if (controller[key] == null){
-						controller[key] = Proto[key];
-					}
-					//- controller['base_' + key] = Proto[key];
-				}
-		
-				klass.prototype = controller;
-		
-				controller = null;
-		
+				klass.prototype = Proto;
+				Proto = null;
 				return klass;
-			}
+			};
 		
 			// source Compo.static.js
 			obj_extend(Compo, {
@@ -12074,9 +12214,9 @@ function __eval(source, include) {
 						klass = function CompoBase(){};
 					}
 			
-					for(var key in Proto){
+					for(var key in CompoProto){
 						if (proto[key] == null){
-							proto[key] = Proto[key];
+							proto[key] = CompoProto[key];
 						}
 					}
 			
@@ -12104,7 +12244,8 @@ function __eval(source, include) {
 						for (var key in slots) {
 							if (typeof slots[key] === 'string'){
 								//if DEBUG
-								typeof classProto[slots[key]] !== 'function' && console.error('Not a Function @Slot.',slots[key]);
+								if (is_Function(classProto[slots[key]]) === false)
+									log_error('Not a Function @Slot.',slots[key]);
 								// endif
 								slots[key] = classProto[slots[key]];
 							}
@@ -12124,11 +12265,11 @@ function __eval(source, include) {
 					
 					var Ext = classProto.Extends;
 					if (Ext == null) {
-						classProto.Extends = Proto
+						classProto.Extends = CompoProto
 					} else if (is_Array(Ext)) {
-						Ext.unshift(Proto)
+						Ext.unshift(CompoProto)
 					} else {
-						classProto.Extends = [Proto, Ext];
+						classProto.Extends = [CompoProto, Ext];
 					}
 					
 					return Class(classProto);
@@ -12180,7 +12321,7 @@ function __eval(source, include) {
 						
 						compo = mask.getHandler(compoName);
 						if (!compo){
-							console.error('Compo not found:', compo);
+							log_error('Compo not found:', compo);
 						}
 					}
 			
@@ -12229,7 +12370,7 @@ function __eval(source, include) {
 							var r = domLib_find(compo.$, selector)
 							// if DEBUG
 							if (r.length === 0) 
-								console.error('<compo-selector> - element not found -', selector, compo);
+								log_error('<compo-selector> - element not found -', selector, compo);
 							// endif
 							return r;
 						},
@@ -12237,7 +12378,7 @@ function __eval(source, include) {
 							var r = Compo.find(compo, selector);
 							// if DEBUG
 							if (r == null) 
-								console.error('<compo-selector> - component not found -', selector, compo);
+								log_error('<compo-selector> - component not found -', selector, compo);
 							// endif
 							return r;
 						}
@@ -12356,7 +12497,10 @@ function __eval(source, include) {
 						this.async = false;
 						_call(this, '_cbs_fail', arguments);
 						_call(this, '_cbs_always');
-					}
+					},
+					_cbs_done: null,
+					_cbs_fail: null,
+					_cbs_always: null
 				};
 				
 				var CompoProto = {
@@ -12364,34 +12508,23 @@ function __eval(source, include) {
 					await: function(resume){
 						this.resume = resume;
 					}
-				}
+				};
 				
 				Compo.pause = function(compo, ctx){
-					
 					if (ctx.async == null) {
 						ctx.defers = [];
-						
-						ctx._cbs_done = null;
-						ctx._cbs_fail = null;
-						ctx._cbs_always = null;
-						
-						for (var key in DeferProto) {
-							ctx[key] = DeferProto[key];
-						}
+						obj_extend(ctx, DeferProto);
 					}
 					
 					ctx.async = true;
-					
-					for (var key in CompoProto) {
-						compo[key] = CompoProto[key];
-					}
-					
 					ctx.defers.push(compo);
+					
+					obj_extend(compo, CompoProto);
 					
 					return function(){
 						Compo.resume(compo, ctx);
 					};
-				}
+				};
 				
 				Compo.resume = function(compo, ctx){
 					
@@ -12401,29 +12534,28 @@ function __eval(source, include) {
 					
 					compo.async = false;
 					
-					var busy = false;
-					for (var i = 0, x, imax = ctx.defers.length; i < imax; i++){
-						x = ctx.defers[i];
+					var busy = false,
+						dfrs = ctx.defers,
+						imax = dfrs.length,
+						i = -1,
+						x;
+					while ( ++i < imax ){
+						x = dfrs[i];
 						
 						if (x === compo) {
-							ctx.defers[i] = null;
+							dfrs[i] = null;
 							continue;
 						}
-						
-						if (busy === false) {
-							busy = x != null;
-						}
+						busy = busy || x != null;
 					}
-					
-					if (busy === false) {
+					if (busy === false) 
 						ctx.resolve();
-					}
 				};
 				
 			}());
 			// end:source async.js
 		
-			var Proto = {
+			var CompoProto = {
 				type: Dom.CONTROLLER,
 				
 				tagName: null,
@@ -12439,27 +12571,44 @@ function __eval(source, include) {
 				events: null,
 				
 				async: false,
+				await: null,
+				
+				meta: {
+					/* render modes, relevant for mask-node */
+					mode: null,
+					modelMode: null,
+					attributes: null,
+				},
 				
 				onRenderStart: null,
 				onRenderEnd: null,
 				render: null,
 				renderStart: function(model, ctx, container){
 		
-					if (arguments.length === 1 && model != null && model instanceof Array === false && model[0] != null){
+					if (arguments.length === 1
+						&& model != null
+						&& model instanceof Array === false
+						&& model[0] != null){
+						
 						var args = arguments[0];
 						model = args[0];
 						ctx = args[1];
 						container = args[2];
 					}
 		
-					if (this.nodes == null){
+					if (this.nodes == null)
 						compo_ensureTemplate(this);
+					
+					if (compo_meta_executeAttributeHandler(this) === false) {
+						// errored
+						return;
 					}
 					
 					if (is_Function(this.onRenderStart)){
-						this.onRenderStart(model, ctx, container);
+						var x = this.onRenderStart(model, ctx, container);
+						if (x !== void 0 && dfr_isBusy(x)) 
+							compo_prepairAsync(x, this, ctx);
 					}
-		
 				},
 				renderEnd: function(elements, model, ctx, container){
 					if (arguments.length === 1 && elements instanceof Array === false){
@@ -12474,17 +12623,14 @@ function __eval(source, include) {
 		
 					this.$ = domLib(elements);
 		
-					if (this.events != null) {
+					if (this.events != null)
 						Events_.on(this, this.events);
-					}
-		
-					if (this.compos != null) {
+					
+					if (this.compos != null) 
 						Children_.select(this, this.compos);
-					}
-		
-					if (is_Function(this.onRenderEnd)){
+					
+					if (is_Function(this.onRenderEnd))
 						this.onRenderEnd(elements, model, ctx, container);
-					}
 				},
 				appendTo: function(mix) {
 					
@@ -12493,9 +12639,8 @@ function __eval(source, include) {
 						: mix
 						;
 					
-		
 					if (element == null) {
-						console.warn('Compo.appendTo: parent is undefined. Args:', arguments);
+						log_warn('Compo.appendTo: parent is undefined. Args:', arguments);
 						return this;
 					}
 		
@@ -12555,15 +12700,13 @@ function __eval(source, include) {
 				on: function() {
 					var x = _array_slice.call(arguments);
 					if (arguments.length < 3) {
-						console.error('Invalid Arguments Exception @use .on(type,selector,fn)');
+						log_error('Invalid Arguments Exception @use .on(type,selector,fn)');
 						return this;
 					}
 		
-					if (this.$ != null) {
+					if (this.$ != null) 
 						Events_.on(this, [x]);
-					}
-		
-		
+					
 					if (this.events == null) {
 						this.events = [x];
 					} else if (is_Array(this.events)) {
@@ -12617,14 +12760,11 @@ function __eval(source, include) {
 				}
 			};
 		
-			Compo.prototype = Proto;
-		
-		
-			return Compo;
+			Compo.prototype = CompoProto;
 		}());
 		
-		// end:source ../src/compo/Compo.js
-		// source ../src/compo/signals.js
+		// end:source /src/compo/Compo.js
+		// source /src/compo/signals.js
 		(function() {
 		
 			/**
@@ -12653,7 +12793,7 @@ function __eval(source, include) {
 						;
 		
 					// if DEBUG
-					!event && console.error('Signal: event type is not set', attrValue);
+					!event && log_error('Signal: event type is not set', attrValue);
 					// endif
 		
 					if (Handler) {
@@ -12663,7 +12803,7 @@ function __eval(source, include) {
 					}
 		
 					// if DEBUG
-					!Handler && console.warn('No slot found for signal', handler, controller);
+					!Handler && log_warn('No slot found for signal', handler, controller);
 					// endif
 				}
 		
@@ -12800,7 +12940,7 @@ function __eval(source, include) {
 		
 			function __toggle_elementsState(controller, slot, isActive) {
 				if (controller.$ == null) {
-					console.warn('Controller has no elements to toggle state');
+					log_warn('Controller has no elements to toggle state');
 					return;
 				}
 		
@@ -12857,7 +12997,7 @@ function __eval(source, include) {
 						var captured = _fire(controller, slot, sender, args, -1);
 						
 						// if DEBUG
-						!captured && console.warn('Signal %c%s','font-weight:bold;', slot, 'was not captured');
+						!captured && log_warn('Signal %c%s','font-weight:bold;', slot, 'was not captured');
 						// endif
 						
 					},
@@ -12885,7 +13025,7 @@ function __eval(source, include) {
 					invoke: function(controller, slot, event, args) {
 						var slots = controller.slots;
 						if (slots == null || typeof slots[slot] !== 'function') {
-							console.error('Slot not found', slot, controller);
+							log_error('Slot not found', slot, controller);
 							return null;
 						}
 		
@@ -12902,18 +13042,16 @@ function __eval(source, include) {
 		
 		}());
 		
-		// end:source ../src/compo/signals.js
+		// end:source /src/compo/signals.js
 	
-		// source ../src/jcompo/jCompo.js
-		// try to initialize the dom lib, or is then called from setDOMLibrary
+		// source /src/jcompo/jCompo.js
+		// try to initialize the dom lib, or is then called from `setDOMLibrary`
 		domLib_initialize();
 		
 		function domLib_initialize(){
-		
 			if (domLib == null || domLib.fn == null)
 				return;
 			
-		
 			domLib.fn.compo = function(selector){
 				if (this.length === 0)
 					return null;
@@ -12938,16 +13076,14 @@ function __eval(source, include) {
 				return model;
 			};
 			
-			
+			// insert
 			(function(){
-				
 				var jQ_Methods = [
 					'append',
 					'prepend',
 					'before',
 					'after'
 				];
-				
 				arr_each([
 					'appendMask',
 					'prependMask',
@@ -12959,32 +13095,28 @@ function __eval(source, include) {
 						
 						if (this.length === 0) {
 							// if DEBUG
-							console.warn('<jcompo> $.', method, '- no element was selected(found)');
+							log_warn('<jcompo> $.', method, '- no element was selected(found)');
 							// endif
 							return this;
 						}
 						
 						if (this.length > 1) {
 							// if DEBUG
-							console.warn('<jcompo> $.', method, ' can insert only to one element. Fix is comming ...');
+							log_warn('<jcompo> $.', method, ' can insert only to one element. Fix is comming ...');
 							// endif
 						}
 						
 						if (controller == null) {
-							
 							controller = index < 2
 								? this.compo()
 								: this.parent().compo()
 								;
 						}
 						
+						var isUnsafe = false;
 						if (controller == null) {
 							controller = {};
-							// if DEBUG
-							console.warn(
-								'$.***Mask - controller not found, this can lead to memory leaks if template contains compos'
-							);
-							// endif
+							isUnsafe = true;
 						}
 						
 						
@@ -12992,15 +13124,31 @@ function __eval(source, include) {
 							controller.components = [];
 						}
 						
-						var components = controller.components,
-							i = components.length,
+						var compos = controller.components,
+							i = compos.length,
 							fragment = mask.render(template, model, ctx, null, controller);
 						
 						var self = this[jQ_Methods[index]](fragment),
-							imax = components.length;
+							imax = compos.length;
 						
 						for (; i < imax; i++) {
-							Compo.signal.emitIn(components[i], 'domInsert');
+							Compo.signal.emitIn(compos[i], 'domInsert');
+						}
+						
+						if (isUnsafe && imax !== 0) {
+							// if DEBUG
+							log_warn(
+								'$.'
+								, method
+								, '- parent controller was not found in Elements DOM.'
+								, 'This can lead to memory leaks.'
+							);
+							log_warn(
+								'Specify the controller directly, via $.'
+								, method
+								, '(template[, model, controller, ctx])'
+							);
+							// endif
 						}
 						
 						return self;
@@ -13038,12 +13186,11 @@ function __eval(source, include) {
 				}
 				
 			}());
+		}
 		
-		};
-		
-		// end:source ../src/jcompo/jCompo.js
+		// end:source /src/jcompo/jCompo.js
 	
-		// source ../src/handler/slot.js
+		// source /src/handler/slot.js
 		
 		function SlotHandler() {}
 		
@@ -13065,7 +13212,7 @@ function __eval(source, include) {
 			}
 		};
 		
-		// end:source ../src/handler/slot.js
+		// end:source /src/handler/slot.js
 	
 	
 		return Compo;
@@ -13075,7 +13222,7 @@ function __eval(source, include) {
 	// end:source /mask-compo/lib/compo.embed.js
 	// source /mask-j/lib/jmask.embed.js
 	
-	var jmask = exports.jmask = (function(mask){
+	var jmask = exports.jmask = Mask.jmask = (function(mask){
 		'use strict';
 		// source ../src/scope-vars.js
 		var Dom = mask.Dom,
@@ -13114,7 +13261,7 @@ function __eval(source, include) {
 		// end:source ../src/util/object.js
 		// source ../src/util/array.js
 		function arr_each(any, fn) {
-			var isarray = any instanceof Array,
+			var isarray = arr_isArray(any),
 				i = -1,
 				imax = isarray
 					? any.length
@@ -13200,229 +13347,270 @@ function __eval(source, include) {
 		
 		// end:source ../src/util/array.js
 		// source ../src/util/selector.js
-		
-		var sel_key_UP = 'parent',
-			sel_key_MASK = 'nodes',
-			sel_key_COMPOS = 'components',
-			sel_key_ATTR = 'attr';
-		
-		function selector_parse(selector, type, direction) {
-			if (selector == null) {
-				console.warn('selector is null for type', type);
-			}
-		
-			if (typeof selector === 'object') {
-				return selector;
-			}
-		
-			var key,
-				prop,
-				nextKey,
-				filters,
-		
-				_key,
-				_prop,
-				_selector;
-		
-			var index = 0,
-				length = selector.length,
-				c,
-				end,
-				matcher,
-				eq,
-				slicer;
-		
-			if (direction === 'up') {
-				nextKey = sel_key_UP;
-			} else {
-				nextKey = type === Dom.SET
-					? sel_key_MASK
-					: sel_key_COMPOS;
-			}
-		
-			while (index < length) {
-		
-				c = selector.charCodeAt(index);
-		
-				if (c < 33) {
-					continue;
+		var selector_parse,
+			selector_match;
+			
+		(function(){
+			
+			selector_parse = function(selector, type, direction) {
+				if (selector == null) 
+					log_error('selector is null for the type', type);
+				
+				if (typeof selector === 'object') 
+					return selector;
+				
+				var key,
+					prop,
+					nextKey,
+					filters,
+			
+					_key,
+					_prop,
+					_selector;
+			
+				var index = 0,
+					length = selector.length,
+					c,
+					end,
+					matcher, root, current,
+					eq,
+					slicer;
+			
+				if (direction === 'up') {
+					nextKey = sel_key_UP;
+				} else {
+					nextKey = type === Dom.SET
+						? sel_key_MASK
+						: sel_key_COMPOS;
 				}
-		
-				end = selector_moveToBreak(selector, index + 1, length);
-		
-		
-				if (c === 46 /*.*/ ) {
-					_key = 'class';
-					_prop = sel_key_ATTR;
-					_selector = sel_hasClassDelegate(selector.substring(index + 1, end));
-				}
-		
-				else if (c === 35 /*#*/ ) {
-					_key = 'id';
-					_prop = sel_key_ATTR;
-					_selector = selector.substring(index + 1, end);
-				}
-		
-				else if (c === 91 /*[*/ ) {
-					eq = selector.indexOf('=', index);
-					//if DEBUG
-					eq === -1 && console.error('Attribute Selector: should contain "="');
-					// endif
-		
-					_prop = sel_key_ATTR;
-					_key = selector.substring(index + 1, eq);
-		
-					//slice out quotes if any
-					c = selector.charCodeAt(eq + 1);
-					slicer = c === 34 || c === 39 ? 2 : 1;
-		
-					_selector = selector.substring(eq + slicer, end - slicer + 1);
-		
-					// increment, as cursor is on closed ']'
-					end++;
-				}
-		
-				else {
-					_prop = null;
-					_key = type === Dom.SET ? 'tagName' : 'compoName';
-					_selector = selector.substring(index, end);
-				}
-		
-				index = end;
-		
-		
-		
-				if (matcher == null) {
-					matcher = {
+			
+				while (index < length) {
+			
+					c = selector.charCodeAt(index);
+			
+					if (c < 33) {
+						index++;
+						continue;
+					}
+					if (c === 62 /* > */) {
+						if (matcher == null) {
+							root = matcher = {
+								selector: '__scope__',
+								nextKey: nextKey,
+								filters: null,
+								next: {
+									type: 'children',
+									matcher: null
+								}
+							};
+						} else {
+							matcher.next = {
+								type: 'children',
+								matcher: null
+							};
+						}
+						current = matcher;
+						matcher = null;
+						index++;
+						continue;
+					}
+					
+					end = selector_moveToBreak(selector, index + 1, length);
+					if (c === 46 /*.*/ ) {
+						_key = 'class';
+						_prop = sel_key_ATTR;
+						_selector = sel_hasClassDelegate(selector.substring(index + 1, end));
+					}
+			
+					else if (c === 35 /*#*/ ) {
+						_key = 'id';
+						_prop = sel_key_ATTR;
+						_selector = selector.substring(index + 1, end);
+					}
+			
+					else if (c === 91 /*[*/ ) {
+						eq = selector.indexOf('=', index);
+						//if DEBUG
+						eq === -1 && console.error('Attribute Selector: should contain "="');
+						// endif
+			
+						_prop = sel_key_ATTR;
+						_key = selector.substring(index + 1, eq);
+			
+						//slice out quotes if any
+						c = selector.charCodeAt(eq + 1);
+						slicer = c === 34 || c === 39 ? 2 : 1;
+			
+						_selector = selector.substring(eq + slicer, end - slicer + 1);
+			
+						// increment, as cursor is on closed ']'
+						end++;
+					}
+					else {
+						
+						if (matcher != null) {
+							matcher.next = {
+								type: 'any',
+								matcher: null
+							};
+							current = matcher;
+							matcher = null;
+						}
+						
+						_prop = null;
+						_key = type === Dom.SET ? 'tagName' : 'compoName';
+						_selector = selector.substring(index, end);
+					}
+			
+					index = end;
+			
+					if (matcher == null) {
+						matcher = {
+							key: _key,
+							prop: _prop,
+							selector: _selector,
+							nextKey: nextKey,
+							filters: null
+						};
+						if (root == null) 
+							root = matcher;
+							
+						if (current != null) {
+							current.next.matcher = matcher;
+						}
+						
+						continue;
+					}
+					if (matcher.filters == null) 
+						matcher.filters = [];
+					
+					matcher.filters.push({
 						key: _key,
-						prop: _prop,
 						selector: _selector,
-						nextKey: nextKey,
-		
-						filters: null
-					}
-		
-					continue;
+						prop: _prop
+					});
 				}
-		
-				if (matcher.filters == null) {
-					matcher.filters = [];
-				}
-		
-				matcher.filters.push({
-					key: _key,
-					selector: _selector,
-					prop: _prop
-				});
-		
-			}
-		
-			return matcher;
-		}
-		
-		
-		function sel_hasClassDelegate(matchClass) {
-			return function(className){
-				return sel_hasClass(className, matchClass);
+				
+				if (current && current.next) 
+					current.next.matcher = matcher;
+				
+				return root;
 			};
-		}
-		
-		// [perf] http://jsperf.com/match-classname-indexof-vs-regexp/2
-		function sel_hasClass(className, matchClass, index) {
-			if (typeof className !== 'string')
-				return false;
 			
-			if (index == null) 
-				index = 0;
-				
-			index = className.indexOf(matchClass, index);
-		
-			if (index === -1)
-				return false;
-		
-			if (index > 0 && className.charCodeAt(index - 1) > 32)
-				return sel_hasClass(className, matchClass, index + 1);
-		
-			var class_Length = className.length,
-				match_Length = matchClass.length;
-				
-			if (index < class_Length - match_Length && className.charCodeAt(index + match_Length) > 32)
-				return sel_hasClass(className, matchClass, index + 1);
-		
-			return true;
-		}
-		
-		
-		function selector_moveToBreak(selector, index, length) {
-			var c, 
-				isInQuote = false,
-				isEscaped = false;
-		
-			while (index < length) {
-				c = selector.charCodeAt(index);
-		
-				if (c === 34 || c === 39) {
-					// '"
-					isInQuote = !isInQuote;
+			selector_match = function(node, selector, type) {
+				if (typeof selector === 'string') {
+					if (type == null) {
+						type = Dom[node.compoName ? 'CONTROLLER' : 'SET'];
+					}
+					selector = selector_parse(selector, type);
 				}
-		
-				if (c === 92) {
-					// [\]
-					isEscaped = !isEscaped;
+				
+				if (selector.selector === '*') 
+					return true;
+			
+				var obj = selector.prop ? node[selector.prop] : node,
+					matched = false;
+			
+				if (obj == null) 
+					return false;
+				
+				if (typeof selector.selector === 'function') {
+					matched = selector.selector(obj[selector.key]);
 				}
-		
-				if (c === 46 || c === 35 || c === 91 || c === 93 || c < 33) {
-					// .#[]
-					if (isInQuote !== true && isEscaped !== true) {
-						break;
+				
+				else if (selector.selector.test != null) {
+					if (selector.selector.test(obj[selector.key])) {
+						matched = true;
 					}
 				}
-				index++;
-			}
-			return index;
-		}
-		
-		function selector_match(node, selector, type) {
-			if (typeof selector === 'string') {
-				if (type == null) {
-					type = Dom[node.compoName ? 'CONTROLLER' : 'SET'];
-				}
-				selector = selector_parse(selector, type);
-			}
-		
-			var obj = selector.prop ? node[selector.prop] : node,
-				matched = false;
-		
-			if (obj == null) {
-				return false;
-			}
-		
-			if (typeof selector.selector === 'function') {
-				matched = selector.selector(obj[selector.key]);
-			}
-			
-			else if (selector.selector.test != null) {
-				if (selector.selector.test(obj[selector.key])) {
+				
+				else  if (obj[selector.key] === selector.selector) {
 					matched = true;
 				}
-			}
 			
-			else  if (obj[selector.key] === selector.selector) {
-				matched = true;
-			}
-		
-			if (matched === true && selector.filters != null) {
-				for(var i = 0, x, imax = selector.filters.length; i < imax; i++){
-					x = selector.filters[i];
-		
-					if (selector_match(node, x, type) === false) {
-						return false;
+				if (matched === true && selector.filters != null) {
+					for(var i = 0, x, imax = selector.filters.length; i < imax; i++){
+						x = selector.filters[i];
+			
+						if (selector_match(node, x, type) === false) {
+							return false;
+						}
 					}
 				}
+			
+				return matched;
+			};
+			
+			// ==== private
+			
+			var sel_key_UP = 'parent',
+				sel_key_MASK = 'nodes',
+				sel_key_COMPOS = 'components',
+				sel_key_ATTR = 'attr';
+			
+			
+			function sel_hasClassDelegate(matchClass) {
+				return function(className){
+					return sel_hasClass(className, matchClass);
+				};
 			}
-		
-			return matched;
-		}
+			
+			// [perf] http://jsperf.com/match-classname-indexof-vs-regexp/2
+			function sel_hasClass(className, matchClass, index) {
+				if (typeof className !== 'string')
+					return false;
+				
+				if (index == null) 
+					index = 0;
+					
+				index = className.indexOf(matchClass, index);
+			
+				if (index === -1)
+					return false;
+			
+				if (index > 0 && className.charCodeAt(index - 1) > 32)
+					return sel_hasClass(className, matchClass, index + 1);
+			
+				var class_Length = className.length,
+					match_Length = matchClass.length;
+					
+				if (index < class_Length - match_Length && className.charCodeAt(index + match_Length) > 32)
+					return sel_hasClass(className, matchClass, index + 1);
+			
+				return true;
+			}
+			
+			
+			function selector_moveToBreak(selector, index, length) {
+				var c, 
+					isInQuote = false,
+					isEscaped = false;
+			
+				while (index < length) {
+					c = selector.charCodeAt(index);
+			
+					if (c === 34 || c === 39) {
+						// '"
+						isInQuote = !isInQuote;
+					}
+			
+					if (c === 92) {
+						// [\]
+						isEscaped = !isEscaped;
+					}
+			
+					if (c === 46 || c === 35 || c === 91 || c === 93 || c < 33) {
+						// .#[]
+						if (isInQuote !== true && isEscaped !== true) {
+							break;
+						}
+					}
+					index++;
+				}
+				return index;
+			}
+			
+		}());
 		
 		// end:source ../src/util/selector.js
 		// source ../src/util/utils.js
@@ -13450,32 +13638,44 @@ function __eval(source, include) {
 			/**
 			 * - mix (Node | Array[Node])
 			 */
-			jmask_find = function(mix, matcher, output) {
+			jmask_find = function(mix, matcher, output, deep) {
 				if (mix == null) {
 					return output;
 				}
-			
 				if (output == null) {
 					output = [];
 				}
-			
-				if (mix instanceof Array){
-					for(var i = 0, length = mix.length; i < length; i++){
-						jmask_find(mix[i], matcher, output);
+				if (deep == null) {
+					// is root and matchling like `> div` (childs only)
+					if (matcher.selector === '__scope__') {
+						deep = false;
+						matcher = matcher.next.matcher;
+					} else{
+						deep = true;
 					}
-					return output;
 				}
-			
-				if (selector_match(mix, matcher)){
-					output.push(mix);
-				}
-			
-				var next = mix[matcher.nextKey];
-			
-				if (next != null){
-					jmask_find(next, matcher, output);
-				}
-			
+				
+				arr_each(mix, function(node){
+					if (selector_match(node, matcher) === false) {
+						
+						if (matcher.next == null && deep !== false) 
+							jmask_find(node[matcher.nextKey], matcher, output, deep);
+						
+						return;
+					}
+					
+					if (matcher.next == null) {
+						output.push(node);
+						if (deep === true) 
+							jmask_find(node[matcher.nextKey], matcher, output, deep);
+							
+						return;
+					}
+					
+					var next = matcher.next;
+					deep = next.type !== 'children';
+					jmask_find(node[matcher.nextKey], next.matcher, output, deep);
+				});
 				return output;
 			};
 			
