@@ -10006,9 +10006,12 @@ function __eval(source, include) {
 				? new Ctr
 				: new Dom.Component
 				;
+			controller.ID = ++builder_componentID;
 			
 			var scripts = document.getElementsByTagName('script'),
-				script, found = false;
+				script,
+				found = false;
+				
 			imax = scripts.length;
 			i = -1;
 			while( ++i < imax ){
@@ -10024,8 +10027,12 @@ function __eval(source, include) {
 				script.parentNode.insertBefore(fragment, script);
 				found = true;
 			}
-			
-			
+			if (found === false) {
+				log_warn("No blocks found: <script type='text/mask' data-run='true'>...</script>");
+			}
+			if (is_Function(controller.renderEnd)) {
+				controller.renderEnd(container, model);
+			}
 			Compo.signal.emitIn(controller, 'domInsert');
 			return controller;
 		};
@@ -11548,8 +11555,9 @@ function __eval(source, include) {
 					if (attr != null) 
 						this.attr = obj_copy(this.attr);
 					
+					if (Ctor != null) 
+						Ctor.call(this);
 					
-					Ctor.call(this);
 				};
 			};
 			
@@ -12252,15 +12260,13 @@ function __eval(source, include) {
 						}
 					}
 					
-					var ctor;
-					
+					var Ctor;
 					if (classProto.hasOwnProperty('constructor'))
-						ctor = classProto.constructor;
+						Ctor = classProto.constructor;
+					if (Ctor == null)
+						Ctor = classProto.Construct;
 					
-					if (ctor == null)
-						ctor = classProto.Construct;
-					
-					classProto.Construct = compo_createConstructor(ctor, classProto);
+					classProto.Construct = compo_createConstructor(Ctor, classProto);
 					
 					
 					var Ext = classProto.Extends;
@@ -16272,7 +16278,7 @@ function __eval(source, include) {
 				if (!attrValue) 
 					return newValue;
 				
-				if (!currentValue) 
+				if (currentValue == null || currentValue === '') 
 					return attrValue + ' ' + newValue;
 				
 				return attrValue.replace(currentValue, newValue);

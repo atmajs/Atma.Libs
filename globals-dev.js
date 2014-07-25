@@ -11147,6 +11147,8 @@ function __eval(source, include) {
 		// source util/traverse.js
 		
 		function trav_getDoc(el, _deep) {
+			if (el != null && el.nodeType === Dom.FRAGMENT) 
+				el = el.firstChild;
 			
 			if (el == null)
 				return null;
@@ -11162,8 +11164,6 @@ function __eval(source, include) {
 			if (_deep === 4) 
 				return null;
 			
-				
-		
 			var doc;
 			doc = trav_getDoc(el.nextSibling, _deep);
 			
@@ -11193,7 +11193,7 @@ function __eval(source, include) {
 				if (compo.components == null || compo.components.length === 0) 
 					return document.toString();
 				
-				var documentElement = trav_getDoc(document.firstChild),
+				var documentElement = trav_getDoc(document),
 					headerJson = {
 						model: ctx._model.stringify(),
 						ID: ctx._id
@@ -12327,9 +12327,6 @@ function __eval(source, include) {
 				},
 				
 				stringify: function(){
-					if (this._id === 0) 
-						return null;
-					
 					return Class.stringify(this._models);
 				}
 			}
