@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.64
+ * ClassJS v1.0.66
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -1196,63 +1196,96 @@
 	}());
 	// end:source /src/util/patchObject.js
 	// source /src/util/function.js
-	function fn_proxy(fn, ctx) {
-	
-		return function() {
-			return fn_apply(fn, ctx, arguments);
-		};
-	}
-	
-	function fn_apply(fn, ctx, _arguments){
+	var fn_proxy,
+		fn_apply,
+		fn_createDelegate,
+		fn_doNothing,
+		fn_argsId
+		;
 		
-		switch (_arguments.length) {
-			case 0:
-				return fn.call(ctx);
-			case 1:
-				return fn.call(ctx, _arguments[0]);
-			case 2:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1]);
-			case 3:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1],
-					_arguments[2]);
-			case 4:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1],
-					_arguments[2],
-					_arguments[3]);
-			case 5:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1],
-					_arguments[2],
-					_arguments[3],
-					_arguments[4]
-					);
+	(function(){
+	
+		fn_proxy = function(fn, ctx) {
+			return function() {
+				return fn_apply(fn, ctx, arguments);
+			};
 		};
 		
-		return fn.apply(ctx, _arguments);
-	}
-	
-	function fn_isFunction(fn){
-		return typeof fn === 'function';
-	}
-	
-	function fn_createDelegate(fn /* args */) {
-		var args = _Array_slice.call(arguments, 1);
-		return function(){
-			if (arguments.length > 0) 
-				args = args.concat(_Array_slice.call(arguments));
+		fn_apply = function(fn, ctx, _arguments){
+			switch (_arguments.length) {
+				case 0:
+					return fn.call(ctx);
+				case 1:
+					return fn.call(ctx, _arguments[0]);
+				case 2:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1]);
+				case 3:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1],
+						_arguments[2]);
+				case 4:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1],
+						_arguments[2],
+						_arguments[3]);
+				case 5:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1],
+						_arguments[2],
+						_arguments[3],
+						_arguments[4]
+						);
+			};
+			return fn.apply(ctx, _arguments);
+		};
+		
+		fn_createDelegate = function(fn /* args */) {
+			var args = _Array_slice.call(arguments, 1);
+			return function(){
+				if (arguments.length > 0) 
+					args = args.concat(_Array_slice.call(arguments));
+				
+				return fn_apply(fn, null, args);
+			};
+		};
+		
+		fn_doNothing = function(){};
+		
+		fn_argsId = function(args, cache){
+			if (args.length === 0)
+				return 0;
 			
-			return fn_apply(fn, null, args);
+			var imax = cache.length,
+				i = -1;
+			while( ++i < imax ){
+				if (args_match(cache[i], args))
+					return i + 1;
+			}
+			cache.push(args);
+			return cache.length;
 		};
-	}
+		
+		// === private
+		
+		function args_match(a, b){
+			if (a.length !== b.length) 
+				return false;
+			
+			var imax = a.length,
+				i = 0;
+			for (; i < imax; i++){
+				if (a[i] !== b[i])
+					return false;
+			}
+			return true;
+		}
+	}());
 	
-	function fn_doNothing(){}
 	// end:source /src/util/function.js
 	
 	
@@ -1812,21 +1845,7 @@
 	var Deferred;
 	
 	(function(){
-		//Deferred = function(fn){
-		//	if (!(this == null || this.constructor === Deferred)) 
-		//		return;
-		//	
-		//	if (typeof fn !== 'function') 
-		//		return;
-		//	
-		//	var dfr = this == null || this.constructor !== Deferred
-		//		? new Deferred()
-		//		: this;
-		//	
-		//	fn(dfr.resolveDelegate(), dfr.rejectDelegate(), dfr);
-		//};
-		Deferred = function(){}
-		
+		Deferred = function(){};
 		Deferred.prototype = {
 			_isAsync: true,
 				
@@ -1966,23 +1985,85 @@
 					};
 				}
 				function delegate(dfr, name, fn) {
+					
 					return function(){
-						var override = fn.apply(this, arguments);
-						if (override != null) {
-							if (isDeferred(override) === true) {
-								override.pipe(dfr);
+						if (fn != null) {
+							var override = fn.apply(this, arguments);
+							if (override != null) {
+								if (isDeferred(override) === true) {
+									override.pipe(dfr);
+									return;
+								}
+								
+								dfr[name](override)
 								return;
 							}
-							
-							dfr[name](override)
-							return;
 						}
 						dfr[name].apply(dfr, arguments);
 					};
 				}
 				
 				return this;
+			},
+			pipeCallback: function(){
+				var self = this;
+				return function(error){
+					if (error != null) {
+						self.reject(error);
+						return;
+					}
+					var args = _Array_slice.call(arguments, 1);
+					fn_apply(self.resolve, self, args);
+				};
 			}
+		};
+		
+		Deferred.run = function(fn, ctx){
+			var dfr = new Deferred();
+			if (ctx == null) 
+				ctx = dfr;
+			
+			fn.call(ctx, dfr.resolveDelegate(), dfr.rejectDelegate(), dfr);
+			return dfr;
+		};
+		/**
+		 * Create function wich gets deferred object with first argument.
+		 * Created function returns always that deferred object
+		 */
+		Deferred.create = function(fn){
+			return function(){
+				var args = _Array_slice.call(arguments),
+					dfr = new Deferred;
+				args.unshift(dfr);
+				
+				fn_apply(fn, this, args);
+				return dfr;
+			};
+		};
+		/**
+		 * Similar as `create` it will also cache the deferred object,
+		 *  sothat the target function is called once pro specific arguments
+		 *
+		 * var fn = Deferred.memoize((dfr, name) => dfr.resolve(name));
+		 * fn('foo');
+		 * fn('baz');
+		 * fn('foo');
+		 *  - is called only once for `foo`, and once for `baz`
+		 */
+		Deferred.memoize = function(fn){
+			var dfrs = {}, args_store = [];
+			return function(){
+				var args = _Array_slice.call(arguments),
+					id = fn_argsId(args_store, args);
+				if (dfrs[id] != null) 
+					return dfrs[id];
+				
+				var dfr = dfrs[id] = new Deferred;
+				args.unshift(dfr);
+				
+				fn_apply(fn, this, args);
+				return dfr;
+			};
 		};
 	
 		// PRIVATE
@@ -3675,7 +3756,7 @@
 		        var Constructor = collection._ctor,
 		            instance = new Constructor(json);
 		            
-		        if (instance._id == null && fn_isFunction(instance.deserialize)) {
+		        if (instance._id == null && is_Function(instance.deserialize)) {
 		            instance.deserialize(json);
 		        }
 		        
@@ -4399,106 +4480,70 @@
 	(function(){
 		
 		// source memoize.js
+		var fn_memoize,
+			fn_memoizeAsync;
 		
-		
-		function args_match(a, b) {
-			if (a.length !== b.length) 
-				return false;
+		(function(){
+			fn_memoize = function(fn) {
+				var _cache = {},
+					_args = [];
+				return function() {
+					var id = fn_argsId(arguments, _args);
+					
+					return _cache[id] == null
+						? (_cache[id] = fn_apply(fn, this, arguments))
+						: _cache[id];
+				};
+			};
 			
-			var imax = a.length,
-				i = 0;
+			fn_memoizeAsync = function(fn) {
+				var _cache = {},
+					_cacheCbs = {},
+					_args = [];
+					
+				return function(){
+					
+					var args = _Array_slice.call(arguments),
+						callback = args.pop();
+					
+					var id = fn_argsId(args, _args);
+					
+					if (_cache[id]){
+						fn_apply(callback, this, _cache[id])
+						return; 
+					}
+					
+					if (_cacheCbs[id]) {
+						_cacheCbs[id].push(callback);
+						return;
+					}
+					
+					_cacheCbs[id] = [callback];
+					
+					args = _Array_slice.call(args);
+					args.push(fn_resolveDelegate(_cache, _cacheCbs, id));
+					
+					fn_apply(fn, this, args);
+				};
+			};
 			
-			for (; i < imax; i++){
-				if (a[i] !== b[i])
-					return false;
+			// === private
+			function fn_resolveDelegate(cache, cbs, id) {
+				return function(){
+					cache[id] = arguments;
+					
+					for (var i = 0, x, imax = cbs[id].length; i < imax; i++){
+						x = cbs[id][i];
+						fn_apply(x, this, arguments);
+					}
+					
+					cbs[i] = null;
+					cache = null;
+					cbs = null;
+				};
 			}
-			
-			return true;
-		}
+		}());
 		
-		function args_id(store, args) {
-		
-			if (args.length === 0)
-				return 0;
-		
-			
-			for (var i = 0, imax = store.length; i < imax; i++) {
-				
-				if (args_match(store[i], args))
-					return i + 1;
-			}
-			
-			store.push(args);
-			return store.length;
-		}
-		
-		
-		function fn_memoize(fn) {
-		
-			var _cache = {},
-				_args = [];
-				
-			return function() {
-		
-				var id = args_id(_args, arguments);
-		
-				
-				return _cache[id] == null
-					? (_cache[id] = fn_apply(fn, this, arguments))
-					: _cache[id];
-			};
-		}
-		
-		
-		function fn_resolveDelegate(cache, cbs, id) {
-			
-			return function(){
-				cache[id] = arguments;
-				
-				for (var i = 0, x, imax = cbs[id].length; i < imax; i++){
-					x = cbs[id][i];
-					fn_apply(x, this, arguments);
-				}
-				
-				cbs[i] = null;
-				cache = null;
-				cbs = null;
-			};
-		}
-		
-		function fn_memoizeAsync(fn) {
-			var _cache = {},
-				_cacheCbs = {},
-				_args = [];
-				
-			return function(){
-				
-				var args = _Array_slice.call(arguments),
-					callback = args.pop();
-				
-				var id = args_id(_args, args);
-				
-				if (_cache[id]){
-					fn_apply(callback, this, _cache[id])
-					return; 
-				}
-				
-				if (_cacheCbs[id]) {
-					_cacheCbs[id].push(callback);
-					return;
-				}
-				
-				_cacheCbs[id] = [callback];
-				
-				args = _Array_slice.call(args);
-				args.push(fn_resolveDelegate(_cache, _cacheCbs, id));
-				
-				fn_apply(fn, this, args);
-			};
-		}
-		
-			
-			
 		
 		// end:source memoize.js
 		
@@ -5868,7 +5913,7 @@
 			 *	Create new Resource Instance,
 			 *	as sometimes it is necessary to call include. on new empty context
 			 */
-			instance: function(url) {
+			instance: function(url, parent) {
 				var resource;
 				if (url == null) {
 					resource = new Include();
@@ -5880,7 +5925,7 @@
 				resource = new Resource();
 				resource.state = 4;
 				resource.location = path_getDir(path_normalize(url));
-				
+				resource.parent = parent;
 				return resource;
 			},
 	
@@ -6880,7 +6925,7 @@
 		            return this.js.apply(this, arguments);
 		        },
 		    
-		        instance: function(currentUrl) {
+		        instance: function(currentUrl, parent) {
 		            if (typeof currentUrl === 'string') {
 		    
 		                var old = module,
@@ -6951,6 +6996,7 @@
 		            var res = new Resource();
 		            res.state = 4;
 		            res.location = currentUrl;
+		            res.parent = parent;
 		            return res;
 		        }
 		    });
@@ -10556,7 +10602,9 @@ function __eval(source, include) {
 	// source 2.for.js
 	
 	(function(){
-	
+		var FOR_OF_ITEM = 'for..of/item',
+			FOR_IN_ITEM = 'for..in/item';
+			
 		custom_Statements['for'] = {
 			
 			render: function(node, model, ctx, container, controller, childs){
@@ -10588,6 +10636,19 @@ function __eval(source, include) {
 				return createHandler(compoName, model);
 			}
 		};
+		
+		function createBootstrapCompo(name) {
+			var Ctor = function(){};
+			Ctor.prototype = {
+				type: Dom.COMPONENT,
+				compoName: name,
+				renderEnd: handler_proto_renderEnd,
+				dispose: handler_proto_dispose
+			};
+			return Ctor;
+		}
+		custom_Tags[FOR_OF_ITEM] = createBootstrapCompo(FOR_OF_ITEM);
+		custom_Tags[FOR_IN_ITEM] = createBootstrapCompo(FOR_IN_ITEM);
 		
 		function build(value, For, nodes, model, ctx, container, ctr, childs) {
 			
@@ -10641,7 +10702,7 @@ function __eval(source, include) {
 					scope[prop2] = i;
 				
 				
-				nodes[i] = createForItem('for..of/item', template, scope);
+				nodes[i] = createForItem(FOR_OF_ITEM, template, scope);
 			}
 			
 			return nodes;
@@ -10661,8 +10722,7 @@ function __eval(source, include) {
 				if (prop2) 
 					scope[prop2] = value;
 				
-				
-				nodes[i++] = createForItem('for..in/item', template, scope);
+				nodes[i++] = createForItem(FOR_IN_ITEM, template, scope);
 			}
 			
 			return nodes;
@@ -10677,7 +10737,8 @@ function __eval(source, include) {
 				controller: {
 					compoName: name,
 					scope: scope,
-					renderEnd: handler_proto_renderEnd
+					renderEnd: handler_proto_renderEnd,
+					dispose: handler_proto_dispose
 				}
 			};
 		}
@@ -10686,12 +10747,17 @@ function __eval(source, include) {
 			return {
 				compoName: name,
 				scope: scope,
-				renderEnd: handler_proto_renderEnd
+				renderEnd: handler_proto_renderEnd,
+				dispose: handler_proto_dispose
 			}
 		}
 		
 		function handler_proto_renderEnd(elements) {
 			this.elements = elements;
+		}
+		function handler_proto_dispose() {
+			if (this.elements) 
+				this.elements.length = 0;
 		}
 	
 		
@@ -11899,7 +11965,7 @@ function __eval(source, include) {
 					cacheInfo;
 				
 				var compoName = node.compoName || node.tagName,
-					Handler = custom_Tags[compoName] || node.controller;
+					Handler = node.controller || custom_Tags[compoName];
 				
 				if (Handler != null) 
 					cacheInfo = is_Function(Handler)
@@ -12037,7 +12103,8 @@ function __eval(source, include) {
 						mode = meta.mode,
 						compoName,
 						attr,
-						nodes;
+						nodes,
+						scope;
 					
 					if (compo != null) {
 						compoName = compo.compoName;
@@ -12045,6 +12112,7 @@ function __eval(source, include) {
 						mode = compo.mode;
 						
 						nodes = compo.nodes;
+						scope = compo.scope;
 					}
 				
 					
@@ -12060,7 +12128,9 @@ function __eval(source, include) {
 								: null,
 							nodes: meta.serializeNodes !== true
 								? null
-								: (compo.serializeNodes || mask.stringify)(this.node)
+								: (compo.serializeNodes || mask.stringify)(this.node),
+								
+							scope: scope
 						},
 						info = {
 							single: this.firstChild == null,
@@ -12770,9 +12840,12 @@ function __eval(source, include) {
 				? new Ctr
 				: new Dom.Component
 				;
+			controller.ID = ++builder_componentID;
 			
 			var scripts = document.getElementsByTagName('script'),
-				script, found = false;
+				script,
+				found = false;
+				
 			imax = scripts.length;
 			i = -1;
 			while( ++i < imax ){
@@ -12788,8 +12861,12 @@ function __eval(source, include) {
 				script.parentNode.insertBefore(fragment, script);
 				found = true;
 			}
-			
-			
+			if (found === false) {
+				log_warn("No blocks found: <script type='text/mask' data-run='true'>...</script>");
+			}
+			if (is_Function(controller.renderEnd)) {
+				controller.renderEnd(container, model);
+			}
 			Compo.signal.emitIn(controller, 'domInsert');
 			return controller;
 		};
@@ -13271,8 +13348,6 @@ function __eval(source, include) {
 					}
 					
 					json.type = string[parser_Index++];
-					
-					
 					parse_ID(json);
 					
 					while (parse_property(json));
@@ -13280,9 +13355,10 @@ function __eval(source, include) {
 					if (parser_Index === -1) 
 						return {};
 					
-					
 					if (string[parser_Length - 1] === '/') 
 						json.single = true;
+					if (json.scope !== void 0) 
+						json.scope = JSON.parse(json.scope);
 					
 					return json;
 				}
@@ -14224,8 +14300,9 @@ function __eval(source, include) {
 					if (attr != null) 
 						this.attr = obj_copy(this.attr);
 					
+					if (Ctor != null) 
+						Ctor.call(this);
 					
-					Ctor.call(this);
 				};
 			};
 			
@@ -14928,15 +15005,13 @@ function __eval(source, include) {
 						}
 					}
 					
-					var ctor;
-					
+					var Ctor;
 					if (classProto.hasOwnProperty('constructor'))
-						ctor = classProto.constructor;
+						Ctor = classProto.constructor;
+					if (Ctor == null)
+						Ctor = classProto.Construct;
 					
-					if (ctor == null)
-						ctor = classProto.Construct;
-					
-					classProto.Construct = compo_createConstructor(ctor, classProto);
+					classProto.Construct = compo_createConstructor(Ctor, classProto);
 					
 					
 					var Ext = classProto.Extends;
@@ -16275,8 +16350,8 @@ function __eval(source, include) {
 						isEscaped = !isEscaped;
 					}
 			
-					if (c === 46 || c === 35 || c === 91 || c === 93 || c < 33) {
-						// .#[]
+					if (c === 46 || c === 35 || c === 91 || c === 93 || c === 62 || c < 33) {
+						// .#[]>
 						if (isInQuote !== true && isEscaped !== true) {
 							break;
 						}
@@ -19591,7 +19666,7 @@ function __eval(source, include) {
 				if (!attrValue) 
 					return newValue;
 				
-				if (!currentValue) 
+				if (currentValue == null || currentValue === '') 
 					return attrValue + ' ' + newValue;
 				
 				return attrValue.replace(currentValue, newValue);

@@ -3,7 +3,7 @@
 	
 	// source /src/license.txt
 /*!
- * ClassJS v1.0.64
+ * ClassJS v1.0.66
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -1197,63 +1197,96 @@
 	}());
 	// end:source /src/util/patchObject.js
 	// source /src/util/function.js
-	function fn_proxy(fn, ctx) {
-	
-		return function() {
-			return fn_apply(fn, ctx, arguments);
-		};
-	}
-	
-	function fn_apply(fn, ctx, _arguments){
+	var fn_proxy,
+		fn_apply,
+		fn_createDelegate,
+		fn_doNothing,
+		fn_argsId
+		;
 		
-		switch (_arguments.length) {
-			case 0:
-				return fn.call(ctx);
-			case 1:
-				return fn.call(ctx, _arguments[0]);
-			case 2:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1]);
-			case 3:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1],
-					_arguments[2]);
-			case 4:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1],
-					_arguments[2],
-					_arguments[3]);
-			case 5:
-				return fn.call(ctx,
-					_arguments[0],
-					_arguments[1],
-					_arguments[2],
-					_arguments[3],
-					_arguments[4]
-					);
+	(function(){
+	
+		fn_proxy = function(fn, ctx) {
+			return function() {
+				return fn_apply(fn, ctx, arguments);
+			};
 		};
 		
-		return fn.apply(ctx, _arguments);
-	}
-	
-	function fn_isFunction(fn){
-		return typeof fn === 'function';
-	}
-	
-	function fn_createDelegate(fn /* args */) {
-		var args = _Array_slice.call(arguments, 1);
-		return function(){
-			if (arguments.length > 0) 
-				args = args.concat(_Array_slice.call(arguments));
+		fn_apply = function(fn, ctx, _arguments){
+			switch (_arguments.length) {
+				case 0:
+					return fn.call(ctx);
+				case 1:
+					return fn.call(ctx, _arguments[0]);
+				case 2:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1]);
+				case 3:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1],
+						_arguments[2]);
+				case 4:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1],
+						_arguments[2],
+						_arguments[3]);
+				case 5:
+					return fn.call(ctx,
+						_arguments[0],
+						_arguments[1],
+						_arguments[2],
+						_arguments[3],
+						_arguments[4]
+						);
+			};
+			return fn.apply(ctx, _arguments);
+		};
+		
+		fn_createDelegate = function(fn /* args */) {
+			var args = _Array_slice.call(arguments, 1);
+			return function(){
+				if (arguments.length > 0) 
+					args = args.concat(_Array_slice.call(arguments));
+				
+				return fn_apply(fn, null, args);
+			};
+		};
+		
+		fn_doNothing = function(){};
+		
+		fn_argsId = function(args, cache){
+			if (args.length === 0)
+				return 0;
 			
-			return fn_apply(fn, null, args);
+			var imax = cache.length,
+				i = -1;
+			while( ++i < imax ){
+				if (args_match(cache[i], args))
+					return i + 1;
+			}
+			cache.push(args);
+			return cache.length;
 		};
-	}
+		
+		// === private
+		
+		function args_match(a, b){
+			if (a.length !== b.length) 
+				return false;
+			
+			var imax = a.length,
+				i = 0;
+			for (; i < imax; i++){
+				if (a[i] !== b[i])
+					return false;
+			}
+			return true;
+		}
+	}());
 	
-	function fn_doNothing(){}
 	// end:source /src/util/function.js
 	
 	
@@ -1813,21 +1846,7 @@
 	var Deferred;
 	
 	(function(){
-		//Deferred = function(fn){
-		//	if (!(this == null || this.constructor === Deferred)) 
-		//		return;
-		//	
-		//	if (typeof fn !== 'function') 
-		//		return;
-		//	
-		//	var dfr = this == null || this.constructor !== Deferred
-		//		? new Deferred()
-		//		: this;
-		//	
-		//	fn(dfr.resolveDelegate(), dfr.rejectDelegate(), dfr);
-		//};
-		Deferred = function(){}
-		
+		Deferred = function(){};
 		Deferred.prototype = {
 			_isAsync: true,
 				
@@ -1967,23 +1986,85 @@
 					};
 				}
 				function delegate(dfr, name, fn) {
+					
 					return function(){
-						var override = fn.apply(this, arguments);
-						if (override != null) {
-							if (isDeferred(override) === true) {
-								override.pipe(dfr);
+						if (fn != null) {
+							var override = fn.apply(this, arguments);
+							if (override != null) {
+								if (isDeferred(override) === true) {
+									override.pipe(dfr);
+									return;
+								}
+								
+								dfr[name](override)
 								return;
 							}
-							
-							dfr[name](override)
-							return;
 						}
 						dfr[name].apply(dfr, arguments);
 					};
 				}
 				
 				return this;
+			},
+			pipeCallback: function(){
+				var self = this;
+				return function(error){
+					if (error != null) {
+						self.reject(error);
+						return;
+					}
+					var args = _Array_slice.call(arguments, 1);
+					fn_apply(self.resolve, self, args);
+				};
 			}
+		};
+		
+		Deferred.run = function(fn, ctx){
+			var dfr = new Deferred();
+			if (ctx == null) 
+				ctx = dfr;
+			
+			fn.call(ctx, dfr.resolveDelegate(), dfr.rejectDelegate(), dfr);
+			return dfr;
+		};
+		/**
+		 * Create function wich gets deferred object with first argument.
+		 * Created function returns always that deferred object
+		 */
+		Deferred.create = function(fn){
+			return function(){
+				var args = _Array_slice.call(arguments),
+					dfr = new Deferred;
+				args.unshift(dfr);
+				
+				fn_apply(fn, this, args);
+				return dfr;
+			};
+		};
+		/**
+		 * Similar as `create` it will also cache the deferred object,
+		 *  sothat the target function is called once pro specific arguments
+		 *
+		 * var fn = Deferred.memoize((dfr, name) => dfr.resolve(name));
+		 * fn('foo');
+		 * fn('baz');
+		 * fn('foo');
+		 *  - is called only once for `foo`, and once for `baz`
+		 */
+		Deferred.memoize = function(fn){
+			var dfrs = {}, args_store = [];
+			return function(){
+				var args = _Array_slice.call(arguments),
+					id = fn_argsId(args_store, args);
+				if (dfrs[id] != null) 
+					return dfrs[id];
+				
+				var dfr = dfrs[id] = new Deferred;
+				args.unshift(dfr);
+				
+				fn_apply(fn, this, args);
+				return dfr;
+			};
 		};
 	
 		// PRIVATE
@@ -3322,106 +3403,70 @@
 	(function(){
 		
 		// source memoize.js
+		var fn_memoize,
+			fn_memoizeAsync;
 		
-		
-		function args_match(a, b) {
-			if (a.length !== b.length) 
-				return false;
+		(function(){
+			fn_memoize = function(fn) {
+				var _cache = {},
+					_args = [];
+				return function() {
+					var id = fn_argsId(arguments, _args);
+					
+					return _cache[id] == null
+						? (_cache[id] = fn_apply(fn, this, arguments))
+						: _cache[id];
+				};
+			};
 			
-			var imax = a.length,
-				i = 0;
+			fn_memoizeAsync = function(fn) {
+				var _cache = {},
+					_cacheCbs = {},
+					_args = [];
+					
+				return function(){
+					
+					var args = _Array_slice.call(arguments),
+						callback = args.pop();
+					
+					var id = fn_argsId(args, _args);
+					
+					if (_cache[id]){
+						fn_apply(callback, this, _cache[id])
+						return; 
+					}
+					
+					if (_cacheCbs[id]) {
+						_cacheCbs[id].push(callback);
+						return;
+					}
+					
+					_cacheCbs[id] = [callback];
+					
+					args = _Array_slice.call(args);
+					args.push(fn_resolveDelegate(_cache, _cacheCbs, id));
+					
+					fn_apply(fn, this, args);
+				};
+			};
 			
-			for (; i < imax; i++){
-				if (a[i] !== b[i])
-					return false;
+			// === private
+			function fn_resolveDelegate(cache, cbs, id) {
+				return function(){
+					cache[id] = arguments;
+					
+					for (var i = 0, x, imax = cbs[id].length; i < imax; i++){
+						x = cbs[id][i];
+						fn_apply(x, this, arguments);
+					}
+					
+					cbs[i] = null;
+					cache = null;
+					cbs = null;
+				};
 			}
-			
-			return true;
-		}
+		}());
 		
-		function args_id(store, args) {
-		
-			if (args.length === 0)
-				return 0;
-		
-			
-			for (var i = 0, imax = store.length; i < imax; i++) {
-				
-				if (args_match(store[i], args))
-					return i + 1;
-			}
-			
-			store.push(args);
-			return store.length;
-		}
-		
-		
-		function fn_memoize(fn) {
-		
-			var _cache = {},
-				_args = [];
-				
-			return function() {
-		
-				var id = args_id(_args, arguments);
-		
-				
-				return _cache[id] == null
-					? (_cache[id] = fn_apply(fn, this, arguments))
-					: _cache[id];
-			};
-		}
-		
-		
-		function fn_resolveDelegate(cache, cbs, id) {
-			
-			return function(){
-				cache[id] = arguments;
-				
-				for (var i = 0, x, imax = cbs[id].length; i < imax; i++){
-					x = cbs[id][i];
-					fn_apply(x, this, arguments);
-				}
-				
-				cbs[i] = null;
-				cache = null;
-				cbs = null;
-			};
-		}
-		
-		function fn_memoizeAsync(fn) {
-			var _cache = {},
-				_cacheCbs = {},
-				_args = [];
-				
-			return function(){
-				
-				var args = _Array_slice.call(arguments),
-					callback = args.pop();
-				
-				var id = args_id(_args, args);
-				
-				if (_cache[id]){
-					fn_apply(callback, this, _cache[id])
-					return; 
-				}
-				
-				if (_cacheCbs[id]) {
-					_cacheCbs[id].push(callback);
-					return;
-				}
-				
-				_cacheCbs[id] = [callback];
-				
-				args = _Array_slice.call(args);
-				args.push(fn_resolveDelegate(_cache, _cacheCbs, id));
-				
-				fn_apply(fn, this, args);
-			};
-		}
-		
-			
-			
 		
 		// end:source memoize.js
 		
@@ -4792,7 +4837,7 @@
 			 *	Create new Resource Instance,
 			 *	as sometimes it is necessary to call include. on new empty context
 			 */
-			instance: function(url) {
+			instance: function(url, parent) {
 				var resource;
 				if (url == null) {
 					resource = new Include();
@@ -4804,7 +4849,7 @@
 				resource = new Resource();
 				resource.state = 4;
 				resource.location = path_getDir(path_normalize(url));
-				
+				resource.parent = parent;
 				return resource;
 			},
 	
@@ -7867,6 +7912,125 @@ function __eval(source, include) {
 	}());
 	
 	// end:source /src/expression/exports.js
+	// source /src/dom/exports.js
+	var Dom;
+	
+	(function(){
+		
+		var dom_NODE = 1,
+			dom_TEXTNODE = 2,
+			dom_FRAGMENT = 3,
+			dom_COMPONENT = 4,
+			dom_CONTROLLER = 9,
+			dom_SET = 10,
+			dom_STATEMENT = 15
+			;
+		
+		// source 1.utils.js
+		function _appendChild(el){
+			
+			if (this.nodes == null) {
+				this.nodes = [el];
+				return;
+			}
+			
+			this.nodes.push(el);
+			var prev = this.nodes[this.nodes.length - 2];
+			
+			prev.nextSibling = el;
+		}
+		// end:source 1.utils.js
+		// source 2.Node.js
+		function Node(tagName, parent) {
+			this.type = Dom.NODE;
+			this.tagName = tagName;
+			this.parent = parent;
+			this.attr = {};	
+		}
+		Node.prototype = {
+			constructor: Node,
+			type: dom_NODE,
+			tagName: null,
+			parent: null,
+			attr: null,
+			nodes: null,
+			expression: null,
+			appendChild: _appendChild,
+			stringify: null,
+			__single: null
+		};
+		// end:source 2.Node.js
+		// source 3.TextNode.js
+		
+		
+		function TextNode(text, parent) {
+			this.content = text;
+			this.parent = parent;
+		}
+		
+		TextNode.prototype = {
+			type: dom_TEXTNODE,
+			content: null,
+			parent: null
+		};
+		// end:source 3.TextNode.js
+		// source 4.Component.js
+		
+		
+		function Component(compoName, parent, controller){
+			this.tagName = compoName;
+			this.parent = parent;
+			this.controller = controller;
+			this.attr = {};
+		}
+		
+		Component.prototype = {
+			constructor: Component,
+			type: dom_COMPONENT,
+			parent: null,
+			attr: null,
+			controller: null,
+			nodes: null,
+			components: null,
+			model: null,
+			modelRef: null
+		};
+		
+		// end:source 4.Component.js
+		// source 5.Fragment.js
+		
+		
+		function Fragment(){
+			
+		}
+		
+		Fragment.prototype = {
+			constructor: Fragment,
+			type: dom_FRAGMENT,
+			nodes: null,
+			appendChild: _appendChild
+		};
+		// end:source 5.Fragment.js
+		
+		
+		Dom = {
+			NODE: dom_NODE,
+			TEXTNODE: dom_TEXTNODE,
+			FRAGMENT: dom_FRAGMENT,
+			COMPONENT: dom_COMPONENT,
+			CONTROLLER: dom_CONTROLLER,
+			SET: dom_SET,
+			STATEMENT: dom_STATEMENT,
+		
+			Node: Node,
+			TextNode: TextNode,
+			Fragment: Fragment,
+			Component: Component
+		};
+	}());
+	
+	// end:source /src/dom/exports.js
+	
 	// source /src/statements/exports.js
 	// source 1.if.js
 	(function(){
@@ -7911,7 +8075,9 @@ function __eval(source, include) {
 	// source 2.for.js
 	
 	(function(){
-	
+		var FOR_OF_ITEM = 'for..of/item',
+			FOR_IN_ITEM = 'for..in/item';
+			
 		custom_Statements['for'] = {
 			
 			render: function(node, model, ctx, container, controller, childs){
@@ -7943,6 +8109,19 @@ function __eval(source, include) {
 				return createHandler(compoName, model);
 			}
 		};
+		
+		function createBootstrapCompo(name) {
+			var Ctor = function(){};
+			Ctor.prototype = {
+				type: Dom.COMPONENT,
+				compoName: name,
+				renderEnd: handler_proto_renderEnd,
+				dispose: handler_proto_dispose
+			};
+			return Ctor;
+		}
+		custom_Tags[FOR_OF_ITEM] = createBootstrapCompo(FOR_OF_ITEM);
+		custom_Tags[FOR_IN_ITEM] = createBootstrapCompo(FOR_IN_ITEM);
 		
 		function build(value, For, nodes, model, ctx, container, ctr, childs) {
 			
@@ -7996,7 +8175,7 @@ function __eval(source, include) {
 					scope[prop2] = i;
 				
 				
-				nodes[i] = createForItem('for..of/item', template, scope);
+				nodes[i] = createForItem(FOR_OF_ITEM, template, scope);
 			}
 			
 			return nodes;
@@ -8016,8 +8195,7 @@ function __eval(source, include) {
 				if (prop2) 
 					scope[prop2] = value;
 				
-				
-				nodes[i++] = createForItem('for..in/item', template, scope);
+				nodes[i++] = createForItem(FOR_IN_ITEM, template, scope);
 			}
 			
 			return nodes;
@@ -8032,7 +8210,8 @@ function __eval(source, include) {
 				controller: {
 					compoName: name,
 					scope: scope,
-					renderEnd: handler_proto_renderEnd
+					renderEnd: handler_proto_renderEnd,
+					dispose: handler_proto_dispose
 				}
 			};
 		}
@@ -8041,12 +8220,17 @@ function __eval(source, include) {
 			return {
 				compoName: name,
 				scope: scope,
-				renderEnd: handler_proto_renderEnd
+				renderEnd: handler_proto_renderEnd,
+				dispose: handler_proto_dispose
 			}
 		}
 		
 		function handler_proto_renderEnd(elements) {
 			this.elements = elements;
+		}
+		function handler_proto_dispose() {
+			if (this.elements) 
+				this.elements.length = 0;
 		}
 	
 		
@@ -8464,124 +8648,7 @@ function __eval(source, include) {
 	};
 	// end:source 8.var.js
 	// end:source /src/statements/exports.js
-	// source /src/dom/exports.js
-	var Dom;
 	
-	(function(){
-		
-		var dom_NODE = 1,
-			dom_TEXTNODE = 2,
-			dom_FRAGMENT = 3,
-			dom_COMPONENT = 4,
-			dom_CONTROLLER = 9,
-			dom_SET = 10,
-			dom_STATEMENT = 15
-			;
-		
-		// source 1.utils.js
-		function _appendChild(el){
-			
-			if (this.nodes == null) {
-				this.nodes = [el];
-				return;
-			}
-			
-			this.nodes.push(el);
-			var prev = this.nodes[this.nodes.length - 2];
-			
-			prev.nextSibling = el;
-		}
-		// end:source 1.utils.js
-		// source 2.Node.js
-		function Node(tagName, parent) {
-			this.type = Dom.NODE;
-			this.tagName = tagName;
-			this.parent = parent;
-			this.attr = {};	
-		}
-		Node.prototype = {
-			constructor: Node,
-			type: dom_NODE,
-			tagName: null,
-			parent: null,
-			attr: null,
-			nodes: null,
-			expression: null,
-			appendChild: _appendChild,
-			stringify: null,
-			__single: null
-		};
-		// end:source 2.Node.js
-		// source 3.TextNode.js
-		
-		
-		function TextNode(text, parent) {
-			this.content = text;
-			this.parent = parent;
-		}
-		
-		TextNode.prototype = {
-			type: dom_TEXTNODE,
-			content: null,
-			parent: null
-		};
-		// end:source 3.TextNode.js
-		// source 4.Component.js
-		
-		
-		function Component(compoName, parent, controller){
-			this.tagName = compoName;
-			this.parent = parent;
-			this.controller = controller;
-			this.attr = {};
-		}
-		
-		Component.prototype = {
-			constructor: Component,
-			type: dom_COMPONENT,
-			parent: null,
-			attr: null,
-			controller: null,
-			nodes: null,
-			components: null,
-			model: null,
-			modelRef: null
-		};
-		
-		// end:source 4.Component.js
-		// source 5.Fragment.js
-		
-		
-		function Fragment(){
-			
-		}
-		
-		Fragment.prototype = {
-			constructor: Fragment,
-			type: dom_FRAGMENT,
-			nodes: null,
-			appendChild: _appendChild
-		};
-		// end:source 5.Fragment.js
-		
-		
-		Dom = {
-			NODE: dom_NODE,
-			TEXTNODE: dom_TEXTNODE,
-			FRAGMENT: dom_FRAGMENT,
-			COMPONENT: dom_COMPONENT,
-			CONTROLLER: dom_CONTROLLER,
-			SET: dom_SET,
-			STATEMENT: dom_STATEMENT,
-		
-			Node: Node,
-			TextNode: TextNode,
-			Fragment: Fragment,
-			Component: Component
-		};
-	}());
-	
-	// end:source /src/dom/exports.js
 	
 	// source /src/parse/parser.js
 	var parser_parse,
@@ -13605,8 +13672,8 @@ function __eval(source, include) {
 						isEscaped = !isEscaped;
 					}
 			
-					if (c === 46 || c === 35 || c === 91 || c === 93 || c < 33) {
-						// .#[]
+					if (c === 46 || c === 35 || c === 91 || c === 93 || c === 62 || c < 33) {
+						// .#[]>
 						if (isInQuote !== true && isEscaped !== true) {
 							break;
 						}
