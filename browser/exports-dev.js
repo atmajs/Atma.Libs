@@ -6302,10 +6302,15 @@ function __eval(source, include) {
 		
 			function createUtil(obj) {
 		
-				if (obj.arguments !== 'parsed')
-					return fn_proxy(obj.process || processRawFn, obj);
-		
-				return processParsedDelegate(obj.process);
+				if (obj.arguments === 'parsed')
+					return processParsedDelegate(obj.process);
+				
+				var fn = fn_proxy(obj.process || processRawFn, obj);
+				// <static> save reference to the initial util object.
+				// Mask.Bootstrap need the original util
+				// @workaround
+				fn.util = obj;
+				return fn;
 			}
 		
 		
@@ -7646,7 +7651,8 @@ function __eval(source, include) {
 		
 		// end:source 6.eval.js
 		// source 7.vars.helper.js
-		var refs_extractVars = (function() {
+		var  refs_extractVars;
+		(function() {
 		
 			/**
 			 * extract symbol references
@@ -7657,19 +7663,16 @@ function __eval(source, include) {
 			 */
 		
 		
-			return function(expr){
-				if (typeof expr === 'string') {
+			refs_extractVars = function(expr, model, ctx, ctr){
+				if (typeof expr === 'string') 
 					expr = expression_parse(expr);
-				}
 				
-				return _extractVars(expr);
-				
-				
+				return _extractVars(expr, model, ctx, ctr);
 			};
 			
 			
 			
-			function _extractVars(expr) {
+			function _extractVars(expr, model, ctx, ctr) {
 		
 				if (expr == null) 
 					return null;
@@ -7682,7 +7685,7 @@ function __eval(source, include) {
 						imax = body.length,
 						i = -1;
 					while ( ++i < imax ){
-						x = _extractVars(body[i]);
+						x = _extractVars(body[i], model, ctx, ctr);
 						refs = _append(refs, x);
 					}
 				}
@@ -7698,7 +7701,7 @@ function __eval(source, include) {
 					while (next != null) {
 						nextType = next.type;
 						if (type_FunctionRef === nextType) {
-							return _extractVars(next);
+							return _extractVars(next, model, ctx, ctr);
 						}
 						if ((type_SymbolRef !== nextType) &&
 							(type_Accessor !== nextType) &&
@@ -7708,8 +7711,15 @@ function __eval(source, include) {
 							return null;
 						}
 		
-						path += '.' + next.body;
-		
+						var prop = nextType === type_AccessorExpr
+							? expression_evaluate(next.body, model, ctx, ctr)
+							: next.body
+							;
+						if (typeof prop !== 'string') {
+							log_warn('Can`t extract accessor name', path);
+							return null;
+						}
+						path += '.' + prop;
 						next = next.next;
 					}
 		
@@ -7721,17 +7731,17 @@ function __eval(source, include) {
 					case type_Statement:
 					case type_UnaryPrefix:
 					case type_Ternary:
-						x = _extractVars(expr.body);
+						x = _extractVars(expr.body, model, ctx, ctr);
 						refs = _append(refs, x);
 						break;
 				}
 				
 				// get also from case1 and case2
 				if (type_Ternary === exprType) {
-					x = _extractVars(ast.case1);
+					x = _extractVars(ast.case1, model, ctx, ctr);
 					refs = _append(refs, x);
 		
-					x = _extractVars(ast.case2);
+					x = _extractVars(ast.case2, model, ctx, ctr);
 					refs = _append(refs, x);
 				}
 		
@@ -7741,7 +7751,7 @@ function __eval(source, include) {
 						imax = args.length,
 						i = -1;
 					while ( ++i < imax ){
-						x = _extractVars(args[i]);
+						x = _extractVars(args[i], model, ctx, ctr);
 						refs = _append(refs, x);
 					}
 					
@@ -7768,7 +7778,7 @@ function __eval(source, include) {
 					}
 					
 					if (expr.next) {
-						x = _extractVars(expr.next);
+						x = _extractVars(expr.next, model, ctx, ctr);
 						refs = _append(refs, {accessor: _getAccessor(expr), ref: x});
 					}
 				}
@@ -15238,7 +15248,7 @@ function __eval(source, include) {
 					;
 			};
 				
-			expression_bind = function(expr, model, cntx, controller, callback) {
+			expression_bind = function(expr, model, ctx, ctr, callback) {
 				
 				if (expr === '.') {
 					
@@ -15249,7 +15259,7 @@ function __eval(source, include) {
 				}
 				
 				var ast = expression_parse(expr),
-					vars = expression_varRefs(ast),
+					vars = expression_varRefs(ast, model, ctx, ctr),
 					obj, ref;
 			
 				if (vars == null) 
@@ -15261,8 +15271,8 @@ function __eval(source, include) {
 						obj = model;
 					}
 					
-					if (obj == null && obj_isDefined(controller, vars)) {
-						obj = controller;
+					if (obj == null && obj_isDefined(ctr, vars)) {
+						obj = ctr;
 					}
 					
 					if (obj == null) {
@@ -15288,7 +15298,7 @@ function __eval(source, include) {
 					
 					if (typeof x === 'object') {
 						
-						obj = expression_eval_origin(x.accessor, model, cntx, controller);
+						obj = expression_eval_origin(x.accessor, model, ctx, ctr);
 						
 						if (obj == null || typeof obj !== 'object') {
 							console.error('Binding failed to an object over accessor', x);
@@ -15302,8 +15312,8 @@ function __eval(source, include) {
 						obj = model;
 					}
 					
-					else if (obj_isDefined(controller, x)) {
-						obj = controller;
+					else if (obj_isDefined(ctr, x)) {
+						obj = ctr;
 					}
 					
 					else {
@@ -15320,9 +15330,9 @@ function __eval(source, include) {
 				return;
 			};
 			
-			expression_unbind = function(expr, model, controller, callback) {
+			expression_unbind = function(expr, model, ctr, callback) {
 				
-				if (typeof controller === 'function') 
+				if (typeof ctr === 'function') 
 					console.warn('[mask.binding] - expression unbind(expr, model, controller, callback)');
 				
 				
@@ -15331,7 +15341,7 @@ function __eval(source, include) {
 					return;
 				}
 				
-				var vars = expression_varRefs(expr),
+				var vars = expression_varRefs(expr, model, null, ctr),
 					x, ref;
 			
 				if (vars == null) 
@@ -15342,8 +15352,8 @@ function __eval(source, include) {
 						obj_removeObserver(model, vars, callback);
 					
 					
-					if (obj_isDefined(controller, vars)) 
-						obj_removeObserver(controller, vars, callback);
+					if (obj_isDefined(ctr, vars)) 
+						obj_removeObserver(ctr, vars, callback);
 					
 					return;
 				}
@@ -15362,7 +15372,7 @@ function __eval(source, include) {
 					
 					if (typeof x === 'object') {
 						
-						var obj = expression_eval_origin(x.accessor, model, null, controller);
+						var obj = expression_eval_origin(x.accessor, model, null, ctr);
 						if (obj) 
 							obj_removeObserver(obj, x.ref, callback);
 						
@@ -15372,8 +15382,8 @@ function __eval(source, include) {
 					if (obj_isDefined(model, x)) 
 						obj_removeObserver(model, x, callback);
 					
-					if (obj_isDefined(controller, x)) 
-						obj_removeObserver(controller, x, callback);
+					if (obj_isDefined(ctr, x)) 
+						obj_removeObserver(ctr, x, callback);
 				}
 			
 			}
