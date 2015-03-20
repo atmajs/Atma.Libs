@@ -34,7 +34,7 @@ include
 						continue;
 					}
 					
-					libs += x.source;
+					libs += '\n' + x.source;
 				}
 				
 				
@@ -126,7 +126,7 @@ include
 							}
 						}
 						
-						console.error('Pckg Not Found', search, name);
+						console.error('Pckg Not Found', search, name, Object.keys(loadedPckg));
 					}
 					
 					return array;
