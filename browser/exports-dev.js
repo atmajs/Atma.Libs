@@ -25,14 +25,11 @@
 		_exports
 		;
 
-    
 	_exports = root || _global;
     
-
     function construct(){
-
         return factory(_global, _exports);
-    };
+    }
 
     
     if (typeof define === 'function' && define.amd) {
@@ -364,7 +361,6 @@
 		
 		
 		class_inherit = PROTO in Object.prototype
-			//? inherit_Object_create
 			? inherit
 			: inherit_protoLess
 			;
@@ -411,17 +407,27 @@
 				}
 				
 				if (_extends != null) {
-					arr_each(_extends, function(x){
-						x = proto_getProto(x);
-						
-						if (is_rawObject(x[key])) 
-							obj_defaults(protoValue, x[key]);
-					});
+					arr_each(
+						_extends,
+						proto_extendDefaultsDelegate(protoValue, key)
+					);
 				}
 			}
 		}
 		
+		
 		// PRIVATE
+		
+		function proto_extendDefaultsDelegate(target, key) {
+			return function(source){
+				var proto = proto_getProto(source),
+					val = proto[key];
+				if (is_rawObject(val)) {
+					obj_defaults(target, val);
+				}
+			}
+		}
+		
 		function proto_extend(proto, source) {
 			if (source == null) 
 				return;
@@ -637,13 +643,6 @@
 						
 						json[asKey] = val.toJSON();
 						continue;
-						//@removed - serialize any if toJSON is implemented
-						//if (toJSON === json_proto_toJSON || toJSON === json_proto_arrayToJSON) {
-						//	json[asKey] = val.toJSON();
-						//	continue;
-						//}
-						
-						break;
 				}
 	
 				json[asKey] = val;
@@ -835,7 +834,7 @@
 					define(target, key, descr);
 				}
 				return target;
-			};
+			}
 		}());
 		
 		
@@ -1318,7 +1317,7 @@
 						_arguments[3],
 						_arguments[4]
 						);
-			};
+			}
 			return fn.apply(ctx, _arguments);
 		};
 		
@@ -1529,6 +1528,7 @@
 		                            p.done(e_PRAPAIR_DATA, '');
 		                            return p;
 		                        }
+		                        break;
 		                    default:
 		                        // @TODO notify not supported content type
 		                        // -> fallback to url encode
@@ -2855,10 +2855,9 @@
 			};
 		}
 		
-		function Remote(route){
-			
+		function Remote(route){	
 			return new XHRRemote(route);
-		};
+		}
 		
 		Remote.onBefore = storageEvents_onBefore;
 		Remote.onAfter = storageEvents_onAfter;
@@ -3112,9 +3111,11 @@
 							}
 						}
 						
-						// eqeq to match by type diffs.
-						if (value != matcher) 
+						/*jshint eqeqeq: false*/
+						if (value != matcher) { 
 							return false;
+						}
+						/*jshint eqeqeq: true*/
 						
 					}
 					return true;
@@ -11248,6 +11249,25 @@ function __eval(source, include) {
 				}
 			},
 			
+			hasExport: function(name) {
+				if (this.alias === name) {
+					return true;
+				}
+				var exports = this.exports
+				if (exports != null) {
+					var imax = exports.length,
+						i = -1;
+					while(++i < imax) {
+						var x = exports[i];
+						var expName = x.alias == null ? x.name : x.alias;
+						if (expName === name) {
+							return true;
+						}
+					}
+				}
+				return false;
+			},
+			
 			getOriginal: function(alias){
 				if (this.alias === alias) {
 					return '*';
@@ -11323,8 +11343,15 @@ function __eval(source, include) {
 			},
 			getHandler: function(name){
 				var module = this.module;
-				if (module == null || module.error != null) {
+				if (module == null) {
 					return;
+				}
+				if (module.error != null) {
+					if (this.hasExport(name)) {
+						this.logError_('Resource for the import `' + name + '` not loaded');
+						return this.empty;
+					}
+					return null
 				}
 				var orig = this.getOriginal(name);
 				if (orig == null) {
@@ -11332,6 +11359,7 @@ function __eval(source, include) {
 				}
 				return module.exports[orig] || module.queryHandler(orig);
 			},
+			empty: function EmptyCompo () {}
 		});
 		// end:source Import/ImportMask
 		// source Import/ImportScript
