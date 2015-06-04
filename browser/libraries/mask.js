@@ -977,6 +977,8 @@
 				script: null
 			},
 			base: null,
+	        
+	        modules: 'default',
 			
 			getFile: null,
 			getScript: null,
@@ -1428,7 +1430,8 @@
     	path_resolveUrl,
     	path_combine,
     	path_isRelative,
-    	path_toRelative
+    	path_toRelative,
+    	path_appendQuery
     	;
     (function(){
     	var isWeb = true;
@@ -1455,6 +1458,11 @@
     		}
     		var match = rgx_EXT.exec(path);
     		return match == null ? '' : match[1];
+    	};
+    	
+    	path_appendQuery = function(path, key, val){
+    		var conjunctor = path.indexOf('?') === -1 ? '?' : '&';
+    		return path + conjunctor + key + '=' + val;
     	};
     	
     	(function(){
@@ -1560,11 +1568,11 @@
     			}
     			out += x;
     		}
-    		return out;
+    		return path_collapse(out);
     	};
     	
     	var rgx_PROTOCOL = /^(file|https?):/i,
-    		rgx_SUB_DIR  = /([^\/]+\/)?\.\.\//,
+    		rgx_SUB_DIR  = /[^\/\.]+\/\.\.\//,
     		rgx_FILENAME = /\/[^\/]+\.\w+(\?.*)?(#.*)?$/,
     		rgx_EXT      = /\.(\w+)$/,
     		rgx_win32Drive = /(^\/?\w{1}:)(\/|$)/
@@ -1578,11 +1586,12 @@
     		return 'file:///' + path;
     	}
     	
-    	function path_collapse(url) {
-    		while (url.indexOf('../') !== -1) {
+    	function path_collapse(url_) {
+    		var url = url_;
+    		while (rgx_SUB_DIR.test(url)) {
     			url = url.replace(rgx_SUB_DIR, '');
     		}
-    		return url.replace(/\/\.\//g, '/');
+    		return url;
     	}
     	function path_ensureTrailingSlash(path) {
     		if (path.charCodeAt(path.length - 1) === 47 /* / */)
@@ -1809,6 +1818,39 @@
     // end:source ./resource/file.js
     
     // end:source util/
+	// source api/
+	//source config
+	function mask_config () {
+		var args = arguments,
+			length = args.length
+		if (length === 0) {
+			return __cfg;
+		}
+		if (length === 1) {
+			var x = args[0]
+			if (is_Object(x)) {
+				obj_extend(__cfg, x);
+				listeners_emit('config', x);
+				return;
+			}
+			if (is_String(x)) {
+				return obj_getProperty(__cfg, x);
+			}
+		}
+		if (length === 2) {
+			var prop = args[0];
+			if (obj_hasProperty(__cfg, prop) === false) {
+				log_warn('Unknown configuration property', prop);
+			}
+			var x = {};
+			obj_setProperty(x    , prop, args[1]);
+			obj_setProperty(__cfg, prop, args[1]);
+			listeners_emit('config', x);
+			return;
+		}
+	}
+	//end:source config
+	// end:source api/
 	// source custom/
 	var custom_Utils,
 		custom_Statements,
@@ -1827,12 +1869,16 @@
 		
 		customTag_get,
 		customTag_getAll,
+		
 		customTag_register,
 		customTag_registerScoped,
 		customTag_registerFromTemplate,
 		customTag_registerResolver,
-		customTag_Base,
 		
+		// generic fn
+		customTag_define,
+		
+		customTag_Base,
 		custom_optimize
 		;
 		
@@ -1941,7 +1987,7 @@
 					return Ctor;
 				}
 				
-				var ctr_ = ctr;
+				var ctr_ = is_Function(ctr) ? ctr.prototype : ctr;
 				while(ctr_ != null) {
 					if (is_Function(ctr_.getHandler)) {
 						Ctor = ctr_.getHandler(name);
@@ -1951,7 +1997,7 @@
 					}
 					ctr_ = ctr_.parent;
 				}
-				return null;
+				return custom_Tags_global[name];
 			};
 			customTag_getAll = function(ctr) {
 				if (ctr == null) {
@@ -1989,8 +2035,14 @@
 					customTag_registerScoped.apply(this, arguments);
 					return;
 				}
+				var Current = custom_Tags[mix],
+					Ctor = compo_ensureCtor(Handler),
+					Repo = custom_Tags[mix] === Resolver
+						? custom_Tags_global
+						: custom_Tags
+						;
+				Repo[mix] = Ctor;	
 				
-				custom_Tags[mix] = compo_ensureCtor(Handler);
 				//> make fast properties
 				obj_toFastProps(custom_Tags);
 			};
@@ -2018,6 +2070,11 @@
 			};
 			
 			customTag_registerScoped = function(Ctx, name, Handler) {
+				if (Ctx == null) {
+					// Use global
+					customTag_register(name, Handler);
+					return;
+				}
 				customTag_registerResolver(name);
 				var obj = is_Function(Ctx) ? Ctx.prototype : Ctx;
 				var map = obj.__handlers__;
@@ -2029,6 +2086,65 @@
 				if (obj.getHandler == null) {
 					obj.getHandler = compo_getHandlerDelegate;
 				}
+			};
+			
+			/** Variations:
+			 * - 1. (template)
+			 * - 2. (scopedCompoName, template)
+			 * - 3. (scopedCtr, template)
+			 * - 4. (name, Ctor)
+			 * - 5. (scopedCtr, name, Ctor)
+			 * - 6. (scopedCompoName, name, Ctor)
+			 */
+			customTag_define = function (a1, a2, a3) {
+				var l = arguments.length;
+				if (1 === l) {
+					// 1
+					var type = typeof a1;
+					if (type !== 'string') {
+						log_error('API. Define expects string for 1 argument');
+						return;
+					}
+					customTag_registerFromTemplate(a1);
+					return;
+				}
+				if (2 === l) {
+					var t1 = typeof a1;
+					var t2 = typeof a2;
+					if (is_String(t1) && t1 === t2) {
+						// 2
+						var ctr = customTag_get(a1);
+						customTag_registerFromTemplate(a2, ctr);
+						return;
+					}
+					if (is_Object(t1) && is_String(t2)) {
+						// 3
+						customTag_registerFromTemplate(a1, a2);
+						return;
+					}
+					if (is_String(t1) && is_Function(t2)) {
+						// 4
+						customTag_register(a1, a2);
+						return;
+					}
+				}
+				if (3 === l) {
+					var t1 = typeof a1;
+					var t2 = typeof a2;
+					var t3 = typeof a3;
+					if (is_Object(t1) && is_String(t2) && is_Function(t3)) {
+						// 5
+						customTag_registerScoped(a1, a2, a3);
+						return;
+					}
+					if (is_String(t1) && is_String(t2) && is_Function(t3)) {
+						// 6
+						var ctr = customTag_get(a1);
+						customTag_registerScoped(ctr, a2, a3);
+						return;
+					}
+				}
+				log_error('Api::Define. Unsupported combination');
 			};
 			
 			customTag_registerResolver = function(name){
@@ -2105,18 +2221,6 @@
 					Handler.__Ctor = wrapStatic(Handler);
 				}
 				return Handler;
-			}
-			
-			function compo_registerViaTemplate(tmpl, Ctx) {
-				jmask(tmpl).each(function(x){
-					var name = x.tagName;
-					if (name === 'let' && Ctx == null) {
-						name = 'define';
-					}
-					if ('define' === name) {
-						Define.registerGlobal()
-					}
-				});
 			}
 			
 		}());
@@ -4662,12 +4766,16 @@
 						if (val === key) {
 							continue;
 						}
-						if (typeof val === 'function') {
+						
+						if (is_Function(val)) {
 							val = val();
 						}
-						if (stream.minify === false || /[^\w_$\-\.]/.test(val)){
-							val = wrapString(val);
+						if (is_String(val)) {
+							if (stream.minify === false || /[^\w_$\-\.]/.test(val)){
+								val = wrapString(val);
+							}
 						}
+						
 						str += '=' + val;
 					}
 				}
@@ -5131,7 +5239,7 @@
 					tagName = interpolate_str_(tagName, placeholders, tmplNode);
 					
 					var handler = customTag_get(tagName, tmplNode);
-					if (handler !== null) {
+					if (handler != null) {
 						var proto = handler.prototype;
 						var tmpl  = proto.template || proto.nodes;
 						
@@ -5145,7 +5253,7 @@
 					break;
 				default:
 					var handler = customTag_get(tagName, tmplNode);
-					if (handler !== null) {
+					if (handler != null) {
 						var proto = handler.prototype;
 						if (proto && proto.meta != null && proto.meta.template === 'merge') {
 							return node;
@@ -5519,7 +5627,10 @@
 			_extensions_script = ' js es6 test coffee ',
 			_extensions_style  = ' css sass scss less ',
 			_extensions_data   = ' json ',
-			_base;
+			_opts = {
+				base: null,
+				version: null
+			};
 		
 		// source utils
 		var u_resolveLocation,
@@ -5551,17 +5662,17 @@
 					}
 				}
 				
-				if (_base == null) {
-					_base = path_resolveCurrent();
+				if (_opts.base == null) {
+					_opts.base = path_resolveCurrent();
 				}
 				
 				if (path != null) {
 					if (path_isRelative(path) === false) {
 						return path;
 					}
-					return path_combine(_base, path);
+					return path_combine(_opts.base, path);
 				}
-				return _base;
+				return _opts.base;
 			};
 			
 			u_resolvePath = function(path, ctx, ctr, module){
@@ -5591,7 +5702,82 @@
 		}());
 		
 		// end:source utils
-	
+		// source loaders
+		var _file_get,
+			_file_getScript,
+			_file_getStyle,
+			_file_getJson;
+			
+		(function(){
+			
+			_file_get = createTransport(function(){
+				return __cfg.getFile || file_get;
+			});
+			_file_getScript = createTransport(function(){
+				return __cfg.getScript || file_getScript;
+			});
+			_file_getStyle = createTransport(function(){
+				return __cfg.getStyle || file_getStyle;
+			});
+			_file_getJson = createTransport(function(){
+				return __cfg.getData || file_getJson;
+			});
+			
+			
+			listeners_on('config', function (config) {
+				var modules = config.modules;
+				if (modules == null) {
+					return;
+				}
+				var fn = Loaders[modules];
+				if (is_Function(fn) === false) {
+					log_warn('Module system is not supported: ' + modules);
+					return;
+				}
+				fn();
+			});
+			
+			function createTransport(loaderFactoryFn) {
+				return function(path_){
+					var fn = loaderFactoryFn(),
+						path = path_,
+						v = _opts.version;
+					if (v != null) {
+						path = path_appendQuery(path, 'v', v);
+					}
+					return fn(path);
+				};
+			}
+			
+			var Loaders = {
+				'default': function () {
+					__cfg.getScript = __cfg.getFile = null;
+				},
+				'include': function () {
+					__cfg.getScript = function(path) {
+						var dfr = new class_Dfr;
+						include
+							.instance()
+							.js(path + '::Module')
+							.done(function(resp){
+								var exports = resp.Module;
+								if (exports != null) {
+									dfr.resolve(exports);
+									return;
+								}
+								dfr.reject('Export is undefined');
+							});
+						return dfr;
+					};
+				}
+			};
+			
+			if (typeof include !== 'undefined' && is_Function(include && include.js)) {
+				mask_config('modules', 'include');
+			}
+		}());
+		// end:source loaders
+		
 		// source Import/Import
 		var IImport = class_create({
 			type: null,
@@ -5861,9 +6047,7 @@
 				exports: null,
 				imports: null,
 				
-				load_: function(path){
-					return (__cfg.getFile || file_get)(path);
-				},
+				load_: _file_get,
 				preprocessError_: function(error, next) {
 					var msg = 'Load error: ' + this.path;
 					if (error && error.status) {
@@ -5996,15 +6180,21 @@
 					var name = node.tagName;
 					if (name === 'define' || name === 'let') {
 						var Ctor = Define.create(node, model, module);
-						obj_extend(Ctor.prototype, {
-							getHandler: getHandler,
-							location: module.location,
-							scope: scope
-						});
+						var Proto = Ctor.prototype;
+						Proto.getHandler = _fn_wrap(Proto.getHandler, getHandler);
+						Proto.location = module.location;
+						Proto.scope  = obj_extend(Proto.scope, scope);
+						
+						
+						var compoName = node.name;
 						if (name === 'define') {
-							exports[node.name] = Ctor;
+							exports[compoName] = Ctor;
+							customTag_register(compoName, Ctor);
 						}
-						exports.__handlers__[node.name] = Ctor;
+						if (name === 'let') {
+							customTag_registerResolver(compoName)
+						}
+						exports.__handlers__[compoName] = Ctor;
 					}
 				}
 				exports['*'] = class_create(customTag_Base, {
@@ -6048,13 +6238,16 @@
 				};
 			}
 			function _module_getHandler(module, name) {
-				var Ctor = module.exports[name];
-				if (Ctor != null) {
+				var Ctor;
+				
+				// check public exports
+				var exports = module.exports;
+				if (exports != null && (Ctor = exports[name]) != null) {
 					return Ctor;
 				}
 				
-				// check internal components store
-				var handlers = this.__handlers__;
+				// check private components store
+				var handlers = exports.__handlers__;
 				if (handlers != null && (Ctor = handlers[name]) != null) {
 					return Ctor;
 				}
@@ -6071,6 +6264,19 @@
 				}
 				return null;
 			}
+			
+			function _fn_wrap(baseFn, fn) {
+				if (baseFn == null) {
+					return fn;
+				}
+				return function(){
+					var x = baseFn.apply(this, arguments);
+					if (x != null) {
+						return x;
+					}
+					return fn.apply(this, arguments);
+				}
+			}
 		}());
 		
 		// end:source Module/ModuleMask
@@ -6078,10 +6284,7 @@
 		var ModuleScript = class_create(IModule, {
 			type: 'script',
 			
-			load_: function(path){
-				var fn = __cfg.getScript || file_getScript;
-				return fn(path);
-			},
+			load_: _file_getScript,
 			getExport_: function(property) {
 				var obj = this.exports;
 				return property !== '*'
@@ -6109,20 +6312,14 @@
 		var ModuleStyle = class_create(IModule, {
 			type: 'style',
 			
-			load_: function(path){
-				var fn = __cfg.getStyle || file_getStyle;
-				return fn(path);
-			}
+			load_: _file_getStyle
 		});
 		// end:source Module/ModuleStyle
 		// source Module/ModuleData
 		var ModuleData = class_create(ModuleScript, {
 			type: 'data',
 			
-			load_: function(path){
-				var fn = __cfg.getData || file_getJson;
-				return fn(path);
-			}	
+			load_: _file_getJson
 		});
 		// end:source Module/ModuleData
 		// source Module/ModuleHtml
@@ -6377,7 +6574,7 @@
 					dependencies: null
 				};
 				
-				(__cfg.getFile || file_get)(path)
+				_file_get(path)
 					.done(function(template){
 						walk(parser_parse(template), path, opts, function(error, deps){
 							if (error) {
@@ -6527,7 +6724,7 @@
 			var Single = {
 				mask: function(path, opts, done){
 					return class_Dfr.run(function(resolve, reject) {
-						(__cfg.getFile || file_get)(path)
+						_file_get(path)
 							.fail(reject)
 							.done(function(str) {
 								// remove all remote styles
@@ -6560,7 +6757,7 @@
 			
 			function build_script(path, opts, done) {
 				return class_Dfr.run(function(resolve, reject){
-					(__cfg.getFile || file_get)(path)
+					_file_get(path)
 						.fail(reject)
 						.done(function(str){
 							var script = 'module = { exports: null }\n';
@@ -6571,11 +6768,11 @@
 				});
 			}
 			function build_style(path, opts, done) {
-				return (__cfg.getFile || file_get)(path, done);
+				return _file_get(path, done);
 			}
 			function build_data(path, opts, done) {
 				return class_Dfr.run(function(resolve, reject){
-					(__cfg.getFile || file_get)(path)
+					_file_get(path)
 						.fail(reject)
 						.done(function(mix){
 							var json;
@@ -6652,11 +6849,11 @@
 				return 'script';
 			},
 			cfg: function(name, val){
-				switch (name) {
-					case 'base':
-						_base = val;
-						break;
+				if (name in _opts === false) {
+					log_error('Invalid module option: ', name);
+					return;
 				}
+				_opts[name] = val;
 			},
 			resolveLocation: u_resolveLocation,
 			getDependencies: tools_getDependencies,
@@ -8023,7 +8220,7 @@
 			
 			function createParser(name, transform) {
 				return function (str, i, imax, parent) {
-						var start = i,
+					var start = i,
 						end,
 						attr,
 						hasBody,
@@ -8038,15 +8235,19 @@
 						}
 						i++;
 					}
-					if (c === 62) {
-						// handle single as generic mask node
-						return [ new Dom.Node(name, parent), i, go_tag ];
-					}
 					
 					attr = parser_parseAttr(str, start, i);
 					for (var key in attr) {
 						attr[key] = ensureTemplateFunction(attr[key]);
 					}
+					
+					if (c === 62) {
+						var node = new Dom.Node(name, parent);
+						node.attr = attr;
+						// `>` handle single as generic mask node
+						return [ node, i, go_tag ];
+					}
+					
 					
 					end = i;
 					hasBody = c === 123;
@@ -8264,26 +8465,32 @@
 					var start = str.indexOf('{', i) + 1,
 						head = parseHead(
 							tagName, str.substring(i, start - 1)
-						),
-						end = cursor_groupEnd(str, start, imax, 123, 125),
+						);
+					if (head == null) {
+						parser_error('Method head syntax error', str, i);
+					}
+					var end = cursor_groupEnd(str, start, imax, 123, 125),
 						body = str.substring(start, end),
-						node = new MethodNode(tagName, head.shift(), head, body, parent)
+						node = head == null
+							? null
+							: new MethodNode(tagName, head.name, head.args, body, parent)
 						;
 					return [ node, end + 1, 0 ];
 				};
 			}
 			
-			function parseHead(name, head) {
-				var parts = /(\w+)\s*\(([^\)]*)\)/.exec(head);
+			function parseHead(name, str) {
+				var parts = /([^\(\)\n]+)\s*(\(([^\)]*)\))?/.exec(str);
 				if (parts == null) {
-					log_error(name,' has invalid head syntax:', head);
 					return null;
 				}
-				var arr = [ parts[1] ];
-				arr = arr.concat(
-					parts[2].replace(/\s/g, '').split(',')
-				);
-				return arr;
+				var methodName = parts[1].trim();
+				var methodArgs = parts[3].replace(/\s/g, '').split(',');		
+				return new MethodHead(methodName, methodArgs);
+			}
+			function MethodHead(name, args) {
+				this.name = name;
+				this.args = args;
 			}
 			function compileFn(args, body) {
 				var arr = _Array_slice.call(args);
@@ -9730,6 +9937,7 @@
 						if (compo != null) {
 							// overriden
 							ctr.components[i] = compo;
+							compo.components  = ctr.components.splice(i + 1);
 						}
 					}
 				}
@@ -10037,6 +10245,8 @@
 			registerHandler: customTag_register,
 			
 			registerFromTemplate: customTag_registerFromTemplate,
+			
+			define: customTag_define,
 			/**
 			 *	mask.getHandler(tagName) -> Function | Object
 			 * - tagName (String):
@@ -10154,11 +10364,11 @@
 			 *	one or all templates from cache
 			 **/
 			clearCache: function(key){
-				if (typeof key === 'string'){
-					delete __templates[key];
-				}else{
+				if (arguments.length === 0) {
 					__templates = {};
+					return;
 				}
+				delete __templates[key];
 			},
 	
 			Utils: {
@@ -10245,31 +10455,9 @@
 				builder_componentID = index;
 			},
 			
-			cfg: function(){
-				var args = arguments,
-					len = args.length
-				if (len === 0) {
-					return __cfg;
-				}
-				if (len === 1) {
-					var x = args[0]
-					if (is_Object(x)) {
-						obj_extend(__cfg, x);
-						return;
-					}
-					if (is_String(x)) {
-						return obj_getProperty(__cfg, x);
-					}
-				}
-				if (len === 2) {
-					var prop = args[0];
-					if (obj_hasProperty(__cfg, prop) === false) {
-						log_warn('Unknown configuration property', prop);
-					}
-					obj_setProperty(__cfg, prop, args[1]);
-					return;
-				}
-			},
+			cfg: mask_config,
+			config: mask_config,
+			
 			// For the consistence with the NodeJS
 			toHtml: function(dom) {
 				return $(dom).outerHtml();
@@ -11169,28 +11357,26 @@
 					type = typeof mix;
 					
 					if (target[key] == null) {
-						target[key] = 'object' === type
-							? clone_(mix)
-							: mix;
+						target[key] = mix;
 						continue;
 					}
 					if ('node' === name) {
-						// http://jsperf.com/indexof-vs-bunch-of-if
-						var isSealed = key === 'renderStart' ||
-								key === 'renderEnd' ||
-								key === 'emitIn' ||
-								key === 'emitOut' ||
-								key === 'components' ||
-								key === 'nodes' ||
-								key === 'template' ||
-								key === 'find' ||
-								key === 'closest' ||
-								key === 'on' ||
-								key === 'remove' ||
-								key === 'slotState' ||
-								key === 'signalState' ||
-								key === 'append' ||
-								key === 'appendTo'
+						// http://jsperf.com/indexof-vs-bunch-of-ifs
+						var isSealed = key === 'renderStart'
+								|| key === 'renderEnd'
+								|| key === 'emitIn'
+								|| key === 'emitOut'
+								|| key === 'components'
+								|| key === 'nodes'
+								|| key === 'template'
+								|| key === 'find'
+								|| key === 'closest'
+								|| key === 'on'
+								|| key === 'remove'
+								|| key === 'slotState'
+								|| key === 'signalState'
+								|| key === 'append'
+								|| key === 'appendTo'
 								;
 						if (isSealed === true) 
 							continue;
@@ -11754,6 +11940,8 @@
 				"pause": 19,
 				"capslock": 20,
 				"esc": 27,
+				"escape": 27,
+				
 				"space": 32,
 				"pageup": 33,
 				"pagedown": 34,
@@ -11955,9 +12143,9 @@
 						x = keys[i].trim();
 						code = CODES[x];
 						if (code === void 0) {
-							if (x.length !== 1) 
-								throw Error('Unexpected sequence. Use `+` sign to define the sequence:' + x)
-							
+							if (x.length !== 1)  {
+								throw Error('Unexpected sequence. Neither a predefined key, nor a char: ' + x);
+							}
 							code = x.toUpperCase().charCodeAt(0);
 						}
 						out[i] = code;
@@ -12200,8 +12388,9 @@
 						event_bind(el, type, function (event) {
 							var code = event_getCode(event);
 							var r = comb.tryCall(event, null, code);
-							if (r === Key_MATCH_OK) 
+							if (r === Key_MATCH_OK) {
 								event.preventDefault();
+							}
 						});
 						return;
 					}
@@ -12227,6 +12416,7 @@
 				attach: function(el, type, comb, fn, ctr){
 					if (filter_isKeyboardInput(el)) {
 						this.on(el, type, comb, fn);
+						return;
 					}
 					var x = ctr;
 					while(x && x.slots == null) {
@@ -12370,19 +12560,18 @@
 				};
 				
 				var threshold_TIME = 300,
-					threshold_DIST = 10;
+					threshold_DIST = 10,
+					timestamp_LastTouch = null;
 				
 				FastClick.prototype = {
 					handleEvent: function (event) {
-						switch (event.type) {
+						var type = event.type;
+						switch (type) {
 							case 'touchmove':
-								this.touchmove(event);
-								break;
 							case 'touchstart':
-								this.touchstart(event);
-								break;
 							case 'touchend':
-								this.touchend(event);
+								timestamp_LastTouch = event.timeStamp;
+								this[type](event);
 								break;
 							case 'touchcancel':
 								this.reset();
@@ -12418,6 +12607,12 @@
 						this.reset();
 					},
 					click: function(event){
+						if (timestamp_LastTouch != null) {
+							var dt = timestamp_LastTouch - event.timeStamp;
+							if (dt < 500) {
+								return;
+							}
+						}
 						if (--this.dismiss > -1) 
 							return;
 						
@@ -14364,30 +14559,15 @@
 			};
 			
 			jmask_clone = function(node, parent){
+				var clone = obj_create(node);
 			
-				var copy = {
-					'type': 1,
-					'tagName': 1,
-					'compoName': 1,
-					'controller': 1
-				};
-			
-				var clone = {
-					parent: parent
-				};
-			
-				for(var key in node){
-					if (copy[key] === 1){
-						clone[key] = node[key];
-					}
-				}
-			
-				if (node.attr != null){
-					clone.attr = obj_create(node.attr);
+				var attr = node.attr;
+				if (attr != null){
+					clone.attr = obj_create(attr);
 				}
 			
 				var nodes = node.nodes;
-				if (nodes != null && nodes.length > 0){
+				if (nodes != null){
 					if (is_ArrayLike(nodes) === false) {
 						clone.nodes = [ jmask_clone(nodes, clone) ];
 					}
@@ -14640,8 +14820,8 @@
 				});
 			};
 			Proto.attr = Proto.prop = function(mix, val){
-				if (arguments.length === 1) {
-					return this.length > 0 ? this[0].attr[mix] : null;
+				if (arguments.length === 1 && is_String(mix)) {
+					return this.length !== 0 ? this[0].attr[mix] : null;
 				}
 				function asString(node, key, val){
 					node.attr[key] = _mask_ensureTmplFn(val);
@@ -15541,7 +15721,8 @@
 			compo_dispose,
 			compo_inserted,
 			compo_attachDisposer,
-			compo_trav_children
+			compo_trav_children,
+			compo_getScopeFor
 			;
 		(function(){
 			
@@ -15640,6 +15821,21 @@
 					}
 				}
 				return out;
+			};
+			
+			compo_getScopeFor = function(ctr, path){
+				var key = path;
+				var i = path.indexOf('.');
+				if (i !== -1) {
+					key = path.substring(0, i);
+				}
+				while (ctr != null) {
+					if (ctr.scope != null && ctr.scope.hasOwnProperty(key)) {
+						return ctr.scope;
+					}
+					ctr = ctr.parent;
+				}
+				return null;
 			};
 		}());
 		// end:source compo
@@ -16567,7 +16763,20 @@
 					var error = this.validate(value);
 					if (error == null) {
 						this.dismiss = 1;
-						this.objectWay.set(this.model, this.value, value, this);
+						var obj = this.model;
+						var prop = this.value;
+						if (prop.charCodeAt(0) === 36 /*$*/) {
+							var i = prop.indexOf('.');
+							if (i !== -1) {
+								var key = prop.substring(0, i);
+								if (key === '$scope') {
+									prop = prop.substring(i + 1);
+									obj = compo_getScopeFor(this.ctr.parent, prop);
+								}
+							}
+						}
+						
+						this.objectWay.set(obj, prop, value, this);
 						this.dismiss = 0;
 		
 						if (this.log) {
@@ -18454,7 +18663,14 @@
 		custom_Tags['event'] = class_create(Method, {
 			renderEnd: function(els, model, ctx, el){
 				this.fn = this.fn.bind(this.parent);
-				Compo.Dom.addEventListener(el, this.name, this.fn);
+				var name = this.name,
+					params = null,
+					i = name.indexOf(':');
+				if (i !== -1) {
+					params = name.substring(i + 1).trim();
+					name = name.substring(0, i).trim();
+				}			
+				Compo.Dom.addEventListener(el, name, this.fn, params);
 			}
 		});
 		custom_Tags['function'] = class_create(Method, {
