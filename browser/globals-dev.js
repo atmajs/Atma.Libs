@@ -5848,6 +5848,7 @@ function __eval(source, include) {
 		obj_extendDefaults,
 		obj_extendMany,
 		obj_extendProperties,
+		obj_extendPropertiesDefaults,
 		obj_create,
 		obj_toFastProps,
 		obj_defineProperty;
@@ -5931,9 +5932,9 @@ function __eval(source, include) {
 			}
 			return a;
 		}
-		obj_extendProperties = (function(){
+		var extendPropertiesFactory = function(overwriteProps){
 			if (_Object_getOwnProp == null) 
-				return obj_extend;
+				return overwriteProps ? obj_extend : obj_extendDefaults;
 			
 			return function(a, b){
 				if (b == null)
@@ -5942,12 +5943,17 @@ function __eval(source, include) {
 				if (a == null)
 					return obj_create(b);
 				
-				var key, descr;
+				var key, descr, ownDescr;
 				for(key in b){
 					descr = _Object_getOwnProp(b, key);
 					if (descr == null) 
 						continue;
-					
+					if (overwriteProps !== true) {
+						ownDescr = _Object_getOwnProp(a, key);
+						if (ownDescr != null) {
+							continue;
+						}
+					}
 					if (descr.hasOwnProperty('value')) {
 						a[key] = descr.value;
 						continue;
@@ -5956,7 +5962,11 @@ function __eval(source, include) {
 				}
 				return a;
 			};
-		}());
+		};
+		
+		obj_extendProperties         = extendPropertiesFactory(true);
+		obj_extendPropertiesDefaults = extendPropertiesFactory(false );
+		
 		obj_extendMany = function(a){
 			var imax = arguments.length,
 				i = 1;
@@ -6090,51 +6100,33 @@ function __eval(source, include) {
 		class_createEx;
 	(function(){
 		
-		class_create = function(){
-			var args = _Array_slice.call(arguments),
-				Proto = args.pop();
-			if (Proto == null) 
-				Proto = {};
-			
-			var Ctor = Proto.hasOwnProperty('constructor')
-				? Proto.constructor
-				: function ClassCtor () {};
-			
-			var i = args.length,
-				BaseCtor, x;
-			while ( --i > -1 ) {
-				x = args[i];
-				if (typeof x === 'function') {
-					BaseCtor = wrapFn(x, BaseCtor);
-					x = x.prototype;
-				}
-				obj_extendDefaults(Proto, x);
-			}
-			return createClass(wrapFn(BaseCtor, Ctor), Proto);
-		};
-		class_createEx = function(){
-			var args = _Array_slice.call(arguments),
-				Proto = args.pop();
-			if (Proto == null) 
-				Proto = {};
-			
-			var Ctor = Proto.hasOwnProperty('constructor')
-				? Proto.constructor
-				: function () {};
+		class_create   = createClassFactory(obj_extendDefaults);
+		class_createEx = createClassFactory(obj_extendPropertiesDefaults);
+		
+		function createClassFactory(extendDefaultsFn) {
+			return function(){
+				var args = _Array_slice.call(arguments),
+					Proto = args.pop();
+				if (Proto == null) 
+					Proto = {};
 				
-			var imax = args.length,
-				i = -1,
-				BaseCtor, x;
-			while ( ++i < imax ) {
-				x = args[i];
-				if (typeof x === 'function') {
-					BaseCtor = wrapFn(BaseCtor, x);
-					x = x.prototype;
+				var Ctor = Proto.hasOwnProperty('constructor')
+					? Proto.constructor
+					: function ClassCtor () {};
+				
+				var i = args.length,
+					BaseCtor, x;
+				while ( --i > -1 ) {
+					x = args[i];
+					if (typeof x === 'function') {
+						BaseCtor = wrapFn(x, BaseCtor);
+						x = x.prototype;
+					}
+					extendDefaultsFn(Proto, x);
 				}
-				obj_extendProperties(Proto, x);
-			}
-			return createClass(wrapFn(BaseCtor, Ctor), Proto);
-		};
+				return createClass(wrapFn(BaseCtor, Ctor), Proto);
+			};
+		}
 		
 		function createClass(Ctor, Proto) {
 			Proto.constructor = Ctor;
@@ -12882,6 +12874,7 @@ function __eval(source, include) {
 		parser_parseHtml,
 		parser_parseAttr,
 		parser_parseAttrObject,
+		parser_parseLiteral,
 		parser_ensureTemplateFunction,
 		parser_setInterpolationQuotes,
 		parser_cleanObject,
@@ -13866,21 +13859,25 @@ function __eval(source, include) {
 						attr[key] = ensureTemplateFunction(attr[key]);
 					}
 					
-					if (c === 62) {
-						var node = new Dom.Node(name, parent);
-						node.attr = attr;
-						// `>` handle single as generic mask node
-						return [ node, i, go_tag ];
-					}
-					
-					
 					end = i;
-					hasBody = c === 123;
+					hasBody = c === 123 || c === 62;
 					
 					if (hasBody) {
 						i++;
-						end = cursor_groupEnd(str, i, imax, 123, 125); //{}
-						body = str.substring(i, end);
+						if (c === 123) {
+							end = cursor_groupEnd(str, i, imax, 123, 125); //{}
+							body = str.substring(i, end);
+						}
+						if (c === 62) {
+							var tuple = parser_parseLiteral(str, i, imax);
+							if (tuple == null) {
+								return null;
+							}
+							end = tuple[1];
+							body = tuple[0];
+							// move cursor one back to be consistance with the group
+							end -= 1;
+						}
 						
 						if (transform != null) {
 							body = transform(body, attr, parent);
@@ -13890,7 +13887,9 @@ function __eval(source, include) {
 						}
 						
 						body = preprocess(name, body);
-						body = ensureTemplateFunction(body);
+						if (name !== 'script') {
+							body = ensureTemplateFunction(body);
+						}
 					}
 					
 					var node = new ContentNode(name, parent);
@@ -15138,6 +15137,54 @@ function __eval(source, include) {
 				key = token;
 			}
 			return i;
+		};
+		
+		parser_parseLiteral = function(str, start, imax){
+			var i = cursor_skipWhitespace(str, start, imax);
+			
+			var c = str.charCodeAt(i);
+			if (c !== 34 && c !== 39) {
+				// "'
+				parser_error("A quote is expected", str, i);
+				return null;
+			}
+			
+			var isEscaped = false,
+				isUnescapedBlock = false,
+				_char = c === 39 ? "'" : '"';
+	
+			start = ++i;
+	
+			while ((i = str.indexOf(_char, i)) > -1) {
+				if (str.charCodeAt(i - 1) !== 92 /*'\\'*/ ) {
+					break;
+				}
+				isEscaped = true;
+				i++;
+			}
+			
+			if (i === -1) {
+				parser_warn('Literal has no ending', str, start - 1);
+				i = imax;
+			}
+			
+			if (i === start) {
+				var nextC = str.charCodeAt(i + 1);
+				if (nextC === c) {
+					isUnescapedBlock = true;
+					start = i + 2;
+					i = str.indexOf(_char + _char + _char, start);
+					if (i === -1) 
+						i = imax;
+				}
+			}
+	
+			var token = str.substring(start, i);
+			if (isEscaped === true) {
+				token = token.replace(__rgxEscapedChar[_char], _char);
+			}
+			i += isUnescapedBlock ? 3 : 1;
+			return [ token, i ];
 		};
 		
 	}(Dom.Node, Dom.TextNode, Dom.Fragment, Dom.Component));
