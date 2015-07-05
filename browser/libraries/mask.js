@@ -3,7 +3,7 @@
 
 // source umd-head
 /*!
- * MaskJS v0.51.27
+ * MaskJS v0.51.34
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -54,11 +54,12 @@
 	var _Array_slice = Array.prototype.slice,
 		_Array_splice = Array.prototype.splice,
 		_Array_indexOf = Array.prototype.indexOf,
-		
+	
 		_Object_create = null, // in obj.js
 		_Object_hasOwnProp = Object.hasOwnProperty,
 		_Object_getOwnProp = Object.getOwnPropertyDescriptor,
 		_Object_defineProperty = Object.defineProperty;
+	
 	// end:source /src/refs.js
 	
 	// source /src/coll.js
@@ -69,11 +70,11 @@
 		coll_find;
 	(function(){
 		coll_each = function(coll, fn, ctx){
-			if (ctx == null) 
+			if (ctx == null)
 				ctx = coll;
-			if (coll == null) 
+			if (coll == null)
 				return coll;
-			
+	
 			var imax = coll.length,
 				i = 0;
 			for(; i< imax; i++){
@@ -82,19 +83,19 @@
 			return ctx;
 		};
 		coll_indexOf = function(coll, x){
-			if (coll == null) 
+			if (coll == null)
 				return -1;
 			var imax = coll.length,
 				i = 0;
 			for(; i < imax; i++){
-				if (coll[i] === x) 
+				if (coll[i] === x)
 					return i;
 			}
 			return -1;
 		};
 		coll_remove = function(coll, x){
 			var i = coll_indexOf(coll, x);
-			if (i === -1) 
+			if (i === -1)
 				return false;
 			coll.splice(i, 1);
 			return true;
@@ -116,6 +117,7 @@
 			return false;
 		};
 	}());
+	
 	// end:source /src/coll.js
 	
 	// source /src/polyfill/arr.js
@@ -137,7 +139,7 @@
 			var start = -1,
 				end = this.length,
 				code;
-			if (end === 0) 
+			if (end === 0)
 				return this;
 			while(++start < end){
 				code = this.charCodeAt(start);
@@ -154,13 +156,14 @@
 				: this;
 		};
 	}
+	
 	// end:source /src/polyfill/str.js
 	// source /src/polyfill/fn.js
 	
 	if (Function.prototype.bind == null) {
 		var _Array_slice;
 		Function.prototype.bind = function(){
-			if (arguments.length < 2 && typeof arguments[0] === "undefined") 
+			if (arguments.length < 2 && typeof arguments[0] === "undefined")
 				return this;
 			var fn = this,
 				args = _Array_slice.call(arguments),
@@ -170,6 +173,7 @@
 			};
 		};
 	}
+	
 	// end:source /src/polyfill/fn.js
 	
 	// source /src/is.js
@@ -180,6 +184,7 @@
 		is_Object,
 		is_notEmptyString,
 		is_rawObject,
+		is_Date,
 		is_NODE,
 		is_DOM;
 	
@@ -209,11 +214,20 @@
 	
 			return obj.constructor === Object;
 		};
-	
+		is_Date = function(x) {
+			if (x == null || typeof x !== 'object') {
+				return false;
+			}
+			if (x.getFullYear != null && isNaN(x) === false) {
+				return true;
+			}
+			return false;
+		};
 		is_DOM = typeof window !== 'undefined' && window.navigator != null;
 		is_NODE = !is_DOM;
-		
+	
 	}());
+	
 	// end:source /src/is.js
 	// source /src/obj.js
 	var obj_getProperty,
@@ -231,7 +245,7 @@
 		obj_getProperty = function(obj_, path){
 			if ('.' === path) // obsolete
 				return obj_;
-			
+	
 			var obj = obj_,
 				chain = path.split('.'),
 				imax = chain.length,
@@ -249,9 +263,9 @@
 				key;
 			while ( ++i < imax ) {
 				key = chain[i];
-				if (obj[key] == null) 
+				if (obj[key] == null)
 					obj[key] = {};
-				
+	
 				obj = obj[key];
 			}
 			obj[chain[i]] = val;
@@ -267,13 +281,13 @@
 				i = -1, key;
 			while (++i < imax) {
 				key = chain[i];
-				if (x[key] == null) 
+				if (x[key] == null)
 					x[key] = {};
 				x = x[key];
 			}
 			key = chain[imax];
 			if (_Object_defineProperty) {
-				if (dscr.writable     === void 0) dscr.writable     = true;
+				if (dscr.writable	 === void 0) dscr.writable	 = true;
 				if (dscr.configurable === void 0) dscr.configurable = true;
 				if (dscr.enumerable   === void 0) dscr.enumerable   = true;
 				_Object_defineProperty(x, key, dscr);
@@ -286,42 +300,42 @@
 		obj_extend = function(a, b){
 			if (b == null)
 				return a || {};
-			
+	
 			if (a == null)
 				return obj_create(b);
-			
+	
 			for(var key in b){
 				a[key] = b[key];
 			}
 			return a;
 		};
 		obj_extendDefaults = function(a, b){
-			if (b == null) 
+			if (b == null)
 				return a || {};
-			if (a == null) 
+			if (a == null)
 				return obj_create(b);
-			
+	
 			for(var key in b) {
-				if (a[key] == null) 
+				if (a[key] == null)
 					a[key] = b[key];
 			}
 			return a;
 		}
 		var extendPropertiesFactory = function(overwriteProps){
-			if (_Object_getOwnProp == null) 
+			if (_Object_getOwnProp == null)
 				return overwriteProps ? obj_extend : obj_extendDefaults;
-			
+	
 			return function(a, b){
 				if (b == null)
 					return a || {};
-				
+	
 				if (a == null)
 					return obj_create(b);
-				
+	
 				var key, descr, ownDescr;
 				for(key in b){
 					descr = _Object_getOwnProp(b, key);
-					if (descr == null) 
+					if (descr == null)
 						continue;
 					if (overwriteProps !== true) {
 						ownDescr = _Object_getOwnProp(a, key);
@@ -338,10 +352,10 @@
 				return a;
 			};
 		};
-		
-		obj_extendProperties         = extendPropertiesFactory(true);
+	
+		obj_extendProperties		 = extendPropertiesFactory(true);
 		obj_extendPropertiesDefaults = extendPropertiesFactory(false );
-		
+	
 		obj_extendMany = function(a){
 			var imax = arguments.length,
 				i = 1;
@@ -364,6 +378,7 @@
 			return new Ctor;
 		};
 	}());
+	
 	// end:source /src/obj.js
 	// source /src/arr.js
 	var arr_remove,
@@ -374,7 +389,7 @@
 	(function(){
 		arr_remove = function(array, x){
 			var i = array.indexOf(x);
-			if (i === -1) 
+			if (i === -1)
 				return false;
 			array.splice(i, 1);
 			return true;
@@ -389,9 +404,9 @@
 			return arr.indexOf(x) !== -1;
 		};
 		arr_pushMany = function(arr, arrSource){
-			if (arrSource == null || arr == null || arr === arrSource) 
+			if (arrSource == null || arr == null || arr === arrSource)
 				return;
-			
+	
 			var il = arr.length,
 				jl = arrSource.length,
 				j = -1
@@ -401,46 +416,47 @@
 			}
 		};
 	}());
+	
 	// end:source /src/arr.js
 	// source /src/fn.js
 	var fn_proxy,
 		fn_apply,
 		fn_doNothing,
-		fn_patternDelegate;
+		fn_createByPattern;
 	(function(){
 		fn_proxy = function(fn, ctx) {
 			return function(){
 				return fn_apply(fn, ctx, arguments);
 			};
 		};
-		
+	
 		fn_apply = function(fn, ctx, args){
 			var l = args.length;
-			if (0 === l) 
+			if (0 === l)
 				return fn.call(ctx);
-			if (1 === l) 
+			if (1 === l)
 				return fn.call(ctx, args[0]);
-			if (2 === l) 
+			if (2 === l)
 				return fn.call(ctx, args[0], args[1]);
-			if (3 === l) 
+			if (3 === l)
 				return fn.call(ctx, args[0], args[1], args[2]);
 			if (4 === l)
 				return fn.call(ctx, args[0], args[1], args[2], args[3]);
-			
+	
 			return fn.apply(ctx, args);
 		};
-		
+	
 		fn_doNothing = function(){
 			return false;
 		};
-		
-		fn_patternDelegate = function(definitions, ctx){
+	
+		fn_createByPattern = function(definitions, ctx){
 			var imax = definitions.length;
 			return function(){
 				var l = arguments.length,
 					i = -1,
 					def;
-				
+	
 				outer: while(++i < imax){
 					def = definitions[i];
 					if (def.pattern.length !== l) {
@@ -456,16 +472,14 @@
 					}
 					return def.handler.apply(ctx, arguments);
 				}
-				
+	
 				console.error('InvalidArgumentException for a function', definitions, arguments);
 				return null;
 			};
 		};
-		
-		function pattern_Match(pattern, val){
-			return pattern(val);
-		}
+	
 	}());
+	
 	// end:source /src/fn.js
 	// source /src/str.js
 	var str_format;
@@ -481,10 +495,10 @@
 				}
 				str_ = str_.replace(rgxNum(i - 1), String(x));
 			}
-			
+	
 			return str_;
 		};
-		
+	
 		var rgxNum;
 		(function(){
 			rgxNum = function(num){
@@ -493,6 +507,7 @@
 			var cache_ = {};
 		}());
 	}());
+	
 	// end:source /src/str.js
 	// source /src/class.js
 	/**
@@ -507,21 +522,21 @@
 		// with property accessor functions support
 		class_createEx;
 	(function(){
-		
+	
 		class_create   = createClassFactory(obj_extendDefaults);
 		class_createEx = createClassFactory(obj_extendPropertiesDefaults);
-		
+	
 		function createClassFactory(extendDefaultsFn) {
 			return function(){
 				var args = _Array_slice.call(arguments),
 					Proto = args.pop();
-				if (Proto == null) 
+				if (Proto == null)
 					Proto = {};
-				
+	
 				var Ctor = Proto.hasOwnProperty('constructor')
 					? Proto.constructor
 					: function ClassCtor () {};
-				
+	
 				var i = args.length,
 					BaseCtor, x;
 				while ( --i > -1 ) {
@@ -535,7 +550,7 @@
 				return createClass(wrapFn(BaseCtor, Ctor), Proto);
 			};
 		}
-		
+	
 		function createClass(Ctor, Proto) {
 			Proto.constructor = Ctor;
 			Ctor.prototype = Proto;
@@ -551,31 +566,32 @@
 			return function(){
 				var args = _Array_slice.call(arguments);
 				var x = fnA.apply(this, args);
-				if (x !== void 0) 
+				if (x !== void 0)
 					return x;
-				
+	
 				return fnB.apply(this, args);
 			};
 		}
 	}());
+	
 	// end:source /src/class.js
 	// source /src/error.js
 	var error_createClass,
 		error_formatSource,
 		error_formatCursor,
 		error_cursor;
-		
+	
 	(function(){
 		error_createClass = function(name, Proto, stackSliceFrom){
 			var Ctor = _createCtor(Proto, stackSliceFrom);
 			Ctor.prototype = new Error;
-			
+	
 			Proto.constructor = Error;
 			Proto.name = name;
 			obj_extend(Ctor.prototype, Proto);
 			return Ctor;
 		};
-		
+	
 		error_formatSource = function(source, index, filename) {
 			var cursor  = error_cursor(source, index),
 				lines   = cursor[0],
@@ -587,7 +603,7 @@
 			}
 			return str + error_formatCursor(lines, lineNum, rowNum);
 		};
-		
+	
 		/**
 		 * @returns [ lines, lineNum, rowNum ]
 		 */
@@ -601,28 +617,28 @@
 			}
 			return [str.split('\n'), line, row];
 		};
-		
+	
 		(function(){
 			error_formatCursor = function(lines, lineNum, rowNum) {
-					
+	
 				var BEFORE = 3,
 					AFTER  = 2,
 					i = lineNum - BEFORE,
 					imax   = i + BEFORE + AFTER,
 					str  = '';
-				
+	
 				if (i < 0) i = 0;
 				if (imax > lines.length) imax = lines.length;
-				
+	
 				var lineNumberLength = String(imax).length,
 					lineNumber;
-				
+	
 				for(; i < imax; i++) {
 					if (str)  str += '\n';
-					
+	
 					lineNumber = ensureLength(i + 1, lineNumberLength);
 					str += lineNumber + '|' + lines[i];
-					
+	
 					if (i + 1 === lineNum) {
 						str += '\n' + repeat(' ', lineNumberLength + 1);
 						str += lines[i].substring(0, rowNum - 1).replace(/[^\s]/g, ' ');
@@ -631,7 +647,7 @@
 				}
 				return str;
 			};
-			
+	
 			function ensureLength(num, count) {
 				var str = String(num);
 				while(str.length < count) {
@@ -647,12 +663,12 @@
 				return str;
 			}
 		}());
-		
+	
 		function _createCtor(Proto, stackFrom){
 			var Ctor = Proto.hasOwnProperty('constructor')
 				? Proto.constructor
 				: null;
-				
+	
 			return function(){
 				obj_defineProperty(this, 'stack', {
 					value: _prepairStack(stackFrom || 3)
@@ -665,7 +681,7 @@
 				}
 			};
 		}
-		
+	
 		function _prepairStack(sliceFrom) {
 			var stack = new Error().stack;
 			return stack == null ? null : stack
@@ -673,8 +689,9 @@
 				.slice(sliceFrom)
 				.join('\n');
 		}
-		
+	
 	}());
+	
 	// end:source /src/error.js
 	
 	// source /src/class/Dfr.js
@@ -688,7 +705,7 @@
 			_always: null,
 			_resolved: null,
 			_rejected: null,
-			
+	
 			defer: function(){
 				this._rejected = null;
 				this._resolved = null;
@@ -707,32 +724,32 @@
 				var done = this._done,
 					always = this._always
 					;
-				
+	
 				this._resolved = arguments;
-				
+	
 				dfr_clearListeners(this);
 				arr_callOnce(done, this, arguments);
 				arr_callOnce(always, this, [ this ]);
-				
+	
 				return this;
 			},
 			reject: function() {
 				var fail = this._fail,
 					always = this._always
 					;
-				
+	
 				this._rejected = arguments;
-				
+	
 				dfr_clearListeners(this);
 				arr_callOnce(fail, this, arguments);
-				arr_callOnce(always, this, [ this ]);	
+				arr_callOnce(always, this, [ this ]);
 				return this;
 			},
 			then: function(filterSuccess, filterError){
 				return this.pipe(filterSuccess, filterError);
 			},
 			done: function(callback) {
-				if (this._rejected != null) 
+				if (this._rejected != null)
 					return this;
 				return dfr_bind(
 					this,
@@ -742,7 +759,7 @@
 				);
 			},
 			fail: function(callback) {
-				if (this._resolved != null) 
+				if (this._resolved != null)
 					return this;
 				return dfr_bind(
 					this,
@@ -767,14 +784,14 @@
 						fail_ = arguments.length > 1
 							? arguments[1]
 							: null;
-						
+	
 					this
 						.done(delegate(dfr, 'resolve', done_))
 						.fail(delegate(dfr, 'reject',  fail_))
 						;
 					return dfr;
 				}
-				
+	
 				dfr = mix;
 				var imax = arguments.length,
 					done = imax === 1,
@@ -796,7 +813,7 @@
 				}
 				done && this.done(delegate(dfr, 'resolve'));
 				fail && this.fail(delegate(dfr, 'reject' ));
-				
+	
 				function pipe(dfr, method) {
 					return function(){
 						dfr[method].apply(dfr, arguments);
@@ -811,7 +828,7 @@
 									override.pipe(dfr);
 									return;
 								}
-								
+	
 								dfr[name](override)
 								return;
 							}
@@ -819,7 +836,7 @@
 						dfr[name].apply(dfr, arguments);
 					};
 				}
-				
+	
 				return this;
 			},
 			pipeCallback: function(){
@@ -832,14 +849,22 @@
 					var args = _Array_slice.call(arguments, 1);
 					fn_apply(self.resolve, self, args);
 				};
-			}
+			},
+			resolveDelegate: function(){
+				return fn_proxy(this.resolve, this);
+			},
+			
+			rejectDelegate: function(){
+				return fn_proxy(this.reject, this);
+			},
+			
 		};
-		
+	
 		class_Dfr.run = function(fn, ctx){
 			var dfr = new class_Dfr();
-			if (ctx == null) 
+			if (ctx == null)
 				ctx = dfr;
-			
+	
 			fn.call(
 				ctx
 				, fn_proxy(dfr.resolve, ctx)
@@ -848,77 +873,78 @@
 			);
 			return dfr;
 		};
-		
+	
 		// PRIVATE
-		
+	
 		function dfr_bind(dfr, arguments_, listeners, callback){
-			if (callback == null) 
+			if (callback == null)
 				return dfr;
-			
-			if ( arguments_ != null) 
+	
+			if ( arguments_ != null)
 				fn_apply(callback, dfr, arguments_);
-			else 
+			else
 				listeners.push(callback);
-			
+	
 			return dfr;
 		}
-		
+	
 		function dfr_clearListeners(dfr) {
 			dfr._done = null;
 			dfr._fail = null;
 			dfr._always = null;
 		}
-		
+	
 		function arr_callOnce(arr, ctx, args) {
-			if (arr == null) 
+			if (arr == null)
 				return;
-			
+	
 			var imax = arr.length,
 				i = -1,
 				fn;
 			while ( ++i < imax ) {
 				fn = arr[i];
-				
-				if (fn) 
+	
+				if (fn)
 					fn_apply(fn, ctx, args);
 			}
 			arr.length = 0;
 		}
 		function isDeferred(x){
-			if (x == null || typeof x !== 'object') 
+			if (x == null || typeof x !== 'object')
 				return false;
-			
-			if (x instanceof class_Dfr) 
+	
+			if (x instanceof class_Dfr)
 				return true;
-			
+	
 			return typeof x.done === 'function'
 				&& typeof x.fail === 'function'
 				;
 		}
 	}());
+	
 	// end:source /src/class/Dfr.js
 	// source /src/class/EventEmitter.js
 	var class_EventEmitter;
 	(function(){
-	 
+	
 		class_EventEmitter = function() {
 			this._listeners = {};
 		};
-	    class_EventEmitter.prototype = {
-	        on: function(event, fn) {
-	            if (fn != null){
+		class_EventEmitter.prototype = {
+			on: function(event, fn) {
+				if (fn != null){
 					(this._listeners[event] || (this._listeners[event] = [])).push(fn);
 				}
-	            return this;
-	        },
-	        once: function(event, fn){
+				return this;
+			},
+			once: function(event, fn){
 				if (fn != null) {
 					fn._once = true;
 					(this._listeners[event] || (this._listeners[event] = [])).push(fn);
 				}
-	            return this;
-	        },
-			
+				return this;
+			},
+	
 			pipe: function(event){
 				var that = this,
 					args;
@@ -928,48 +954,48 @@
 					fn_apply(that.trigger, that, args);
 				};
 			},
-	        
+	
 			emit: event_trigger,
-	        trigger: event_trigger,
-			
-	        off: function(event, fn) {
+			trigger: event_trigger,
+	
+			off: function(event, fn) {
 				var listeners = this._listeners[event];
-	            if (listeners == null)
+				if (listeners == null)
 					return this;
-				
+	
 				if (arguments.length === 1) {
 					listeners.length = 0;
 					return this;
 				}
-				
+	
 				var imax = listeners.length,
 					i = -1;
 				while (++i < imax) {
-					
+	
 					if (listeners[i] === fn) {
 						listeners.splice(i, 1);
 						i--;
 						imax--;
 					}
-					
+	
 				}
-	            return this;
+				return this;
 			}
-	    };
-	    
+		};
+	
 		function event_trigger() {
 			var args = _Array_slice.call(arguments),
 				event = args.shift(),
 				fns = this._listeners[event],
 				fn, imax, i = 0;
-				
+	
 			if (fns == null)
 				return this;
-			
+	
 			for (imax = fns.length; i < imax; i++) {
 				fn = fns[i];
 				fn_apply(fn, this, args);
-				
+	
 				if (fn._once === true){
 					fns.splice(i, 1);
 					i--;
@@ -981,8 +1007,309 @@
 	}());
 	
 	// end:source /src/class/EventEmitter.js
-	
-	
+	// source /src/class/Uri.es6
+	"use strict";
+
+var class_Uri;
+(function () {
+
+	class_Uri = class_create({
+		protocol: null,
+		value: null,
+		path: null,
+		file: null,
+		extension: null,
+
+		constructor: function constructor(uri) {
+			if (uri == null) {
+				return this;
+			}if (util_isUri(uri)) {
+				return uri.combine("");
+			}uri = normalize_uri(uri);
+
+			this.value = uri;
+
+			parse_protocol(this);
+			parse_host(this);
+
+			parse_search(this);
+			parse_file(this);
+
+			// normilize path - "/some/path"
+			this.path = normalize_pathsSlashes(this.value);
+
+			if (/^[\w]+:\//.test(this.path)) {
+				this.path = "/" + this.path;
+			}
+			return this;
+		},
+		cdUp: function cdUp() {
+			var path = this.path;
+			if (path == null || path === "" || path === "/") {
+				return this;
+			}
+
+			// win32 - is base drive
+			if (/^\/?[a-zA-Z]+:\/?$/.test(path)) {
+				return this;
+			}
+
+			this.path = path.replace(/\/?[^\/]+\/?$/i, "");
+			return this;
+		},
+		/**
+	   * '/path' - relative to host
+	   * '../path', 'path','./path' - relative to current path
+	   */
+		combine: function combine(path) {
+
+			if (util_isUri(path)) {
+				path = path.toString();
+			}
+
+			if (!path) {
+				return util_clone(this);
+			}
+
+			if (rgx_win32Drive.test(path)) {
+				return new class_Uri(path);
+			}
+
+			var uri = util_clone(this);
+
+			uri.value = path;
+
+			parse_search(uri);
+			parse_file(uri);
+
+			if (!uri.value) {
+				return uri;
+			}
+
+			path = uri.value.replace(/^\.\//i, "");
+
+			if (path[0] === "/") {
+				uri.path = path;
+				return uri;
+			}
+
+			while (/^(\.\.\/?)/ig.test(path)) {
+				uri.cdUp();
+				path = path.substring(3);
+			}
+
+			uri.path = normalize_pathsSlashes(util_combinePathes(uri.path, path));
+
+			return uri;
+		},
+		toString: function toString() {
+			var protocol = this.protocol ? this.protocol + "://" : "";
+			var path = util_combinePathes(this.host, this.path, this.file) + (this.search || "");
+			var str = protocol + path;
+
+			if (!(this.file || this.search)) {
+				str += "/";
+			}
+			return str;
+		},
+		toPathAndQuery: function toPathAndQuery() {
+			return util_combinePathes(this.path, this.file) + (this.search || "");
+		},
+		/**
+	   * @return Current Uri Path{String} that is relative to @arg1 Uri
+	   */
+		toRelativeString: function toRelativeString(uri) {
+			if (typeof uri === "string") uri = new class_Uri(uri);
+
+			//if (uri.protocol !== this.protocol || uri.host !== this.host)
+			//	return this.toString();
+
+			if (this.path.indexOf(uri.path) === 0) {
+				// host folder
+				var p = this.path ? this.path.replace(uri.path, "") : "";
+				if (p[0] === "/") p = p.substring(1);
+
+				return util_combinePathes(p, this.file) + (this.search || "");
+			}
+
+			// sub folder
+			var current = this.path.split("/"),
+			    relative = uri.path.split("/"),
+			    commonpath = "",
+			    i = 0,
+			    length = Math.min(current.length, relative.length);
+
+			for (; i < length; i++) {
+				if (current[i] === relative[i]) continue;
+
+				break;
+			}
+
+			if (i > 0) commonpath = current.splice(0, i).join("/");
+
+			if (commonpath) {
+				var sub = "",
+				    path = uri.path,
+				    forward;
+				while (path) {
+					if (this.path.indexOf(path) === 0) {
+						forward = this.path.replace(path, "");
+						break;
+					}
+					path = path.replace(/\/?[^\/]+\/?$/i, "");
+					sub += "../";
+				}
+				return util_combinePathes(sub, forward, this.file);
+			}
+
+			return this.toString();
+		},
+
+		toLocalFile: function toLocalFile() {
+			var path = util_combinePathes(this.host, this.path, this.file);
+
+			return util_win32Path(path);
+		},
+		toLocalDir: function toLocalDir() {
+			var path = util_combinePathes(this.host, this.path, "/");
+
+			return util_win32Path(path);
+		},
+		toDir: function toDir() {
+			var str = this.protocol ? this.protocol + "://" : "";
+
+			return str + util_combinePathes(this.host, this.path, "/");
+		},
+		isRelative: function isRelative() {
+			return !(this.protocol || this.host);
+		},
+		getName: function getName() {
+			return this.file.replace("." + this.extension, "");
+		}
+	});
+
+	var rgx_protocol = /^([a-zA-Z]+):\/\//,
+	    rgx_extension = /\.([\w\d]+)$/i,
+	    rgx_win32Drive = /(^\/?\w{1}:)(\/|$)/,
+	    rgx_fileWithExt = /([^\/]+(\.[\w\d]+)?)$/i;
+
+	function util_isUri(object) {
+		return object && typeof object === "object" && typeof object.combine === "function";
+	}
+
+	function util_combinePathes() {
+		var args = arguments,
+		    str = "";
+		for (var i = 0, x, imax = arguments.length; i < imax; i++) {
+			x = arguments[i];
+			if (!x) continue;
+
+			if (!str) {
+				str = x;
+				continue;
+			}
+
+			if (str[str.length - 1] !== "/") str += "/";
+
+			str += x[0] === "/" ? x.substring(1) : x;
+		}
+		return str;
+	}
+
+	function normalize_pathsSlashes(str) {
+
+		if (str[str.length - 1] === "/") {
+			return str.substring(0, str.length - 1);
+		}
+		return str;
+	}
+
+	function util_clone(source) {
+		var uri = new class_Uri(),
+		    key;
+		for (key in source) {
+			if (typeof source[key] === "string") {
+				uri[key] = source[key];
+			}
+		}
+		return uri;
+	}
+
+	function normalize_uri(str) {
+		return str.replace(/\\/g, "/").replace(/^\.\//, "")
+
+		// win32 drive path
+		.replace(/^(\w+):\/([^\/])/, "/$1:/$2");
+	}
+
+	function util_win32Path(path) {
+		if (rgx_win32Drive.test(path) && path[0] === "/") {
+			return path.substring(1);
+		}
+		return path;
+	}
+
+	function parse_protocol(obj) {
+		var match = rgx_protocol.exec(obj.value);
+
+		if (match == null && obj.value[0] === "/") {
+			obj.protocol = "file";
+		}
+
+		if (match == null) {
+			return;
+		}obj.protocol = match[1];
+		obj.value = obj.value.substring(match[0].length);
+	}
+
+	function parse_host(obj) {
+		if (obj.protocol == null) {
+			return;
+		}if (obj.protocol === "file") {
+			var match = rgx_win32Drive.exec(obj.value);
+			if (match) {
+				obj.host = match[1];
+				obj.value = obj.value.substring(obj.host.length);
+			}
+			return;
+		}
+
+		var pathStart = obj.value.indexOf("/", 2);
+
+		obj.host = ~pathStart ? obj.value.substring(0, pathStart) : obj.value;
+
+		obj.value = obj.value.replace(obj.host, "");
+	}
+
+	function parse_search(obj) {
+		var question = obj.value.indexOf("?");
+		if (question === -1) {
+			return;
+		}obj.search = obj.value.substring(question);
+		obj.value = obj.value.substring(0, question);
+	}
+
+	function parse_file(obj) {
+		var match = rgx_fileWithExt.exec(obj.value),
+		    file = match == null ? null : match[1];
+
+		if (file == null) {
+			return;
+		}
+		obj.file = file;
+		obj.value = obj.value.substring(0, obj.value.length - file.length);
+		obj.value = normalize_pathsSlashes(obj.value);
+
+		match = rgx_extension.exec(file);
+		obj.extension = match == null ? null : match[1];
+	}
+
+	class_Uri.combinePathes = util_combinePathes;
+	class_Uri.combine = util_combinePathes;
+})();
+/*args*/
+//# sourceMappingURL=Uri.es6.map
+	// end:source /src/class/Uri.es6
 	// end:source /ref-utils/lib/utils.embed.js
 
 	// source scope-vars
@@ -1016,99 +1343,6 @@
     // source util/
     // source ./util.js
     
-    /**
-     * - arr (Array) - array that was prepaired by parser -
-     *  every even index holds interpolate value that was in #{some value}
-     * - model: current model
-     * - type (String const) (node | attr): tell custom utils what part we are
-     *  interpolating
-     * - cntx (Object): current render context object
-     * - element (HTMLElement):
-     * type node - this is a container
-     * type attr - this is element itself
-     * - name
-     *  type attr - attribute name
-     *  type node - undefined
-     *
-     * -returns Array | String
-     *
-     * If we rendere interpolation in a TextNode, then custom util can return not only string values,
-     * but also any HTMLElement, then TextNode will be splitted and HTMLElements will be inserted within.
-     * So in that case we return array where we hold strings and that HTMLElements.
-     *
-     * If custom utils returns only strings, then String will be returned by this function
-     *
-     */
-    
-    function util_interpolate(arr, type, model, ctx, element, ctr, name) {
-    	var imax = arr.length,
-    		i = -1,
-    		array = null,
-    		string = '',
-    		even = true,
-    		
-    		utility,
-    		value,
-    		index,
-    		key,
-    		handler;
-    
-    	while ( ++i < imax ) {
-    		if (even === true) {
-    			if (array == null){
-    				string += arr[i];
-    			} else{
-    				array.push(arr[i]);
-    			}
-    		} else {
-    			key = arr[i];
-    			value = null;
-    			index = key.indexOf(':');
-    
-    			if (index === -1) {
-    				value = obj_getPropertyEx(key,  model, ctx, ctr);
-    				
-    			} else {
-    				utility = index > 0
-    					? key.substring(0, index).trim()
-    					: '';
-    					
-    				if (utility === '') {
-    					utility = 'expression';
-    				}
-    
-    				key = key.substring(index + 1);
-    				handler = custom_Utils[utility];
-    				
-    				if (handler == null) {
-    					log_error('Undefined custom util `%s`', utility);
-    					continue;
-    				}
-    				
-    				value = handler(key, model, ctx, element, ctr, name, type);
-    			}
-    
-    			if (value != null){
-    
-    				if (typeof value === 'object' && array == null){
-    					array = [ string ];
-    				}
-    
-    				if (array == null){
-    					string += value;
-    				} else {
-    					array.push(value);
-    				}
-    			}
-    		}
-    		even = !even;
-    	}
-    
-    	return array == null
-    		? string
-    		: array
-    		;
-    }
     
     // end:source ./util.js
     // source ./attr.js
@@ -1456,7 +1690,8 @@
     	path_combine,
     	path_isRelative,
     	path_toRelative,
-    	path_appendQuery
+    	path_appendQuery,
+    	path_toLocalFile
     	;
     (function(){
     	var isWeb = true;
@@ -1595,6 +1830,8 @@
     		}
     		return path_collapse(out);
     	};
+    
+    
     	
     	var rgx_PROTOCOL = /^(file|https?):/i,
     		rgx_SUB_DIR  = /[^\/\.]+\/\.\.\//,
@@ -1688,6 +1925,8 @@
     		};
     	}());
     	// end:source transports/json
+    
+    	// if BROWSER
     	// source transports/script
     	var script_get;
     	(function(){
@@ -1748,9 +1987,10 @@
     				if (res.state !== 0) 
     					return;
     				
-    				res
-    					.load()
-    					.always(process);
+    				res.load().always(function(){
+    					_stack.shift();
+    					process();
+    				});
     			}
     		})();
     		
@@ -1790,7 +2030,7 @@
     		var embedStyle;
     		(function(){
     			embedStyle = function (url, callback) {
-    				var tag = document.createElement('style');
+    				var tag = document.createElement('link');
     				tag.rel = 'stylesheet';
     				tag.href = url;
     				if ('onreadystatechange' in tag) {
@@ -1843,6 +2083,9 @@
     		};
     	}());
     	// end:source transports/xhr
+    	// endif
+    
+    
     
     }());
     // end:source ./resource/file.js
@@ -4927,51 +5170,52 @@
 				_state = _state_All
 			}
 			var args = _Array_slice.call(arguments),
-				container,
-				model,
-				Ctr,
-				imax,
-				i,
-				mix;
+				model, ctx, el, Ctor;
 			
-			imax = args.length;
-			i = -1;
+			var imax = args.length,
+				i = -1,
+				mix;
 			while ( ++i < imax ) {
 				mix = args[i];
 				if (mix instanceof Node) {
-					container = mix;
+					el = mix;
 					continue;
 				}
 				if (is_Function(mix)) {
-					Ctr = mix;
+					Ctor = mix;
 					continue;
 				}
 				if (is_Object(mix)) {
-					model = mix;
-					continue;
+					if (model == null) {
+						model = mix;
+						continue;
+					}
+					ctx = mix;
 				}
 			}
 			
-			if (container == null) 
-				container = document.body;
-				
-			var ctr = is_Function(Ctr)
-				? new Ctr
-				: new Compo
-				;
+			if (el == null) 
+				el = document.body;		
+			if (Ctor == null)
+				Ctor = Compo;
+			if (model == null) {
+				model = {};
+			}
+			
+			var ctr = new Ctor(null, model, ctx, el);
+			return _run(model, ctx, el, ctr);
+		};
+		
+		function _run (model, ctx, container, ctr) {
 			ctr.ID = ++builder_componentID;
 			
-			if (model == null) 
-				model = ctr.model || {};
-			
 			var scripts = _Array_slice.call(document.getElementsByTagName('script')),
-				script,
+				script = null,
 				found = false,
 				ready = false,
-				await = 0;
-				
-			imax = scripts.length;
-			i = -1;
+				await = 0,
+				imax = scripts.length,
+				i = -1;
 			while( ++i < imax ){
 				script = scripts[i];
 				
@@ -4980,6 +5224,9 @@
 					continue;
 				
 				var dataRun = script.getAttribute('data-run');
+				if (dataRun == null) {
+					continue;
+				}
 				if (dataRun === 'auto') {
 					if (isCurrent(_state_Auto) === false) {
 						continue;
@@ -4992,21 +5239,26 @@
 				}
 				
 				found = true;
-				var ctx = new builder_Ctx;
+				var ctx_ = new builder_Ctx(ctx);
 				var fragment = builder_build(
-					parser_parse(script.textContent), model, ctx, null, ctr
+					parser_parse(script.textContent), model, ctx_, null, ctr
 				);
-				if (ctx.async === true) {
+				if (ctx_.async === true) {
 					await++;
-					ctx.done(insertDelegate(fragment, script, resumer));
+					ctx_.done(_insertDelegate(fragment, script, resumer));
 					continue;
 				}
 				script.parentNode.insertBefore(fragment, script);
 			}
-			ready = true;
-			if (_state !== _state_Auto && found === false) {
+			
+			if (found === false) {
+				if (_state === _state_Auto) {
+					return null;
+				}
 				log_warn("No blocks found: <script type='text/mask' data-run='true'>...</script>");
 			}
+			
+			ready = true;		
 			if (await === 0) {
 				flush();
 			}
@@ -5022,8 +5274,9 @@
 			}
 			
 			return ctr;
-		};
-		function insertDelegate(fragment, script, done) {
+		}
+		
+		function _insertDelegate(fragment, script, done) {
 			return function(){
 				script.parentNode.insertBefore(fragment, script);
 				done();
@@ -5033,10 +5286,26 @@
 		if (document != null && document.addEventListener) {
 			document.addEventListener("DOMContentLoaded", function(event) {
 				if (_state !== 0)  return;
-	
-				_state = _state_Auto;
-				global.app = mask_run();
+				var _app;
+				_state = _state_Auto;			
+				_app = mask_run();
 				_state = _state_Manual;
+				
+				if (_app == null) return;
+				if (global.app == null) {
+					global.app = _app;
+					return;
+				}
+				var source = _app.components
+				if (source == null || source.length === 0) {
+					return;
+				}
+				var target = global.app.components
+				if (target == null || target.length === 0) {
+					global.app.components = source;
+					return;
+				}
+				target.push.apply(target, source);
 			});
 		}
 		
@@ -5716,6 +5985,7 @@
 		// source utils
 		var u_resolveLocation,
 			u_resolvePath,
+			u_resolvePathFromImport,
 			u_handler_getDelegate;
 			
 		(function(){
@@ -5767,6 +6037,23 @@
 					u_resolveLocation(ctx, ctr, module), path
 				));
 			};
+			
+			u_resolvePathFromImport = function(node, ctx, ctr, module){
+				var path = node.path;
+				if ('' === path_getExtension(path)) {
+					var type = node.contentType;
+					if (type == null || type === 'mask' ) {
+						path += '.mask';
+					}
+				}
+				if (path_isRelative(path) === false) {
+					return path;
+				}
+				return path_normalize(path_combine(
+					u_resolveLocation(ctx, ctr, module), path
+				));
+			};
+			
 			
 			u_handler_getDelegate = function(compoName, compo, next) {
 				return function(name) {
@@ -5846,11 +6133,8 @@
 									var exports = name === 'js'
 										? resp.Module
 										: resp[name].Module;
-									if (exports != null) {
-										resolve(exports);
-										return;
-									}
-									reject('Export is undefined');
+									
+									resolve(exports);
 								});
 							});
 						}
@@ -5864,14 +6148,23 @@
 		}());
 		// end:source loaders
 		
+		// source class/Endpoint
+		function Endpoint (path, contentType) {
+			this.path = path;
+			this.contentType = contentType;
+		}
+		// end:source class/Endpoint
 		// source Import/Import
 		var IImport = class_create({
 			type: null,
+			contentType: null,
 			constructor: function(path, alias, exports, module){
 				this.path = path;
 				this.alias = alias;
 				this.exports = exports;
-				this.module = Module.createModule(path, module);
+				
+				var endpoint = new Endpoint(path, this.contentType);
+				this.module = Module.createModule(endpoint, module);
 				this.parent = module;
 			},
 			eachExport: function(fn){
@@ -5956,11 +6249,12 @@
 		
 		
 		(function(){
-			IImport.create = function(path, alias, exports, parent){
-				return new (Factory(path))(path, alias, exports, parent);
+			IImport.create = function(endpoint, alias, exports, parent){
+				return new (Factory(endpoint))(endpoint.path, alias, exports, parent);
 			};
-			function Factory(path) {
-				var ext = path_getExtension(path);
+			function Factory(endpoint) {
+				var type = endpoint.contentType;
+				var ext = type || path_getExtension(endpoint.path);
 				if (ext === 'mask') {
 					return ImportMask;
 				}
@@ -5982,6 +6276,7 @@
 		// source Import/ImportMask
 		var ImportMask = class_create(IImport, {
 			type: 'mask',
+			contentType: 'mask',
 			constructor: function(){
 				this.eachExport(function(compoName){
 					if (compoName !== '*') 
@@ -6012,6 +6307,7 @@
 		// source Import/ImportScript
 		var ImportScript = class_create(IImport, {
 			type: 'script',
+			contentType: 'script',
 			registerScope: function(owner){
 				this.eachExport(function(exportName, name, alias){
 					var obj = this.module.register(owner, name, alias);
@@ -6024,17 +6320,20 @@
 		// end:source Import/ImportScript
 		// source Import/ImportStyle
 		var ImportStyle = class_create(IImport, {
-			type: 'style'
+			type: 'style',
+			contentType: 'css'
 		});
 		// end:source Import/ImportStyle
 		// source Import/ImportData
 		var ImportData = class_create(ImportScript, {
-			type: 'data'
+			type: 'data',
+			contentType: 'json'
 		});
 		// end:source Import/ImportData
 		// source Import/ImportHtml
 		var ImportHtml = class_create(ImportMask, {
-			type: 'mask'
+			type: 'mask',
+			contentType: 'html'
 		});
 		// end:source Import/ImportHtml
 		
@@ -6045,16 +6344,17 @@
 			location: null,
 			exports: null,
 			state: 0,
-			constructor: function(path, parent) {
+			constructor: function(path, parent) {		
 				this.path = path;
 				this.parent = parent;
 				this.exports = {};
 				this.location = path_getDir(path);
+				this.complete_ = this.complete_.bind(this);
 			},
 			loadModule: function(){
 				if (this.state !== 0) 
 					return this;
-				
+		
 				this.state = 1;
 				var self = this;
 				this
@@ -6098,11 +6398,12 @@
 		});
 		
 		(function(){
-			IModule.create = function(path, parent){
-				return new (Factory(path))(path, parent);
+			IModule.create = function(endpoint, parent, contentType){
+				return new (Factory(endpoint))(endpoint.path, parent);
 			};
-			function Factory(path) {
-				var ext = path_getExtension(path);
+			function Factory(endpoint) {
+				var type = endpoint.contentType;
+				var ext = type || path_getExtension(endpoint.path);
 				if (ext === 'mask') {
 					return ModuleMask;
 				}
@@ -6170,9 +6471,11 @@
 								));
 								break;
 							case 'module':
-								Module.registerModule(
-									x.nodes, u_resolvePath(x.attr.path, null, null, this)
-								);
+								var path = u_resolvePath(x.attr.path, null, null, this),
+									type = x.attr.contentType,
+									endpoint = new Module.Endpoint(path, type)
+									;
+								Module.registerModule(x.nodes, endpoint);
 								break;
 							case 'define':
 							case 'let':
@@ -6307,7 +6610,7 @@
 				var count = imports.length;
 				if (count === 0) {
 					return done.call(module);
-				}
+				}	
 				var imax = count,
 					i = -1;
 				while( ++i < imax ) {
@@ -6393,7 +6696,10 @@
 				obj_setProperty(ctr.scope, prop, obj);
 				return obj;
 			},
-			
+			preprocessError_: function(error, next) {
+				log_error('Resource ' + this.path + ' thrown an Exception: ' + error);
+				next(error);
+			}
 		});
 		// end:source Module/ModuleScript
 		// source Module/ModuleStyle
@@ -6436,8 +6742,10 @@
 				
 			custom_Tags['module'] = class_create({
 				constructor: function(node, model, ctx, container, ctr) {
-					var path  = path_resolveUrl(node.attr.path, u_resolveLocation(ctx, ctr));
-					Module.registerModule(node.nodes, path, ctx, ctr);
+					var path = path_resolveUrl(node.attr.path, u_resolveLocation(ctx, ctr)),
+						type = node.attr.type,
+						endpoint = new Module.Endpoint(path, type);
+					Module.registerModule(node.nodes, endpoint, ctx, ctr);
 				},
 				render: fn_doNothing
 			});
@@ -6453,9 +6761,9 @@
 					serializeNodes: true
 				},
 				constructor: function(node, model, ctx, el, ctr) {
-					if (node.alias == null && node.exports == null && Module.isMask(node.path)) {
+					if (node.alias == null && node.exports == null && Module.isMask(node)) {
 						// embedding
-						this.module = Module.createModule(node.path, ctx, ctr);
+						this.module = Module.createModule(node, ctx, ctr);
 					}
 				},
 				renderStart: function(model, ctx){
@@ -6631,8 +6939,8 @@
 					if (node.tagName !== 'import') {
 						return next();
 					}
-					var path = resolvePath(node.path, location);
-					var type = Module.getType(path);
+					var path = resolvePath(node, location);
+					var type = Module.getType(node);
 					if (opts.deep === false) {
 						dependency[type].push(path);
 						return next();
@@ -6675,9 +6983,10 @@
 					})
 					.fail(done);
 			}		
-			function resolvePath(path_, location) {
-				var path = path_;
-				if ('' === path_getExtension(path)) {
+			function resolvePath(node, location) {
+				var path = node.path,
+					type = node.contentType;
+				if ((type == null || type === 'mask') && path_getExtension(path) === '') {
 					path += '.mask';
 				}
 				if (path_isRelative(path)) {
@@ -6850,7 +7159,7 @@
 						.done(function(str){
 							var script = 'module = { exports: null }\n';
 							script += str + ';\n';
-							script += 'mask.Module.registerModule(module.exports, "' + path + '")';
+							script += 'mask.Module.registerModule(module.exports, new mask.Module.Endpoint("' + path + '", "script"))';
 							resolve(script);
 						});	
 				});
@@ -6874,7 +7183,7 @@
 							}
 							var str = JSON.stringify(json, null, opts.minify ? 4 : void 0);
 							var script = 'module = { exports: ' + str + ' }\n'
-								+ 'mask.Module.registerModule(module.exports, "' + path + '")';
+								+ 'mask.Module.registerModule(module.exports, new mask.Module.Endpoint("' + path + '", "json"))';
 								
 							resolve(script);
 						});	
@@ -6885,19 +7194,22 @@
 		
 		obj_extend(Module, {
 			ModuleMask: ModuleMask,
-			createModule: function(path_, ctx, ctr, parent) {			
-				var path   = u_resolvePath(path_, ctx, ctr, parent),
+			Endpoint: Endpoint,		
+			createModule: function(node, ctx, ctr, parent) {			
+				var path   = u_resolvePathFromImport(node, ctx, ctr, parent),
 					module = _cache[path];
 				if (module == null) {
-					module = _cache[path] = IModule.create(path, parent);
+					var endpoint = new Endpoint(path, node.contentType);
+					module = _cache[path] = IModule.create(endpoint, parent);
 				}
 				return module;
 			},
-			registerModule: function(mix, path_, ctx, ctr, parent) {
-				var path   = u_resolvePath(path_, ctx, ctr, parent),
-					module = Module.createModule(path, ctx, ctr, parent);
+			registerModule: function(mix, endpoint, ctx, ctr, parent) {
+				endpoint.path = u_resolvePath(endpoint.path, ctx, ctr, parent);
+				
+				var module = Module.createModule(endpoint, ctx, ctr, parent);
 				module.state = 1;
-				if (Module.isMask(path)) {
+				if (Module.isMask(endpoint)) {
 					module.preprocess_(mix, function(){
 						module.state = 4;
 						module.resolve(module);
@@ -6911,17 +7223,24 @@
 				return module;
 			},
 			
-			createImport: function(data, ctx, ctr, module){
-				var path    = u_resolvePath(data.path, ctx, ctr, module),
-					alias   = data.alias,
-					exports = data.exports;
-				return IImport.create(path, alias, exports, module);
+			createImport: function(node, ctx, ctr, module){
+				var path    = u_resolvePathFromImport(node, ctx, ctr, module),
+					alias   = node.alias,
+					exports = node.exports,
+					endpoint = new Endpoint(path, node.contentType);
+				return IImport.create(endpoint, alias, exports, module);
 			},
-			isMask: function(path){
-				var ext = path_getExtension(path);
+			isMask: function(endpoint){
+				var type = endpoint.contentType,
+					ext = type || path_getExtension(endpoint.path);
 				return ext === '' || ext === 'mask' || ext === 'html';
 			},
-			getType: function(path) {
+			getType: function(endpoint) {
+				var type = endpoint.contentType,
+					path = endpoint.path;
+				if (type != null) {
+					return type;
+				}
 				var ext = path_getExtension(path);			
 				if (ext === '' || ext === 'mask'){
 					return 'mask';
@@ -7060,7 +7379,7 @@
 			while( ++i < imax ){
 				x = extends_[i];
 				if (x.compo) {
-					var compo = resolveCompo(x.compo, ctr);
+					var compo = customTag_get(x.compo, ctr);
 					if (compo != null) {
 						args.unshift(compo);
 						continue;
@@ -7077,17 +7396,7 @@
 			}
 			return args;
 		}
-		function resolveCompo(compoName, ctr) {
-			while (ctr != null) {
-				if (ctr.getHandler) {
-					var x = ctr.getHandler(compoName);
-					if (x != null) 
-						return x;
-				}
-				ctr = ctr.parent;
-			}
-			return custom_Tags[compoName];
-		}
+		
 		function compo_fromNode(node, model, ctr, Base) {
 			var extends_ = node['extends'],
 				as_ = node['as'],
@@ -7384,17 +7693,45 @@
 	
 	(function(Node, TextNode, Fragment, Component) {
 	
+		// source ./const
 		var interp_START = '~',
 			interp_OPEN = '[',
 			interp_CLOSE = ']',
-	
+		
 			// ~
 			interp_code_START = 126,
 			// [
 			interp_code_OPEN = 91,
 			// ]
-			interp_code_CLOSE = 93;
-	
+			interp_code_CLOSE = 93,
+			
+			
+			go_tag = 2,
+			go_up = 9,
+			go_attrVal = 6,
+			go_attrHeadVal = 7,
+			
+			state_tag = 3,
+			state_attr = 5,
+			state_literal = 8
+			;
+		// end:source ./const
+		// source ./utils
+		parser_cleanObject = function(mix) {
+			if (is_Array(mix)) {
+				for (var i = 0; i < mix.length; i++) {
+					parser_cleanObject(mix[i]);
+				}
+				return mix;
+			}
+			delete mix.parent;
+			delete mix.__single;
+			if (mix.nodes != null) {
+				parser_cleanObject(mix.nodes);
+			}
+			return mix;
+		};
+		// end:source ./utils
 		// source ./cursor
 		var cursor_groupEnd,
 			cursor_quoteEnd,
@@ -7511,99 +7848,307 @@
 			};
 		}());
 		// end:source ./cursor
-		// source ./function
-		function ensureTemplateFunction(template) {
-			var index = -1;
+		// source ./interpolation
+		(function(){
 		
-			/*
-			 * - single char indexOf is much faster then '~[' search
-			 * - function is divided in 2 parts: interpolation start lookup/ interpolation parse
-			 * for better performance
-			 */
-			while ((index = template.indexOf(interp_START, index)) !== -1) {
-				if (template.charCodeAt(index + 1) === interp_code_OPEN) 
-					break;
-				
-				index++;
-			}
-		
-			if (index === -1) 
-				return template;
+			parser_ensureTemplateFunction = function (template) {
+				var mix = _split(template);
+				if (mix == null) {
+					return template;
+				}
+				if (typeof mix === 'string') {
+					return mix;
+				}
+				var array = mix;
+				return function(type, model, ctx, element, ctr, name) {
+					if (type === void 0) {
+						return template;
+					}
+					return _interpolate(
+						array
+						, type
+						, model
+						, ctx
+						, element
+						, ctr
+						, name
+					);
+				};
+			};
 			
-			var length = template.length,
-				array = [],
-				lastIndex = 0,
-				i = 0,
-				end;
+			
+			parser_setInterpolationQuotes = function(start, end) {
+				if (!start || start.length !== 2) {
+					log_error('Interpolation Start must contain 2 Characters');
+					return;
+				}
+				if (!end || end.length !== 1) {
+					log_error('Interpolation End must be of 1 Character');
+					return;
+				}
 		
-		
-			while (true) {
-				end = cursor_groupEnd(
-					template
-					, index + 2
-					, length
-					, interp_code_OPEN
-					, interp_code_CLOSE
-				);
-				if (end === -1) 
-					break;
+				interp_code_START = start.charCodeAt(0);
+				interp_code_OPEN = start.charCodeAt(1);
+				interp_code_CLOSE = end.charCodeAt(0);
 				
-				array[i++] = lastIndex === index
-					? ''
-					: template.substring(lastIndex, index);
-				array[i++] = template.substring(index + 2, end);
-		
-				lastIndex = index = end + 1;
-		
+				interp_START = start[0];
+				interp_OPEN = start[1];
+				interp_CLOSE = end;
+			};
+			
+			
+			function _split (template) {
+				var index = -1,
+					wasEscaped = false,
+					nextC, nextI;
+				/*
+				 * - single char indexOf is much faster then '~[' search
+				 * - function is divided in 2 parts: interpolation start lookup + interpolation parse
+				 * for better performance
+				 */
 				while ((index = template.indexOf(interp_START, index)) !== -1) {
-					if (template.charCodeAt(index + 1) === interp_code_OPEN) 
-						break;
-					
+					nextC = template.charCodeAt(index + 1);
+					var escaped = _char_isEscaped(template, index);
+					if (escaped === true) {
+						wasEscaped = true;
+					}
+					if (escaped === false)  {
+						if (nextC === interp_code_OPEN) 
+							break;
+						if (_char_isSimpleInterp(nextC)) {
+							break;
+						}
+					}
 					index++;
 				}
-				if (index === -1) 
-					break;
-			}
-		
-			if (lastIndex < length) 
-				array[i] = template.substring(lastIndex);
 			
-		
-			template = null;
-			return function(type, model, ctx, element, ctr, name) {
-				if (type == null) {
-					// http://jsperf.com/arguments-length-vs-null-check
-					// this should be used to stringify parsed MaskDOM
-					var string = '',
-						imax = array.length,
-						i = -1,
-						x;
-					while ( ++i < imax) {
-						x = array[i];
-						
-						string += i % 2 === 1
-							? interp_START
-								+ interp_OPEN
-								+ x
-								+ interp_CLOSE
-							: x
-							;
+				if (index === -1) {
+					if (wasEscaped === true) {
+						return _escape(template);
 					}
-					return string;
+					return null;
 				}
-		
-				return util_interpolate(
-					array
-					, type
-					, model
-					, ctx
-					, element
-					, ctr
-					, name
-				);
+				
+				var length = template.length,
+					array = [],
+					lastIndex = 0,
+					i = 0,
+					end;
+			
+				var propAccessor = false;
+				while (true) {
+					
+					array[i++] = lastIndex === index
+						? ''
+						: _slice(template, lastIndex, index);
+					
+					
+					nextI = index + 1;
+					nextC = template.charCodeAt(nextI);
+					if (nextC === interp_code_OPEN) {
+						propAccessor = false;
+						end = cursor_groupEnd(
+							template
+							, nextI + 1
+							, length
+							, interp_code_OPEN
+							, interp_code_CLOSE
+						);
+						var str = template.substring(index + 2, end);
+						array[i++] = new InterpolationModel(null, str);
+						lastIndex = index = end + 1;
+					}
+					
+					else if (_char_isSimpleInterp(nextC)) {
+						propAccessor = true;
+						end = _cursor_propertyAccessorEnd(template, nextI, length);
+						
+						var str = template.substring(index + 1, end);
+						array[i++] = new InterpolationModel(str, null);
+						lastIndex = index = end;		
+					}
+					else {
+						array[i] += template[nextI];
+						lastIndex = nextI;
+					}
+					
+					while ((index = template.indexOf(interp_START, index)) !== -1) {
+						nextC = template.charCodeAt(index + 1);
+						var escaped = _char_isEscaped(template, index);
+						if (escaped === true) {
+							wasEscaped = true;
+						}
+						if (escaped === false)  {
+							if (nextC === interp_code_OPEN) 
+								break;
+							if (_char_isSimpleInterp(nextC)) {
+								break;
+							}
+						}
+						index++;
+					}
+					if (index === -1) {
+						break;
+					}
+				}	
+				if (lastIndex < length) {
+					array[i] = wasEscaped === true
+						? _slice(template, lastIndex, length)
+						: template.substring(lastIndex)
+						;
+				}
+				return array;
+			}
+			
+			function _char_isSimpleInterp (c) {
+				//A-z$_
+				return (c >= 65 && c <= 122) || c === 36 || c === 95;
+			}
+			function _char_isEscaped (str, i) {
+				if (i === 0) {
+					return false;
+				}		
+				var c = str.charCodeAt(--i);
+				if (c === 92) {
+					if (_char_isEscaped(str, c))
+						return false;			
+					return true;
+				}
+				return false;
+			}
+			
+			function _slice(string, start, end) {
+				var str = string.substring(start, end);
+				var i = str.indexOf(interp_START)
+				if (i === -1) {
+					return str;
+				}
+				return _escape(str);
+			}
+			
+			function _escape(str) {
+				return str.replace(/\\~/g, '~');
+			}
+			
+			function InterpolationModel(prop, expr){
+				this.prop = prop;
+				this.expr = expr;
+			}
+			InterpolationModel.prototype.process = function(model, ctx, el, ctr, name, type){
+				if (this.prop != null) {
+					return obj_getPropertyEx(this.prop, model, ctx, ctr);
+				}
+				var expr = this.expr,
+					index = expr.indexOf(':'),
+					util;
+				if (index !== -1) {
+					if (index === 0) {
+						expr = expr.substring(index + 1);
+					}
+					else {
+						var match = rgx_UTIL.exec(expr);
+						if (match != null) {
+							util = match[1];
+							expr = expr.substring(index + 1);
+						}
+					}
+				}
+				if (util == null || util === '') {
+					util = 'expression';
+				}
+				
+				var fn = custom_Utils[util];
+				if (fn == null) {
+					log_error('Undefined custom util:', util);
+					return null;
+				}
+				return fn(expr, model, ctx, el, ctr, name, type);
 			};
-		}
-		// end:source ./function
+			
+			/**
+			 * - arr (Array) - array that was prepaired by parser -
+			 *  every even index holds interpolate value that was in #{some value}
+			 * - model: current model
+			 * - type (String const) (node | attr): tell custom utils what part we are
+			 *  interpolating
+			 * - cntx (Object): current render context object
+			 * - element (HTMLElement):
+			 * type node - this is a container
+			 * type attr - this is element itself
+			 * - name
+			 *  type attr - attribute name
+			 *  type node - undefined
+			 *
+			 * -returns Array | String
+			 *
+			 * If we rendere interpolation in a TextNode, then custom util can return not only string values,
+			 * but also any HTMLElement, then TextNode will be splitted and HTMLElements will be inserted within.
+			 * So in that case we return array where we hold strings and that HTMLElements.
+			 *
+			 * If custom utils returns only strings, then String will be returned by this function
+			 *
+			 */
+			
+			function _interpolate(arr, type, model, ctx, el, ctr, name) {
+				var imax = arr.length,
+					i = -1,
+					array = null,
+					string = '',
+					even = true;
+				while ( ++i < imax ) {
+					if (even === true) {
+						if (array == null){
+							string += arr[i];
+						} else{
+							array.push(arr[i]);
+						}
+					} else {
+						var interp = arr[i],
+							mix = interp.process(model, ctx, el, ctr, name, type);
+						if (mix != null) {					
+							if (typeof mix === 'object' && array == null){
+								array = [ string ];
+							}
+							if (array == null){
+								string += mix;
+							} else {
+								array.push(mix);
+							}
+						}
+					}
+					even = !even;
+				}
+			
+				return array == null
+					? string
+					: array
+					;
+			}
+			
+			function _cursor_propertyAccessorEnd(str, i, imax) {
+				var c;
+				while (i < imax){
+					c = str.charCodeAt(i);
+					if (c === 36 || c === 95 || c === 46) {
+						// $ _ .
+						i++;
+						continue;
+					}
+					if ((48 <= c && c <= 57) ||		// 0-9
+						(65 <= c && c <= 90) ||		// A-Z
+						(97 <= c && c <= 122)) {	// a-z
+						i++;
+						continue;
+					}
+					break;
+				}
+				return i;
+			}
+			
+			var rgx_UTIL = /\s*(\w+):/;
+		}());
+		
+		// end:source ./interpolation
 		// source ./object/ObjectLexer
 		var ObjectLexer;
 		(function(){
@@ -8059,7 +8604,7 @@
 			}());
 			// end:source ./tokens.js
 			
-			ObjectLexer = function(pattern){
+			parser_ObjectLexer = ObjectLexer = function(pattern){
 				if (arguments.length === 1 && typeof pattern === 'string') {
 					return ObjectLexer_single(pattern);
 				}
@@ -8366,7 +8911,7 @@
 					
 					attr = parser_parseAttr(str, start, i);
 					for (var key in attr) {
-						attr[key] = ensureTemplateFunction(attr[key]);
+						attr[key] = parser_ensureTemplateFunction(attr[key]);
 					}
 					
 					if (c === 62) {
@@ -8410,7 +8955,7 @@
 						
 						body = preprocess(name, body);
 						if (name !== 'script') {
-							body = ensureTemplateFunction(body);
+							body = parser_ensureTemplateFunction(body);
 						}
 					}
 					
@@ -8498,9 +9043,9 @@
 			};
 			
 			var lex_ = ObjectLexer(
-				[ 'from "$path"'
-				, '* as $alias from "$path"'
-				, '$$exports[$name?( as $alias)](,) from "$path"'
+				[ 'from "$path"?( is $contentType)'
+				, '* as $alias from "$path"?( is $contentType)'
+				, '$$exports[$name?( as $alias)](,) from "$path"?( is $contentType)'
 				]
 			);
 			
@@ -8522,11 +9067,18 @@
 					this.path = data.path;
 					this.alias = data.alias;
 					this.exports = data.exports;
-					
+					this.contentType = data.contentType;
 					this.parent = parent;
 				},
 				stringify: function(){
-					var from = " from '" + this.path + "';";
+					var from = " from '" + this.path + "'";
+					
+					var type = this.contentType;
+					if (type != null) {
+						from += ' is ' + type;
+					}
+					from += ';';
+					
 					if (this.alias != null) {
 						return IMPORT + " * as " + this.alias + from;
 					}
@@ -8869,7 +9421,7 @@
 					}
 					token += str.substring(start, i);
 					if (token !== '') {
-						token = ensureTemplateFunction(token);
+						token = parser_ensureTemplateFunction(token);
 						current.appendChild(new TextNode(token, current));
 					}
 				}
@@ -9062,7 +9614,7 @@
 				for(key in obj) {
 					val = obj[key];
 					if (val != null && val !== key) {
-						obj[key] = ensureTemplateFunction(val);
+						obj[key] = parser_ensureTemplateFunction(val);
 					}
 				}
 				if (obj.expression != null) {
@@ -9078,684 +9630,662 @@
 			}
 		}());
 		// end:source ./html/parser
-		
-		var go_tag = 2,
-			state_tag = 3,
-			state_attr = 5,
-			go_attrVal = 6,
-			go_attrHeadVal = 7,
-			state_literal = 8,
-			go_up = 9
-			;
-		
-		parser_ensureTemplateFunction = ensureTemplateFunction;
-		parser_ObjectLexer = ObjectLexer;
-	
-		/** @out : nodes */
-		parser_parse = function(template) {
-			var current = new Fragment(),
-				fragment = current,
-				state = go_tag,
-				last = state_tag,
-				index = 0,
-				length = template.length,
-				classNames,
-				token,
-				tokenIndex,
-				key,
-				value,
-				next,
-				c, // charCode
-				start,
-				nextC;
+		// source ./mask/parser
+		(function(){
 			
-			fragment.source = template;
-			outer: while (true) {
+			
+			/** @out : nodes */
+			parser_parse = function(template) {
+				var current = new Fragment(),
+					fragment = current,
+					state = go_tag,
+					last = state_tag,
+					index = 0,
+					length = template.length,
+					classNames,
+					token,
+					tokenIndex,
+					key,
+					value,
+					next,
+					c, // charCode
+					start,
+					nextC;
 				
-				while (index < length && (c = template.charCodeAt(index)) < 33) {
-					index++;
-				}
-	
-				// COMMENTS
-				if (c === 47) {
-					// /
-					nextC = template.charCodeAt(index + 1);
-					if (nextC === 47){
-						// inline (/)
+				fragment.source = template;
+				outer: while (true) {
+					
+					while (index < length && (c = template.charCodeAt(index)) < 33) {
 						index++;
-						while (c !== 10 && c !== 13 && index < length) {
-							// goto newline
-							c = template.charCodeAt(++index);
-						}
-						continue;
 					}
-					if (nextC === 42) {
-						// block (*)
-						index = template.indexOf('*/', index + 2) + 2;
-						if (index === 1) {
-							// if DEBUG
-							parser_warn('Block comment has no ending', template, index);
-							// endif
-							index = length;
-						}
-						continue;
-					}
-				}
-	
-				if (last === state_attr) {
-					if (classNames != null) {
-						current.attr['class'] = ensureTemplateFunction(classNames);
-						classNames = null;
-					}
-					if (key != null) {
-						current.attr[key] = key;
-						key = null;
-						token = null;
-					}
-				}
-	
-				if (token != null) {
-	
-					if (state === state_attr) {
-	
-						if (key == null) {
-							key = token;
-						} else {
-							value = token;
-						}
-	
-						if (key != null && value != null) {
-							if (key !== 'class') {
-								current.attr[key] = value;
-							} else {
-								classNames = classNames == null ? value : classNames + ' ' + value;
+			
+					// COMMENTS
+					if (c === 47) {
+						// /
+						nextC = template.charCodeAt(index + 1);
+						if (nextC === 47){
+							// inline (/)
+							index++;
+							while (c !== 10 && c !== 13 && index < length) {
+								// goto newline
+								c = template.charCodeAt(++index);
 							}
-	
-							key = null;
-							value = null;
-						}
-	
-					} else if (last === state_tag) {
-	
-						//next = custom_Tags[token] != null
-						//	? new Component(token, current, custom_Tags[token])
-						//	: new Node(token, current);
-						var parser = custom_Parsers[token];
-						if (parser != null) {
-							// Parser should return: [ parsedNode, nextIndex, nextState ]
-							var tuple = parser(
-								template
-								, index
-								, length
-								, current
-							);
-							var node = tuple[0],
-								nextState = tuple[2];
-								
-							index = tuple[1];
-							state = nextState === 0
-								? go_tag
-								: nextState;
-							if (node != null) {
-								node.sourceIndex = tokenIndex;
-								
-								var transform = custom_Parsers_Transform[token];
-								if (transform != null) {
-									var x = transform(current, node);
-									if (x != null) {
-										// make the current node single, to exit this and the transformed node on close
-										current.__single = true;
-										current = x;
-									}
-								}
-								
-								current.appendChild(node);
-								if (nextState !== 0) {
-									current = node;
-								} else {
-									if (current.__single === true) {
-										do {
-											current = current.parent;
-										} while (current != null && current.__single != null);
-									}
-								}
-							}
-							token = null;
 							continue;
 						}
-						
-						
-						next = new Node(token, current);
-						next.sourceIndex = tokenIndex;
-						
-						current.appendChild(next);
-						current = next;
-						state = state_attr;
-	
-					} else if (last === state_literal) {
-	
-						next = new TextNode(token, current);
-						current.appendChild(next);
-						
-						if (current.__single === true) {
-							do {
-								current = current.parent;
-							} while (current != null && current.__single != null);
+						if (nextC === 42) {
+							// block (*)
+							index = template.indexOf('*/', index + 2) + 2;
+							if (index === 1) {
+								// if DEBUG
+								parser_warn('Block comment has no ending', template, index);
+								// endif
+								index = length;
+							}
+							continue;
 						}
-						state = go_tag;
-	
 					}
-	
-					token = null;
-				}
-	
-				if (index >= length) {
-					if (state === state_attr) {
+			
+					if (last === state_attr) {
 						if (classNames != null) {
-							current.attr['class'] = ensureTemplateFunction(classNames);
+							current.attr['class'] = parser_ensureTemplateFunction(classNames);
+							classNames = null;
 						}
 						if (key != null) {
 							current.attr[key] = key;
+							key = null;
+							token = null;
 						}
 					}
-					c = null;
-					break;
-				}
-	
-				if (state === go_up) {
-					current = current.parent;
-					while (current != null && current.__single != null) {
+			
+					if (token != null) {
+			
+						if (state === state_attr) {
+			
+							if (key == null) {
+								key = token;
+							} else {
+								value = token;
+							}
+			
+							if (key != null && value != null) {
+								if (key !== 'class') {
+									current.attr[key] = value;
+								} else {
+									classNames = classNames == null ? value : classNames + ' ' + value;
+								}
+			
+								key = null;
+								value = null;
+							}
+			
+						} else if (last === state_tag) {
+			
+							//next = custom_Tags[token] != null
+							//	? new Component(token, current, custom_Tags[token])
+							//	: new Node(token, current);
+							var parser = custom_Parsers[token];
+							if (parser != null) {
+								// Parser should return: [ parsedNode, nextIndex, nextState ]
+								var tuple = parser(
+									template
+									, index
+									, length
+									, current
+								);
+								var node = tuple[0],
+									nextState = tuple[2];
+									
+								index = tuple[1];
+								state = nextState === 0
+									? go_tag
+									: nextState;
+								if (node != null) {
+									node.sourceIndex = tokenIndex;
+									
+									var transform = custom_Parsers_Transform[token];
+									if (transform != null) {
+										var x = transform(current, node);
+										if (x != null) {
+											// make the current node single, to exit this and the transformed node on close
+											current.__single = true;
+											current = x;
+										}
+									}
+									
+									current.appendChild(node);
+									if (nextState !== 0) {
+										current = node;
+									} else {
+										if (current.__single === true) {
+											do {
+												current = current.parent;
+											} while (current != null && current.__single != null);
+										}
+									}
+								}
+								token = null;
+								continue;
+							}
+							
+							
+							next = new Node(token, current);
+							next.sourceIndex = tokenIndex;
+							
+							current.appendChild(next);
+							current = next;
+							state = state_attr;
+			
+						} else if (last === state_literal) {
+			
+							next = new TextNode(token, current);
+							current.appendChild(next);
+							
+							if (current.__single === true) {
+								do {
+									current = current.parent;
+								} while (current != null && current.__single != null);
+							}
+							state = go_tag;
+			
+						}
+			
+						token = null;
+					}
+			
+					if (index >= length) {
+						if (state === state_attr) {
+							if (classNames != null) {
+								current.attr['class'] = parser_ensureTemplateFunction(classNames);
+							}
+							if (key != null) {
+								current.attr[key] = key;
+							}
+						}
+						c = null;
+						break;
+					}
+			
+					if (state === go_up) {
 						current = current.parent;
-					}
-					if (current == null) {
-						current = fragment;
-						parser_warn(
-							'Unexpected tag closing'
-							, template
-							, cursor_skipWhitespaceBack(template, index - 1)
-						);
-					}
-					state = go_tag;
-				}
-	
-				switch (c) {
-				case 123:
-					// {
-					last = state;
-					state = go_tag;
-					index++;
-					continue;
-				case 62:
-					// >
-					last = state;
-					state = go_tag;
-					index++;
-					current.__single = true;
-					continue;
-				case 59:
-					// ;
-					if (current.nodes != null) {
-						// skip ; , when node is not a single tag (else goto 125)
-						index++;
-						continue;
-					}
-					/* falls through */
-				case 125:
-					// ;}
-					if (c === 125 && (state === state_tag || state === state_attr)) {
-						// single tag was not closed with `;` but closing parent
-						index--;
-					}
-					index++;
-					last = state;
-					state = go_up;
-					continue;
-				case 39:
-				case 34:
-					// '"
-					// Literal - could be as textnode or attribute value
-					if (state === go_attrVal) {
-						state = state_attr;
-					} else {
-						last = state = state_literal;
-					}
-					index++;
-	
-					var isEscaped = false,
-						isUnescapedBlock = false,
-						_char = c === 39 ? "'" : '"';
-	
-					start = index;
-	
-					while ((index = template.indexOf(_char, index)) > -1) {
-						if (template.charCodeAt(index - 1) !== 92 /*'\\'*/ ) {
-							break;
+						while (current != null && current.__single != null) {
+							current = current.parent;
 						}
-						isEscaped = true;
-						index++;
-					}
-					if (index === -1) {
-						parser_warn('Literal has no ending', template, start - 1);
-						index = length;
-					}
-					
-					if (index === start) {
-						nextC = template.charCodeAt(index + 1);
-						if (nextC === 124 || nextC === c) {
-							// | (obsolete) or triple quote
-							isUnescapedBlock = true;
-							start = index + 2;
-							index = template.indexOf((nextC === 124 ? '|' : _char) + _char + _char, start);
-	
-							if (index === -1) 
-								index = length;
+						if (current == null) {
+							current = fragment;
+							parser_warn(
+								'Unexpected tag closing'
+								, template
+								, cursor_skipWhitespaceBack(template, index - 1)
+							);
 						}
+						state = go_tag;
 					}
-	
-					tokenIndex = start;
-					token = template.substring(start, index);
-					
-					if (isEscaped === true) {
-						token = token.replace(__rgxEscapedChar[_char], _char);
-					}
-					
-					if (state !== state_attr || key !== 'class') {
-						token = ensureTemplateFunction(token);
-					}
-					index += isUnescapedBlock ? 3 : 1;
-					continue;
-				}
-	
-				if (state === go_tag) {
-					last = state_tag;
-					state = state_tag;
-					//next_Type = Dom.NODE;
-					
-					if (c === 46 /* . */ || c === 35 /* # */ ) {
-						tokenIndex = index;
-						token = 'div';
-						continue;
-					}
-					
-					//-if (c === 58 || c === 36 || c === 64 || c === 37) {
-					//	// : /*$ @ %*/
-					//	next_Type = Dom.COMPONENT;
-					//}
-					
-				}
-	
-				else if (state === state_attr) {
-					if (c === 46) {
-						// .
+			
+					switch (c) {
+					case 123:
+						// {
+						last = state;
+						state = go_tag;
 						index++;
-						key = 'class';
-						state = go_attrHeadVal;
-					}
-					
-					else if (c === 35) {
-						// #
-						index++;
-						key = 'id';
-						state = go_attrHeadVal;
-					}
-					
-					else if (c === 61) {
-						// =;
-						index++;
-						state = go_attrVal;
-						
-						if (last === state_tag && key == null) {
-							parser_warn('Unexpected tag assignment', template, index, c, state);
-						}
 						continue;
-					}
-					
-					else if (c === 40) {
-						// (
-						start = 1 + index;
-						index = 1 + cursor_groupEnd(template, start, length, c, 41 /* ) */);
-						current.expression = template.substring(start, index - 1);
-						current.type = Dom.STATEMENT;
+					case 62:
+						// >
+						last = state;
+						state = go_tag;
+						index++;
+						current.__single = true;
 						continue;
-					}
-					
-					else {
-	
-						if (key != null) {
-							tokenIndex = index;
-							token = key;
+					case 59:
+						// ;
+						if (current.nodes != null) {
+							// skip ; , when node is not a single tag (else goto 125)
+							index++;
 							continue;
 						}
-					}
-				}
-	
-				if (state === go_attrVal || state === go_attrHeadVal) {
-					last = state;
-					state = state_attr;
-				}
-	
-	
-	
-				/* TOKEN */
-	
-				var isInterpolated = null;
-	
-				start = index;
-				while (index < length) {
-	
-					c = template.charCodeAt(index);
-	
-					if (c === interp_code_START && template.charCodeAt(index + 1) === interp_code_OPEN) {
-						isInterpolated = true;
-						++index;
-						do {
-							// goto end of template declaration
-							c = template.charCodeAt(++index);
+						/* falls through */
+					case 125:
+						// ;}
+						if (c === 125 && (state === state_tag || state === state_attr)) {
+							// single tag was not closed with `;` but closing parent
+							index--;
 						}
-						while (c !== interp_code_CLOSE && index < length);
+						index++;
+						last = state;
+						state = go_up;
+						continue;
+					case 39:
+					case 34:
+						// '"
+						// Literal - could be as textnode or attribute value
+						if (state === go_attrVal) {
+							state = state_attr;
+						} else {
+							last = state = state_literal;
+						}
+						index++;
+			
+						var isEscaped = false,
+							isUnescapedBlock = false,
+							_char = c === 39 ? "'" : '"';
+			
+						start = index;
+			
+						while ((index = template.indexOf(_char, index)) > -1) {
+							if (template.charCodeAt(index - 1) !== 92 /*'\\'*/ ) {
+								break;
+							}
+							isEscaped = true;
+							index++;
+						}
+						if (index === -1) {
+							parser_warn('Literal has no ending', template, start - 1);
+							index = length;
+						}
+						
+						if (index === start) {
+							nextC = template.charCodeAt(index + 1);
+							if (nextC === 124 || nextC === c) {
+								// | (obsolete) or triple quote
+								isUnescapedBlock = true;
+								start = index + 2;
+								index = template.indexOf((nextC === 124 ? '|' : _char) + _char + _char, start);
+			
+								if (index === -1) 
+									index = length;
+							}
+						}
+			
+						tokenIndex = start;
+						token = template.substring(start, index);
+						
+						if (isEscaped === true) {
+							token = token.replace(__rgxEscapedChar[_char], _char);
+						}
+						
+						if (state !== state_attr || key !== 'class') {
+							token = parser_ensureTemplateFunction(token);
+						}
+						index += isUnescapedBlock ? 3 : 1;
+						continue;
 					}
-					if (c === 64 && template.charCodeAt(index + 1) === 91) {
-						//@[
-						index = cursor_groupEnd(template, index + 2, length, 91, 93) + 1;
+			
+					if (state === go_tag) {
+						last = state_tag;
+						state = state_tag;
+						//next_Type = Dom.NODE;
+						
+						if (c === 46 /* . */ || c === 35 /* # */ ) {
+							tokenIndex = index;
+							token = 'div';
+							continue;
+						}
+						
+						//-if (c === 58 || c === 36 || c === 64 || c === 37) {
+						//	// : /*$ @ %*/
+						//	next_Type = Dom.COMPONENT;
+						//}
+						
+					}
+			
+					else if (state === state_attr) {
+						if (c === 46) {
+							// .
+							index++;
+							key = 'class';
+							state = go_attrHeadVal;
+						}
+						
+						else if (c === 35) {
+							// #
+							index++;
+							key = 'id';
+							state = go_attrHeadVal;
+						}
+						
+						else if (c === 61) {
+							// =;
+							index++;
+							state = go_attrVal;
+							
+							if (last === state_tag && key == null) {
+								parser_warn('Unexpected tag assignment', template, index, c, state);
+							}
+							continue;
+						}
+						
+						else if (c === 40) {
+							// (
+							start = 1 + index;
+							index = 1 + cursor_groupEnd(template, start, length, c, 41 /* ) */);
+							current.expression = template.substring(start, index - 1);
+							current.type = Dom.STATEMENT;
+							continue;
+						}
+						
+						else {
+			
+							if (key != null) {
+								tokenIndex = index;
+								token = key;
+								continue;
+							}
+						}
+					}
+			
+					if (state === go_attrVal || state === go_attrHeadVal) {
+						last = state;
+						state = state_attr;
+					}
+			
+			
+			
+					/* TOKEN */
+			
+					var isInterpolated = false;
+			
+					start = index;
+					while (index < length) {
+			
 						c = template.charCodeAt(index);
-					}
-	
-					// if DEBUG
-					if (c === 0x0027 || c === 0x0022 || c === 0x002F || c === 0x003C || c === 0x002C) {
-						// '"/<,
-						parser_error('', template, index, c, state);
-						break outer;
-					}
-					// endif
-	
-	
-					if (last !== go_attrVal && (c === 46 || c === 35)) {
-						// .#
-						// break on .# only if parsing attribute head values
-						break;
-					}
-	
-					if (c < 33 ||
-						c === 61 ||
-						c === 62 ||
-						c === 59 ||
-						c === 40 ||
-						c === 123 ||
-						c === 125) {
-						// =>;({}
-						break;
-					}
-	
-	
-					index++;
-				}
-	
-				token = template.substring(start, index);
-				tokenIndex = start;
-				if (token === '') {
-					parser_warn('String expected', template, index, c, state);
-					break;
-				}
-				
-				if (isInterpolated === true) {
-					if (state === state_tag) {
-						parser_warn('Invalid interpolation (in tag name)'
-							, template
-							, index
-							, token
-							, state);
-						break;
-					}
-					if (state === state_attr) {
-						if (key === 'id' || last === go_attrVal) {
-							token = ensureTemplateFunction(token);
+			
+						if (c === interp_code_START) {
+							var nextC = template.charCodeAt(index + 1);
+							if (nextC === interp_code_OPEN) {
+								isInterpolated = true;
+								index = 1 + cursor_groupEnd(
+									template
+									, index + 2
+									, length
+									, interp_code_START
+									, interp_code_CLOSE
+								);
+								c = template.charCodeAt(index);
+							}
+							else if ((nextC >= 65 && nextC <= 122) || nextC === 36 || nextC === 95) {
+								//A-z$_
+								isInterpolated = true;
+							}
 						}
-						else if (key !== 'class') {
-							// interpolate class later
-							parser_warn('Invalid interpolation (in attr name)'
+						if (c === 64 && template.charCodeAt(index + 1) === 91) {
+							//@[
+							index = cursor_groupEnd(template, index + 2, length, 91, 93) + 1;
+							c = template.charCodeAt(index);
+						}
+			
+						// if DEBUG
+						if (c === 0x0027 || c === 0x0022 || c === 0x002F || c === 0x003C || c === 0x002C) {
+							// '"/<,
+							parser_error('Unexpected char', template, index, c, state);
+							break outer;
+						}
+						// endif
+			
+			
+						if (last !== go_attrVal && (c === 46 || c === 35)) {
+							// .#
+							// break on .# only if parsing attribute head values
+							break;
+						}
+			
+						if (c < 33 ||
+							c === 61 ||
+							c === 62 ||
+							c === 59 ||
+							c === 40 ||
+							c === 123 ||
+							c === 125) {
+							// =>;({}
+							break;
+						}
+						index++;
+					}
+			
+					token = template.substring(start, index);
+					tokenIndex = start;
+					if (token === '') {
+						parser_warn('String expected', template, index, c, state);
+						break;
+					}
+					
+					if (isInterpolated === true) {
+						if (state === state_tag) {
+							parser_warn('Invalid interpolation (in tag name)'
 								, template
 								, index
 								, token
 								, state);
 							break;
 						}
-					}
-				}
-			}
-	
-			if (c !== c) {
-				parser_warn('IndexOverflow'
-					, template
-					, index
-					, c
-					, state
-				);
-			}
-	
-			// if DEBUG
-			var parent = current.parent;
-			if (parent != null &&
-				parent !== fragment &&
-				parent.__single !== true &&
-				current.nodes != null &&
-				parent.tagName !== 'imports') {
-				parser_warn('Tag was not closed: ' + current.tagName, template)
-			}
-			// endif
-	
-			
-			var nodes = fragment.nodes;
-			return nodes != null && nodes.length === 1
-				? nodes[0]
-				: fragment
-				;
-		};
-	
-		parser_cleanObject = function(mix) {
-			if (is_Array(mix)) {
-				for (var i = 0; i < mix.length; i++) {
-					parser_cleanObject(mix[i]);
-				}
-				return mix;
-			}
-			delete mix.parent;
-			delete mix.__single;
-			if (mix.nodes != null) {
-				parser_cleanObject(mix.nodes);
-			}
-			return mix;
-		};
-		
-		parser_setInterpolationQuotes = function(start, end) {
-			if (!start || start.length !== 2) {
-				log_error('Interpolation Start must contain 2 Characters');
-				return;
-			}
-			if (!end || end.length !== 1) {
-				log_error('Interpolation End must be of 1 Character');
-				return;
-			}
-	
-			interp_code_START = start.charCodeAt(0);
-			interp_code_OPEN = start.charCodeAt(1);
-			interp_code_CLOSE = end.charCodeAt(0);
-			
-			interp_START = start[0];
-			interp_OPEN = start[1];
-			interp_CLOSE = end;
-		};
-		
-		parser_parseAttr = function(str, start, end){
-			var attr = {},
-				i = start,
-				key, val, c;
-			while(i < end) {
-				i = cursor_skipWhitespace(str, i, end);
-				if (i === end) 
-					break;
-				
-				start = i;
-				for(; i < end; i++){
-					c = str.charCodeAt(i);
-					if (c === 61 || c < 33) break;
-				}
-				
-				key = str.substring(start, i);
-				
-				i = cursor_skipWhitespace(str, i, end);
-				if (i === end) {
-					attr[key] = key;
-					break;
-				}
-				if (str.charCodeAt(i) !== 61 /*=*/) {
-					attr[key] = key;
-					continue;
-				}
-				
-				i = start = cursor_skipWhitespace(str, i + 1, end);
-				c = str.charCodeAt(i);
-				if (c === 34 || c === 39) {
-					// "|'
-					i = cursor_quoteEnd(str, i + 1, end, c === 39 ? "'" : '"');
-					
-					attr[key] = str.substring(start + 1, i);
-					i++;
-					continue;
-				}
-				i = cursor_goToWhitespace(str, i, end);
-				attr[key] = str.substring(start, i);
-			}
-			return attr;
-		};
-		
-		parser_parseAttrObject = function(str, i, imax, attr){
-			var state_KEY = 1,
-				state_VAL = 2,
-				state_END = 3,
-				state = state_KEY,
-				token, index, key, c;
-				
-			outer: while(i < imax) {
-				i = cursor_skipWhitespace(str, i, imax);
-				if (i === imax) 
-					break;
-				
-				index = i;
-				c = str.charCodeAt(i);
-				switch (c) {
-					case 61 /* = */:
-						i++;
-						state = state_VAL;
-						continue outer;
-					case 123:
-					case 59:
-					case 62:
-					case 47:
-						// {;>/
-						state = state_END;
-						break;
-					case 40:
-						//()
-						i = cursor_groupEnd(str, ++index, imax, 40, 41);
-						if (key != null) {
-							attr[key] = key;
-						}
-						key = 'expression';
-						token = str.substring(index, i);
-						i++;
-						state = state_VAL;
-						break;
-					case 39:
-					case 34:
-						//'"
-						i = cursor_quoteEnd(str, ++index, imax, c === 39 ? "'" : '"');
-						token = str.substring(index, i);
-						i++;
-						break;
-					default:
-						i++;
-						for(; i < imax; i++){
-							c = str.charCodeAt(i);
-							if (c < 33 || c === 61 || c === 123 || c === 59 || c === 62 || c === 47) {
-								// ={;>/
+						if (state === state_attr) {
+							if (key === 'id' || last === go_attrVal) {
+								token = parser_ensureTemplateFunction(token);
+							}
+							else if (key !== 'class') {
+								// interpolate class later
+								parser_warn('Invalid interpolation (in attr name)'
+									, template
+									, index
+									, token
+									, state);
 								break;
 							}
 						}
-						token = str.substring(index, i);
-						break;
+					}
 				}
+			
+				if (c !== c) {
+					parser_warn('IndexOverflow'
+						, template
+						, index
+						, c
+						, state
+					);
+				}
+			
+				// if DEBUG
+				var parent = current.parent;
+				if (parent != null &&
+					parent !== fragment &&
+					parent.__single !== true &&
+					current.nodes != null &&
+					parent.tagName !== 'imports') {
+					parser_warn('Tag was not closed: ' + current.tagName, template)
+				}
+				// endif
+			
 				
-				if (token === '') {
-					parser_warn('Token not readable', str, i);
-					i++;
-					continue;
-				}
-				
-				if (state === state_VAL) {
-					attr[key] = token;
-					state = state_KEY;
-					key = null;
-					continue;
-				}
-				if (key != null) {
-					attr[key] = key;
-					key = null;
-				}
-				if (state === state_END) {
-					break;
-				}
-				key = token;
-			}
-			return i;
-		};
+				var nodes = fragment.nodes;
+				return nodes != null && nodes.length === 1
+					? nodes[0]
+					: fragment
+					;
+			};
+			
+			
+		}());
 		
-		parser_parseLiteral = function(str, start, imax){
-			var i = cursor_skipWhitespace(str, start, imax);
+		// end:source ./mask/parser
+		// source ./mask/partials/attributes
+		(function(){
 			
-			var c = str.charCodeAt(i);
-			if (c !== 34 && c !== 39) {
-				// "'
-				parser_error("A quote is expected", str, i);
-				return null;
-			}
-			
-			var isEscaped = false,
-				isUnescapedBlock = false,
-				_char = c === 39 ? "'" : '"';
-	
-			start = ++i;
-	
-			while ((i = str.indexOf(_char, i)) > -1) {
-				if (str.charCodeAt(i - 1) !== 92 /*'\\'*/ ) {
-					break;
+			parser_parseAttr = function(str, start, end){
+				var attr = {},
+					i = start,
+					key, val, c;
+				while(i < end) {
+					i = cursor_skipWhitespace(str, i, end);
+					if (i === end) 
+						break;
+					
+					start = i;
+					for(; i < end; i++){
+						c = str.charCodeAt(i);
+						if (c === 61 || c < 33) break;
+					}
+					
+					key = str.substring(start, i);
+					
+					i = cursor_skipWhitespace(str, i, end);
+					if (i === end) {
+						attr[key] = key;
+						break;
+					}
+					if (str.charCodeAt(i) !== 61 /*=*/) {
+						attr[key] = key;
+						continue;
+					}
+					
+					i = start = cursor_skipWhitespace(str, i + 1, end);
+					c = str.charCodeAt(i);
+					if (c === 34 || c === 39) {
+						// "|'
+						i = cursor_quoteEnd(str, i + 1, end, c === 39 ? "'" : '"');
+						
+						attr[key] = str.substring(start + 1, i);
+						i++;
+						continue;
+					}
+					i = cursor_goToWhitespace(str, i, end);
+					attr[key] = str.substring(start, i);
 				}
-				isEscaped = true;
-				i++;
-			}
+				return attr;
+			};
 			
-			if (i === -1) {
-				parser_warn('Literal has no ending', str, start - 1);
-				i = imax;
-			}
-			
-			if (i === start) {
-				var nextC = str.charCodeAt(i + 1);
-				if (nextC === c) {
-					isUnescapedBlock = true;
-					start = i + 2;
-					i = str.indexOf(_char + _char + _char, start);
-					if (i === -1) 
-						i = imax;
+			parser_parseAttrObject = function(str, i, imax, attr){
+				var state_KEY = 1,
+					state_VAL = 2,
+					state_END = 3,
+					state = state_KEY,
+					token, index, key, c;
+					
+				outer: while(i < imax) {
+					i = cursor_skipWhitespace(str, i, imax);
+					if (i === imax) 
+						break;
+					
+					index = i;
+					c = str.charCodeAt(i);
+					switch (c) {
+						case 61 /* = */:
+							i++;
+							state = state_VAL;
+							continue outer;
+						case 123:
+						case 59:
+						case 62:
+						case 47:
+							// {;>/
+							state = state_END;
+							break;
+						case 40:
+							//()
+							i = cursor_groupEnd(str, ++index, imax, 40, 41);
+							if (key != null) {
+								attr[key] = key;
+							}
+							key = 'expression';
+							token = str.substring(index, i);
+							i++;
+							state = state_VAL;
+							break;
+						case 39:
+						case 34:
+							//'"
+							i = cursor_quoteEnd(str, ++index, imax, c === 39 ? "'" : '"');
+							token = str.substring(index, i);
+							i++;
+							break;
+						default:
+							i++;
+							for(; i < imax; i++){
+								c = str.charCodeAt(i);
+								if (c < 33 || c === 61 || c === 123 || c === 59 || c === 62 || c === 47) {
+									// ={;>/
+									break;
+								}
+							}
+							token = str.substring(index, i);
+							break;
+					}
+					
+					if (token === '') {
+						parser_warn('Token not readable', str, i);
+						i++;
+						continue;
+					}
+					
+					if (state === state_VAL) {
+						attr[key] = token;
+						state = state_KEY;
+						key = null;
+						continue;
+					}
+					if (key != null) {
+						attr[key] = key;
+						key = null;
+					}
+					if (state === state_END) {
+						break;
+					}
+					key = token;
 				}
-			}
+				return i;
+			};
+			
+		}());
+		// end:source ./mask/partials/attributes
+		// source ./mask/partials/literal
+		(function(){
+			parser_parseLiteral = function(str, start, imax){
+				var i = cursor_skipWhitespace(str, start, imax);
+				
+				var c = str.charCodeAt(i);
+				if (c !== 34 && c !== 39) {
+					// "'
+					parser_error("A quote is expected", str, i);
+					return null;
+				}
+				
+				var isEscaped = false,
+					isUnescapedBlock = false,
+					_char = c === 39 ? "'" : '"';
+		
+				start = ++i;
+		
+				while ((i = str.indexOf(_char, i)) > -1) {
+					if (str.charCodeAt(i - 1) !== 92 /*'\\'*/ ) {
+						break;
+					}
+					isEscaped = true;
+					i++;
+				}
+				
+				if (i === -1) {
+					parser_warn('Literal has no ending', str, start - 1);
+					i = imax;
+				}
+				
+				if (i === start) {
+					var nextC = str.charCodeAt(i + 1);
+					if (nextC === c) {
+						isUnescapedBlock = true;
+						start = i + 2;
+						i = str.indexOf(_char + _char + _char, start);
+						if (i === -1) 
+							i = imax;
+					}
+				}
+		
+				var token = str.substring(start, i);
+				if (isEscaped === true) {
+					token = token.replace(__rgxEscapedChar[_char], _char);
+				}
+				i += isUnescapedBlock ? 3 : 1;
+				return [ token, i ];
+			};	
+		}());
+		// end:source ./mask/partials/literal
 	
-			var token = str.substring(start, i);
-			if (isEscaped === true) {
-				token = token.replace(__rgxEscapedChar[_char], _char);
-			}
-			i += isUnescapedBlock ? 3 : 1;
-			return [ token, i ];
-		};
 		
 	}(Dom.Node, Dom.TextNode, Dom.Fragment, Dom.Component));
 	
@@ -13237,6 +13767,7 @@
 				expression: null,
 				attr: null,
 				model: null,
+				scope: null,
 				
 				slots: null,
 				pipes: null,
@@ -13297,18 +13828,18 @@
 		
 					this.$ = domLib(elements);
 		
-					if (this.events != null)
+					if (this.events != null) {
 						Events_.on(this, this.events);
-					
-					if (this.compos != null) 
+					}
+					if (this.compos != null) {
 						Children_.select(this, this.compos);
-					
-					if (this.hotkeys != null) 
+					}
+					if (this.hotkeys != null) {
 						KeyboardHandler.hotkeys(this, this.hotkeys);
-					
-					
-					if (is_Function(this.onRenderEnd))
+					}
+					if (is_Function(this.onRenderEnd)) {
 						this.onRenderEnd(elements, model, ctx, container);
+					}
 				},
 				appendTo: function(mix) {
 					
@@ -13444,6 +13975,14 @@
 							: null
 					);
 					return this;
+				},
+				
+				$scope: function(path){
+					var accessor = '$scope.' + path;
+					return mask.Utils.Expression.eval(accessor, null, null, this);
+				},
+				$eval: function(expr, model_, ctx_){
+					return mask.Utils.Expression.eval(expr, model_, ctx_, this);
 				}
 			};
 		
@@ -16470,9 +17009,15 @@
 						if (date == null) 
 							return;
 						
-						var target = date_ensure(obj_getProperty(obj, prop));
+						var target = obj_getProperty(obj, prop);
 						if (target == null) {
 							obj_setProperty(obj, prop, date);
+							return;
+						}
+						if (target.getFullYear == null || isNaN(target)) {
+							target = date_ensure(target) || date;
+							extend(target, date);
+							obj_setProperty(obj, prop, target);
 							return;
 						}
 						extend(target, date);
@@ -17554,18 +18099,22 @@
 					
 					return (this.current = current);
 				},
-				node: function(expr, model, ctx, element, controller){
+				node: function(expr, model, ctx, container, ctr){
+					var el = this.element,
+						val = this.current;
 					bind(
-						this.current,
-						expr,
-						model,
-						ctx,
-						this.element,
-						controller,
-						null,
-						'node');
-					
-					return this.element;
+						val
+						, expr
+						, model
+						, ctx
+						, el
+						, ctr
+						, null
+						, 'node'
+					);
+					this.element = null;
+					this.current = null;
+					return el;
 				},
 				
 				attrRenderStart: function(expr, model, ctx, element, controller){
@@ -19028,7 +19577,7 @@
 	Mask.Compo = Compo;
 	Mask.jmask = jmask;
 	
-	Mask.version = '0.51.27';
+	Mask.version = '0.51.34';
 	
 	//> make fast properties
 	custom_optimize();
