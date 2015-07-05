@@ -3,7 +3,7 @@
 
 // source umd-head
 /*!
- * MaskJS v0.12.23
+ * MaskJS v0.51.27
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
@@ -405,7 +405,8 @@
 	// source /src/fn.js
 	var fn_proxy,
 		fn_apply,
-		fn_doNothing;
+		fn_doNothing,
+		fn_patternDelegate;
 	(function(){
 		fn_proxy = function(fn, ctx) {
 			return function(){
@@ -432,6 +433,38 @@
 		fn_doNothing = function(){
 			return false;
 		};
+		
+		fn_patternDelegate = function(definitions, ctx){
+			var imax = definitions.length;
+			return function(){
+				var l = arguments.length,
+					i = -1,
+					def;
+				
+				outer: while(++i < imax){
+					def = definitions[i];
+					if (def.pattern.length !== l) {
+						continue;
+					}
+					var j = -1;
+					while(++j < l){
+						var fn  = def.pattern[j];
+						var val = arguments[j];
+						if (fn(val) === false) {
+							continue outer;
+						}
+					}
+					return def.handler.apply(ctx, arguments);
+				}
+				
+				console.error('InvalidArgumentException for a function', definitions, arguments);
+				return null;
+			};
+		};
+		
+		function pattern_Match(pattern, val){
+			return pattern(val);
+		}
 	}());
 	// end:source /src/fn.js
 	// source /src/str.js
@@ -1639,13 +1672,18 @@
     	(function(){
     		json_get = function(path, cb){
     			xhr_get(path, function(error, str){
-    				if (error) return cb(error);
+    				if (error) {
+    					cb(error);
+    					return;
+    				}
+    				var json;
     				try {
-    					var x = JSON.parse(str);
-    					cb(null, x);
+    					json = JSON.parse(str);
     				} catch (error) {
     					cb('JSON error: ' + String(error));
+    					return;
     				}
+    				cb(null, json);
     			})
     		};
     	}());
@@ -1866,6 +1904,8 @@
 		customTag_registerScoped,
 		customTag_registerFromTemplate,
 		customTag_registerResolver,
+		customTag_Resolver,
+		customTag_Compo_getHandler,
 		
 		// generic fn
 		customTag_define,
@@ -2056,6 +2096,7 @@
 							}
 							customTag_registerScoped(Ctr, key, store[key]);
 						}
+						dfr.resolve(exports.__handlers__);
 					});
 				
 				return dfr;
@@ -2076,7 +2117,7 @@
 				map[name] = compo_ensureCtor(Handler);
 				
 				if (obj.getHandler == null) {
-					obj.getHandler = compo_getHandlerDelegate;
+					obj.getHandler = customTag_Compo_getHandler;
 				}
 			};
 			
@@ -2088,56 +2129,46 @@
 			 * - 5. (scopedCtr, name, Ctor)
 			 * - 6. (scopedCompoName, name, Ctor)
 			 */
-			customTag_define = function (a1, a2, a3) {
-				var l = arguments.length;
-				if (1 === l) {
-					// 1
-					var type = typeof a1;
-					if (type !== 'string') {
-						log_error('API. Define expects string for 1 argument');
-						return;
+			
+			function is_Compo(val) {
+				return is_Object(val) || is_Function(val);
+			}
+			
+			customTag_define = fn_patternDelegate([{
+					pattern: [is_String],
+					handler: function(template) {
+						return customTag_registerFromTemplate(template);
 					}
-					customTag_registerFromTemplate(a1);
-					return;
-				}
-				if (2 === l) {
-					var t1 = typeof a1;
-					var t2 = typeof a2;
-					if (is_String(t1) && t1 === t2) {
-						// 2
-						var ctr = customTag_get(a1);
-						customTag_registerFromTemplate(a2, ctr);
-						return;
+				}, {
+					pattern: [is_String, is_String],
+					handler: function(name, template) {
+						var Scope = customTag_get(name);
+						return customTag_registerFromTemplate(template, Scope);
 					}
-					if (is_Object(t1) && is_String(t2)) {
-						// 3
-						customTag_registerFromTemplate(a1, a2);
-						return;
+				}, {
+					pattern: [is_Compo, is_String],
+					handler: function(Scope, template) {
+						return customTag_registerFromTemplate(template, Scope);
 					}
-					if (is_String(t1) && is_Function(t2)) {
-						// 4
-						customTag_register(a1, a2);
-						return;
+				}, {
+					pattern: [is_String, is_Compo],
+					handler: function(name, Ctor) {
+						return customTag_register(name, Ctor);
 					}
-				}
-				if (3 === l) {
-					var t1 = typeof a1;
-					var t2 = typeof a2;
-					var t3 = typeof a3;
-					if (is_Object(t1) && is_String(t2) && is_Function(t3)) {
-						// 5
-						customTag_registerScoped(a1, a2, a3);
-						return;
+				}, {
+					pattern: [is_Compo, is_String, is_Compo],
+					handler: function(Scope, name, Ctor) {
+						customTag_registerScoped(Scope, name, Ctor);
 					}
-					if (is_String(t1) && is_String(t2) && is_Function(t3)) {
-						// 6
-						var ctr = customTag_get(a1);
-						customTag_registerScoped(ctr, a2, a3);
-						return;
+				}, {
+					pattern: [is_String, is_String, is_Compo],
+					handler: function(scopeName, name, Ctor) {
+						var Scope = customTag_get(scopeName);
+						return customTag_registerScoped(Scope, name, Ctor);
 					}
 				}
-				log_error('Api::Define. Unsupported combination');
-			};
+			]);
+			
 			
 			customTag_registerResolver = function(name){
 				var Ctor = custom_Tags[name];
@@ -2151,6 +2182,11 @@
 				
 				//> make fast properties
 				obj_toFastProps(custom_Tags);
+			};
+			
+			customTag_Compo_getHandler = function (name) {
+				var map = this.__handlers__;
+				return map == null ? null : map[name];
 			};
 			
 			customTag_Base = {
@@ -2174,7 +2210,7 @@
 			
 			var Resolver;
 			(function(){
-				Resolver = function (node, model, ctx, container, ctr) {
+				customTag_Resolver = Resolver = function (node, model, ctx, container, ctr) {
 					var Mix = customTag_get(node.tagName, ctr);
 					if (Mix != null) {
 						if (is_Function(Mix) === false)	{
@@ -2202,10 +2238,7 @@
 				return Ctor;
 			}
 			
-			function compo_getHandlerDelegate(name) {
-				var map = this.__handlers__;
-				return map == null ? null : map[name];
-			}
+			
 			
 			function compo_ensureCtor(Handler) {
 				if (is_Object(Handler)) {
@@ -4890,6 +4923,9 @@
 	
 	(function(){
 		mask_run = function(){
+			if (_state === 0) {
+				_state = _state_All
+			}
 			var args = _Array_slice.call(arguments),
 				container,
 				model,
@@ -4938,10 +4974,22 @@
 			i = -1;
 			while( ++i < imax ){
 				script = scripts[i];
-				if (script.getAttribute('type') !== 'text/mask') 
+				
+				var scriptType = script.getAttribute('type');
+				if (scriptType !== 'text/mask' && scriptType !== 'text/x-mask') 
 					continue;
-				if (script.getAttribute('data-run') !== 'true') 
-					continue;
+				
+				var dataRun = script.getAttribute('data-run');
+				if (dataRun === 'auto') {
+					if (isCurrent(_state_Auto) === false) {
+						continue;
+					}
+				}
+				if (dataRun === 'true') { 
+					if (isCurrent(_state_Manual) === false) {
+						continue;
+					}
+				}
 				
 				found = true;
 				var ctx = new builder_Ctx;
@@ -4956,7 +5004,7 @@
 				script.parentNode.insertBefore(fragment, script);
 			}
 			ready = true;
-			if (found === false) {
+			if (_state !== _state_Auto && found === false) {
 				log_warn("No blocks found: <script type='text/mask' data-run='true'>...</script>");
 			}
 			if (await === 0) {
@@ -4981,6 +5029,25 @@
 				done();
 			};
 		}
+		
+		if (document != null && document.addEventListener) {
+			document.addEventListener("DOMContentLoaded", function(event) {
+				if (_state !== 0)  return;
+	
+				_state = _state_Auto;
+				global.app = mask_run();
+				_state = _state_Manual;
+			});
+		}
+		
+		var _state_Auto = 2,
+			_state_Manual = 4,
+			_state_All = _state_Auto | _state_Manual,
+			_state = 0;
+		
+		function isCurrent(state) {
+			return (_state & state) === state;
+		}
 	}());
 	// end:source run
 	// source merge
@@ -4999,7 +5066,15 @@
 			}
 			
 			var placeholders = _resolvePlaceholders(b, b, new Placeholders(null, b, opts));
-			return _merge(a, placeholders, owner);
+			var out = _merge(a, placeholders, owner);
+			var extra = placeholders.$extra;
+			if (extra != null && extra.length !== 0) {
+				if (is_Array(out)) {
+					return out.concat(extra);
+				}
+				return [ out ].concat(extra);
+			}
+			return out;
 		};
 		
 		var tag_ELSE = '@else',
@@ -5045,6 +5120,9 @@
 			return null;
 		}
 		function _mergeArray(nodes, placeholders, tmplNode, clonedParent){
+			if (nodes == null) {
+				return null;
+			}
 			var fragment = [],
 				imax = nodes.length,
 				i = -1,
@@ -5101,6 +5179,7 @@
 					}
 				}
 				id = '$root';
+				placeholders.$extra = null;
 			}
 			
 			if (tag_EACH === tagName) {
@@ -5435,7 +5514,7 @@
 		}
 		
 		var RESERVED = ' else placeholder each attr if parent scope'
-		function _resolvePlaceholders(b, node, placeholders) {
+		function _resolvePlaceholders(root, node, placeholders) {
 			if (node == null) 
 				return placeholders;
 			
@@ -5443,7 +5522,7 @@
 				var imax = node.length,
 					i = -1;
 				while( ++i < imax ){
-					_resolvePlaceholders(node === b ? node[i] : b, node[i], placeholders);
+					_resolvePlaceholders(node === root ? node[i] : root, node[i], placeholders);
 				}
 				return placeholders;
 			}
@@ -5456,6 +5535,7 @@
 				var tagName = node.tagName;
 				if (tagName != null && tagName.charCodeAt(0) === 64) {
 					// @
+					placeholders.$count++;
 					var id = tagName.substring(1);
 					// if DEBUG
 					if (RESERVED.indexOf(' ' + id + ' ') !== -1) 
@@ -5463,7 +5543,7 @@
 					// endif
 					var x = {
 						tagName: node.tagName,
-						parent: _getParentModifiers(b, node),
+						parent: _getParentModifiers(root, node),
 						nodes: node.nodes,
 						attr: node.attr,
 						expression: node.expression
@@ -5482,7 +5562,13 @@
 					return placeholders;
 				}
 			}
-			return _resolvePlaceholders(b, node.nodes, placeholders);
+			
+			var count = placeholders.$count;
+			var out = _resolvePlaceholders(root, node.nodes, placeholders);
+			if (root === node && count === placeholders.$count) {
+				placeholders.$extra.push(root);
+			}
+			return out;
 		}
 		function _getParentModifiers(root, node) {
 			if (node === root) 
@@ -5549,6 +5635,7 @@
 			this.scope = this;
 			this.parent = parent;
 			this.$root = $root || (parent && parent.$root);
+			this.$extra = [];
 			
 			if (opts != null) {
 				this.opts = opts;
@@ -5565,6 +5652,8 @@
 			attr: null,
 			scope: null,
 			$root: null,
+			$extra: null,
+			$count: 0,
 			$getNode: function(id, filter){
 				var ctx = this, node;
 				while(ctx != null){
@@ -5746,21 +5835,26 @@
 					__cfg.getScript = __cfg.getFile = null;
 				},
 				'include': function () {
-					__cfg.getScript = function(path) {
-						var dfr = new class_Dfr;
-						include
-							.instance()
-							.js(path + '::Module')
-							.done(function(resp){
-								var exports = resp.Module;
-								if (exports != null) {
-									dfr.resolve(exports);
-									return;
-								}
-								dfr.reject('Export is undefined');
+					__cfg.getScript = getter('js');
+					__cfg.getFile   = getter('load');
+					
+					var lib = include;
+					function getter(name) {
+						return function(path){
+							return class_Dfr.run(function(resolve, reject){
+								lib.instance('/')[name](path + '::Module').done(function(resp){
+									var exports = name === 'js'
+										? resp.Module
+										: resp[name].Module;
+									if (exports != null) {
+										resolve(exports);
+										return;
+									}
+									reject('Export is undefined');
+								});
 							});
-						return dfr;
-					};
+						}
+					}
 				}
 			};
 			
@@ -6171,10 +6265,12 @@
 					var node = nodes[i];
 					var name = node.tagName;
 					if (name === 'define' || name === 'let') {
-						var Ctor = Define.create(node, model, module);
+						var Base = {
+							getHandler: _fn_wrap(customTag_Compo_getHandler, getHandler),
+							location: module.location
+						};
+						var Ctor = Define.create(node, model, module, Base);
 						var Proto = Ctor.prototype;
-						Proto.getHandler = _fn_wrap(Proto.getHandler, getHandler);
-						Proto.location = module.location;
 						Proto.scope  = obj_extend(Proto.scope, scope);
 						
 						
@@ -6857,27 +6953,28 @@
 	var Define;
 	(function(){
 		Define = {
-			create: function(node, model, ctr){
-				return compo_fromNode(node, model, ctr);
+			create: function(node, model, ctr, Base){
+				return compo_fromNode(node, model, ctr, Base);
 			},
-			registerGlobal: function(node, model, ctr) {
-				var Ctor = Define.create(node, model, ctr);
+			registerGlobal: function(node, model, ctr, Base) {
+				var Ctor = Define.create(node, model, ctr, Base);
 				customTag_register(
 					node.name, Ctor
 				);
 			},
-			registerScoped: function(node, model, ctr) {
-				var Ctor = Define.create(node, model, ctr);
+			registerScoped: function(node, model, ctr, Base) {
+				var Ctor = Define.create(node, model, ctr, Base);
 				customTag_registerScoped(
 					ctr, node.name, Ctor
 				);
 			}
 		};
 		
-		function compo_prototype(tagName, attr, nodes, owner, model, Ctor) {
+		function compo_prototype(compoName, tagName, attr, nodes, owner, model, Base) {
 			var arr = [];
-			var Proto = {
+			var Proto = obj_extend({
 				tagName: tagName,
+				compoName: compoName,
 				template: arr,
 				attr: attr,
 				location: trav_location(owner),
@@ -6891,7 +6988,8 @@
 					}
 				},
 				getHandler: null
-			};
+			}, Base);
+			
 			var imax = nodes == null ? 0 : nodes.length,
 				i = 0, x, name;
 			for(; i < imax; i++) {
@@ -6904,6 +7002,11 @@
 					continue;
 				}
 				if ('slot' === name || 'event' === name) {
+					if ('event' === name && Proto.tagName != null) {
+						// bind the event later via the component
+						arr.push(x);
+						continue;
+					}
 					var type = name + 's';
 					var fns = Proto[type];
 					if (fns == null) {
@@ -6917,6 +7020,29 @@
 						? Define.registerGlobal
 						: Define.registerScoped;
 					fn(x, model, Proto);
+					continue;
+				}
+				if ('var' === name) {
+					var obj = x.getObject(model, null, owner),
+						key, val;
+					for(key in obj) {
+						val = obj[key];
+						if (key === 'meta' || key === 'model' || key === 'attr') {
+							Proto[key] = obj_extend(Proto[key], val);
+							continue;
+						}
+						if (key === 'scope') {
+							if (is_Object(val)) {
+								Proto.scope = obj_extend(Proto.scope, val);
+								continue;
+							}
+						}
+						var scope = Proto.scope;
+						if (scope == null) {
+							Proto.scope = scope = {};
+						}
+						scope[key] = val;
+					}
 					continue;
 				}
 				arr.push(x);
@@ -6962,7 +7088,7 @@
 			}
 			return custom_Tags[compoName];
 		}
-		function compo_fromNode(node, model, ctr) {
+		function compo_fromNode(node, model, ctr, Base) {
 			var extends_ = node['extends'],
 				as_ = node['as'],
 				tagName,
@@ -6974,7 +7100,7 @@
 			}
 			
 			var name = node.name,
-				Proto = compo_prototype(tagName, attr, node.nodes, ctr, model),
+				Proto = compo_prototype(name, tagName, attr, node.nodes, ctr, model, Base),
 				args = compo_extends(extends_, model, ctr)
 				;
 			
@@ -8101,6 +8227,15 @@
 						str += key + '=' + attr[key];
 					}
 					return str + ';';
+				},
+				getObject: function(model, ctx, ctr){
+					var obj = {},
+						attr = this.attr,
+						key;
+					for(key in attr) {
+						obj[key] = expression_eval(attr[key], model, ctx, ctr);
+					}
+					return obj;
 				}
 			});
 		}());
@@ -8300,8 +8435,7 @@
 							if (x.type === Dom.TEXTNODE) {
 								content = x.content;
 							} else {
-								//@OBSOLETE. allow only textnodes
-								content = jmask(x.nodes).text();
+								content = jmask(x.nodes).text(model, ctr);
 							}
 						}
 						
@@ -8503,11 +8637,14 @@
 				this.name = name;
 				this.args = args;
 			}
-			function compileFn(args, body) {
+			function compileFn(args, body, sourceUrl) {
 				var arr = _Array_slice.call(args);
 				var compile = __cfg.preprocessor.script;
 				if (compile != null) {
 					body = compile(body);
+				}
+				if (sourceUrl != null) {
+					body += '\n//# sourceURL=' + sourceUrl
 				}
 				arr.push(body);			
 				return new (Function.bind.apply(Function, [null].concat(arr)));
@@ -8526,7 +8663,16 @@
 					this.args = args;
 					this.body = body;
 					this.parent = parent;
-					this.fn = compileFn(args, body);
+					
+					var sourceUrl = null;
+					//if DEBUG
+					var ownerName = parent.tagName;
+					if (ownerName === 'let' || ownerName === 'define') {
+						ownerName += '_' + parent.name;
+					}
+					sourceUrl = constructSourceUrl(tagName, name, parent);
+					//endif
+					this.fn = compileFn(args, body, sourceUrl);
 				},
 				stringify: function(stream){
 					var head = this.tagName
@@ -8541,6 +8687,43 @@
 					stream.closeBlock('}');
 				}
 			});
+			
+			var constructSourceUrl;
+			(function(){
+				constructSourceUrl = function (methodType, methodName, owner) {
+					var ownerName = owner.tagName,
+						parent = owner,
+						stack = '',
+						tag;
+					while(parent != null) {
+						tag = parent.tagName;
+						if ('let' === tag || 'define' === tag) {
+							if (stack !== '') {
+								stack = '.' + stack;
+							}
+							stack = parent.name + stack;
+						}
+						parent = parent.parent;
+					}
+					if ('let' !== ownerName && 'define' !== ownerName) {
+						if (stack !== '') {
+							stack += '_';
+						}
+						stack += ownerName
+					}
+					var url = stack + '_' + methodType + '_' + methodName;
+					var index = null
+					if (_sourceUrls[url] !== void 0) {
+						index = ++_sourceUrls[url];
+					}
+					if (index != null) {
+						url += '_' + index;
+					}
+					_sourceUrls[url] = 1;
+					return 'dynamic://MaskJS/' + url;
+				};
+				var _sourceUrls = {};
+			}());
 			
 			custom_Parsers['slot' ]    = create('slot');
 			custom_Parsers['event']    = create('event');
@@ -9996,7 +10179,10 @@
 						if (compo != null) {
 							// overriden
 							ctr.components[i] = compo;
-							compo.components  = ctr.components.splice(i + 1);
+							compo.components  = clone.components == null
+								? ctr.components.splice(i + 1)
+								: clone.components
+								;
 						}
 					}
 				}
@@ -11018,8 +11204,14 @@
 			};
 			
 			compo_errored = function(compo, error){
-				compo.nodes = mask.parse('.-mask-compo-errored > "~[.]"');
-				compo.model = error.message || String(error);
+				var msg = '[%] Failed.'.replace('%', compo.compoName || compo.tagName);
+				if (error) {
+					var desc = error.message || error.statusText || String(error);
+					if (desc) {
+						msg += ' ' + desc;
+					}
+				}
+				compo.nodes = reporter_createErrorNode(msg);
 				compo.renderEnd = fn_doNothing;
 			};
 			
@@ -12411,9 +12603,6 @@
 							if (stat === Key_MATCH_WAIT || stat === Key_MATCH_NEXT) {
 								next = true;
 							}
-						}
-						if (next === false) {
-							//-this.keys.length = 0;
 						}
 					},
 					filter_: function(event, code){
@@ -16868,7 +17057,7 @@
 					
 					var val_ = arguments.length !== 0
 						? val
-						: this.objectWay.get(this, this.expression);
+						: this.domWay.get(this);
 					
 					return ValidatorProvider.validateUi(
 						fns, val_, ctr, el, this.objectChanged.bind(this)
@@ -18615,7 +18804,14 @@
 		});
 		
 		// end:source exports
-		
+	
+		// source api/utils
+		obj_extend(mask.obj, {
+			addObserver   : obj_addObserver,
+			removeObserver: obj_removeObserver,
+		});
+		// end:source api/utils
+	
 	}(Mask, Compo));
 	
 	// end:source /ref-mask-binding/lib/binding_embed
@@ -18667,7 +18863,7 @@
 	// end:source define
 	// source html
 	(function() {
-		Mask.registerHandler(':html', {
+		var Compo = {
 			meta: {
 				mode: 'server:all'
 			},
@@ -18693,7 +18889,8 @@
 				return this.html || '';
 			},
 			html: null
-		});
+		};	
+		customTag_register(':html', Compo);
 	}());
 	
 	// end:source html
@@ -18831,7 +19028,7 @@
 	Mask.Compo = Compo;
 	Mask.jmask = jmask;
 	
-	Mask.version = '0.12.23';
+	Mask.version = '0.51.27';
 	
 	//> make fast properties
 	custom_optimize();
