@@ -4,26 +4,26 @@
     'use strict';
 
 	var _global, _exports;
-	
+
 	if (typeof exports !== 'undefined' && (root === exports || root == null)){
 		// raw nodejs module
     	_global = _exports = global;
     }
-	
+
 	if (_global == null) {
 		_global = typeof window === 'undefined' ? global : window;
 	}
 	if (_exports == null) {
 		_exports = root || _global;
 	}
-	
+
 	if (typeof include !== 'undefined' && typeof include.js === 'function') {
 		// allow only one `include` per application
 		_exports.include = include;
 		_exports.includeLib = include.Lib || _global.includeLib;
 		return;
 	}
-	
+
 	factory(_global, _exports, _global.document);
 
 }(this, function (global, exports, document) {
@@ -31,7 +31,7 @@
 
 // end:source ../src/head.js
 
-	// source ../src/1.scope-vars.js 
+	// source ../src/1.scope-vars.js
 	
 	/**
 	 *	.cfg
@@ -68,7 +68,7 @@
 		XMLHttpRequest = global.XMLHttpRequest;
 	
 		
-	// end:source ../src/1.scope-vars.js 
+	// end:source ../src/1.scope-vars.js
 	// source ../src/2.Helper.js
 	var Helper = { /** TODO: improve url handling*/
 		
@@ -90,7 +90,7 @@
 		};
 	
 	// end:source ../src/2.Helper.js
-	
+
 	// source ../src/utils/fn.js
 	function fn_proxy(fn, ctx) {
 		
@@ -461,7 +461,7 @@
 		
 	}());
 	// end:source ../src/utils/tree.js
-	
+
 	// source ../src/2.Routing.js
 	var RoutesLib = function() {
 	
@@ -974,8 +974,8 @@
     })();
     
     // end:source ../src/6.ScriptStack.js
-    
-	// source ../src/4.IncludeDeferred.js 
+
+	// source ../src/4.IncludeDeferred.js
 	
 	/**
 	 * STATES:
@@ -999,17 +999,17 @@
 				callback(this);
 				return this;
 			}
-			
+	
 			// this === sender in case when script loads additional
 			// resources and there are already parents listeners
-			
+	
 			if (mutator == null) {
 				mutator = (this.state < 3 || this === sender)
 					? 'unshift'
 					: 'push'
 					;
 			}
-			
+	
 			state <= this.state ? callback(this) : this.callbacks[mutator]({
 				state: state,
 				callback: callback
@@ -1119,13 +1119,13 @@
 	
 					if (typeof resource.exports === 'undefined')
 						continue;
-					
+	
 					var type = resource.type;
 					switch (type) {
 					case 'js':
 					case 'load':
 					case 'ajax':
-	
+					case 'mask':
 						var alias = route.alias || Routes.parseAlias(route),
 							obj = type === 'js'
 								? (this.response)
@@ -1133,15 +1133,15 @@
 								;
 	
 						if (alias != null) {
-							obj_setProperty(obj, alias, resource.exports);
+							obj[ alias ] = resource.exports;
 							break;
 						}
 						console.warn('<includejs> Alias is undefined', resource);
 						break;
 					}
 				}
-			} 
-			
+			}
+	
 			var response = this.response || emptyResponse;
 			var that = this;
 			if (this._use == null && this._usage != null){
@@ -1157,13 +1157,13 @@
 				callback.apply(null, [response].concat(this._use));
 				return;
 			}
-			
+	
 			callback(response);
 		}
 	};
 	
-	// end:source ../src/4.IncludeDeferred.js 
-	// source ../src/5.Include.js 
+	// end:source ../src/4.IncludeDeferred.js
+	// source ../src/5.Include.js
 	var Include,
 		IncludeLib = {};
 	(function(IncludeDeferred) {
@@ -1173,25 +1173,25 @@
 		};
 	
 		stub_release(Include.prototype);
-		
+	
 		obj_inherit(Include, IncludeDeferred, {
 			// Array: exports
 			_use: null,
-			
+	
 			// Array: names
 			_usage: null,
-			
+	
 			isBrowser: true,
 			isNode: false,
-			
+	
 			setCurrent: function(data) {
 				var url = data.url,
 					resource = this.getResourceById(url, 'js');
-					
+	
 				if (resource == null) {
 					if (url[0] === '/' && this.base)
 						url = this.base + url.substring(1);
-							
+	
 					var resource = new Resource(
 						'js'
 						, { path: url }
@@ -1208,7 +1208,7 @@
 				resource.state = 3;
 				global.include = resource;
 			},
-			
+	
 			cfg: function(arg) {
 				switch (typeof arg) {
 				case 'object':
@@ -1251,12 +1251,12 @@
 				if (mix == null) {
 					return Routes.getRoutes();
 				}
-				
+	
 				if (arguments.length === 2) {
 					Routes.register(mix, arguments[1], this);
 					return this;
 				}
-				
+	
 				for (var key in mix) {
 					Routes.register(key, mix[key], this);
 				}
@@ -1273,36 +1273,36 @@
 			},
 			/** @TODO - `id` property seems to be unsed and always equal to `url` */
 			register: function(_bin) {
-				
+	
 				var base = this.base,
 					key,
 					info,
 					infos,
 					imax,
 					i;
-				
+	
 				function transform(info){
-					if (base == null) 
+					if (base == null)
 						return info;
 					if (info.url[0] === '/')
 						info.url = base + info.url.substring(1);
 	
 					if (info.parent[0] === '/')
 						info.parent = base + info.parent.substring(1);
-					
+	
 					info.id = info.url;
 					return info;
 				}
-				
+	
 				for (key in _bin) {
 					infos = _bin[key];
 					imax = infos.length;
 					i = -1;
-					
+	
 					while ( ++i < imax ) {
-						
+	
 						info = transform(infos[i]);
-						
+	
 						var id = info.id,
 							url = info.url,
 							namespace = info.namespace,
@@ -1310,17 +1310,17 @@
 							resource = new Resource(),
 							state = info.state
 							;
-						if (! (id || url)) 
+						if (! (id || url))
 							continue;
-						
+	
 						if (url) {
 							if (url[0] === '/') {
 								url = url.substring(1);
 							}
 							resource.location = path_getDir(url);
 						}
-						
-						
+	
+	
 						resource.state = state == null
 							? (key === 'js' ? 3 : 4)
 							: state
@@ -1341,13 +1341,13 @@
 							}
 							resource.exports = container.innerHTML;
 							if (CustomLoader.exists(resource)){
-								
+	
 								resource.state = 3;
 								CustomLoader.load(resource, CustomLoader_onComplete);
 							}
 							break;
 						}
-						
+	
 						//
 						(bin[key] || (bin[key] = {}))[id] = resource;
 					}
@@ -1366,10 +1366,10 @@
 				if (url == null) {
 					resource = new Include();
 					resource.state = 4;
-					
+	
 					return resource;
 				}
-				
+	
 				resource = new Resource('package');
 				resource.state = 4;
 				resource.location = path_getDir(path_normalize(url));
@@ -1380,28 +1380,28 @@
 			getResource: function(url, type){
 				if (this.base && url[0] === '/')
 					url = this.base + url.substring(1);
-				
+	
 				return incl_getResource(url, type)
 			},
 			getResourceById: function(url, type){
 				var _bin = bin[type],
 					_res = _bin[url];
-				if (_res != null) 
+				if (_res != null)
 					return _res;
-				
+	
 				if (this.base && url[0] === '/') {
 					_res = _bin[path_combine(this.base, url)];
-					if (_res != null) 
+					if (_res != null)
 						return _res;
 				}
 				if (this.base && this.location) {
 					_res = _bin[path_combine(this.base, this.location, url)];
-					if (_res != null) 
+					if (_res != null)
 						return _res;
 				}
 				if (this.location) {
 					_res = _bin[path_combine(this.location, url)];
-					if (_res != null) 
+					if (_res != null)
 						return _res;
 				}
 				return null;
@@ -1437,86 +1437,86 @@
 				}
 				return this;
 			},
-			
+	
 			client: function(){
-				if (cfg.server === true) 
+				if (cfg.server === true)
 					stub_freeze(this);
-				
+	
 				return this;
 			},
-			
+	
 			server: function(){
-				if (cfg.server !== true) 
+				if (cfg.server !== true)
 					stub_freeze(this);
-				
+	
 				return this;
 			},
-			
+	
 			use: function(){
 				if (this.parent == null) {
 					console.error('<include.use> Parent resource is undefined');
 					return this;
 				}
-				
+	
 				this._usage = arguments;
 				return this;
 			},
-			
+	
 			pauseStack: fn_proxy(ScriptStack.pause, ScriptStack),
 			resumeStack: fn_proxy(ScriptStack.resume, ScriptStack),
-			
+	
 			allDone: function(callback){
 				ScriptStack.complete(function(){
-					
+	
 					var pending = include.getPending(),
 						await = pending.length;
 					if (await === 0) {
 						callback();
 						return;
 					}
-					
+	
 					var i = -1,
 						imax = await;
 					while( ++i < imax ){
 						pending[i].on(4, check, null, 'push');
 					}
-					
+	
 					function check() {
-						if (--await < 1) 
+						if (--await < 1)
 							callback();
 					}
 				});
 			},
-			
+	
 			getPending: function(type){
 				var resources = [],
 					res, key, id;
-				
+	
 				for(key in bin){
-					if (type != null && type !== key) 
+					if (type != null && type !== key)
 						continue;
-					
+	
 					for (id in bin[key]){
 						res = bin[key][id];
 						if (res.state < 4)
 							resources.push(res);
 					}
 				}
-				
+	
 				return resources;
 			},
 			Lib: IncludeLib
 		});
-		
-		
+	
+	
 		// >> FUNCTIONS
-		
+	
 		function incl_getResource(url, type) {
 			var id = url;
-			
-			if (path_isRelative(url) === true) 
+	
+			if (path_isRelative(url) === true)
 				id = '/' + id;
-			
+	
 			if (type != null){
 				return bin[type][id];
 			}
@@ -1528,12 +1528,12 @@
 			}
 			return null;
 		}
-		
-		
+	
+	
 		function embedPlugin(source) {
 			eval(source);
 		}
-		
+	
 		function enableModules() {
 			if (typeof Object.defineProperty === 'undefined'){
 				console.warn('Browser do not support Object.defineProperty');
@@ -1555,26 +1555,26 @@
 				}
 			});
 		}
-		
+	
 		function includePackage(resource, type, mix){
 			var pckg = mix.length === 1 ? mix[0] : __array_slice.call(mix);
-			
+	
 			if (resource instanceof Resource) {
 				return resource.include(type, pckg);
 			}
 			return new Resource('js').include(type, pckg);
 		}
-		
+	
 		function createIncluder(type) {
 			return function(){
 				return includePackage(this, type, arguments);
 			};
 		}
-		
+	
 		function doNothing() {
 			return this;
 		}
-		
+	
 		function stub_freeze(include) {
 			include.js =
 			include.css =
@@ -1583,22 +1583,23 @@
 			include.embed =
 			include.lazy =
 			include.inject =
+			include.mask =
 				doNothing;
 		}
-		
+	
 		function stub_release(proto) {
-			var fns = ['js', 'css', 'load', 'ajax', 'embed', 'lazy'],
+			var fns = ['js', 'css', 'load', 'ajax', 'embed', 'lazy', 'mask'],
 				i = fns.length;
 			while (--i !== -1){
 				proto[fns[i]] = createIncluder(fns[i]);
 			}
-			
+	
 			proto['inject'] = proto.js;
 		}
-		
+	
 	}(IncludeDeferred));
 	
-	// end:source ../src/5.Include.js 
+	// end:source ../src/5.Include.js
 	// source ../src/7.CustomLoader.js
 	var CustomLoader = (function() {
 	
@@ -1621,14 +1622,14 @@
 		cfg.loader = {
 			json : JSONParser
 		};
-		
+	
 		function loader_isInstance(x) {
 			if (typeof x === 'string')
 				return false;
-			
+	
 			return typeof x.ready === 'function' || typeof x.process === 'function';
 		}
-		
+	
 		function createLoader(url) {
 			var extension = path_getExtension(url),
 				loader = cfg.loader[extension];
@@ -1659,41 +1660,41 @@
 				1
 			));
 		}
-		
+	
 		function loader_completeDelegate(callback, resource) {
 			return function(response){
 				callback(resource, response);
 			};
 		}
-		
+	
 		function loader_process(source, resource, loader, callback) {
 			if (loader.process == null) {
 				callback(resource, source);
 				return;
 			}
-			
+	
 			var delegate = loader_completeDelegate(callback, resource),
 				syncResponse = loader.process(source, resource, delegate);
-			
+	
 			// match also null
 			if (typeof syncResponse !== 'undefined') {
 				callback(resource, syncResponse);
 			}
 		}
-		
+	
 		function tryLoad(resource, loader, callback) {
 			if (typeof resource.exports === 'string') {
 				loader_process(resource.exports, resource, loader, callback);
 				return;
 			}
-			
+	
 			function onLoad(resource, response){
 				loader_process(response, resource, loader, callback);
 			}
-			
-			if (loader.load) 
+	
+			if (loader.load)
 				return loader.load(resource, onLoad);
-			
+	
 			XHR(resource, onLoad);
 		}
 	
@@ -1701,12 +1702,12 @@
 			load: function(resource, callback) {
 	
 				var loader = createLoader(resource.url);
-				
+	
 				if (loader.process) {
 					tryLoad(resource, loader, callback);
 					return;
 				}
-				
+	
 				loader.on(4, function() {
 					tryLoad(resource, loader.exports, callback);
 				}, null, 'push');
@@ -1720,7 +1721,7 @@
 	
 				return cfg.loader.hasOwnProperty(ext);
 			},
-			
+	
 			/**
 			 *	IHandler:
 			 *	{ process: function(content) { return _handler(content); }; }
@@ -1731,7 +1732,7 @@
 			register: function(extension, handler){
 				if (typeof handler === 'string'){
 					var resource = include;
-					if (resource.location == null) { 
+					if (resource.location == null) {
 						resource = {
 							location: path_getDir(path_resolveCurrent())
 						};
@@ -1787,13 +1788,13 @@
 	
 		Resource = function(type, route, namespace, xpath, parent, id, priority) {
 			Include.call(this);
-			
+	
 			this.childLoaded = fn_proxy(this.childLoaded, this);
 	
 			var url = route && route.path;
-			if (url != null) 
+			if (url != null)
 				this.url = url = path_resolveUrl(url, parent);
-			
+	
 			this.type = type;
 			this.xpath = xpath;
 			this.route = route;
@@ -1802,15 +1803,15 @@
 			this.namespace = namespace;
 			this.base = parent && parent.base;
 	
-			if (id == null && url) 
+			if (id == null && url)
 				id = (path_isRelative(url) ? '/' : '') + url;
-			
+	
 			var resource = bin[type] && bin[type][id];
 			if (resource) {
 	
-				if (resource.state < 4 && type === 'js') 
+				if (resource.state < 4 && type === 'js')
 					ScriptStack.moveToParent(resource, parent);
-				
+	
 				return resource;
 			}
 	
@@ -1825,20 +1826,20 @@
 	
 			(bin[type] || (bin[type] = {}))[id] = this;
 	
-			if (cfg.version) 
+			if (cfg.version)
 				this.url += (this.url.indexOf('?') === -1 ? '?' : '&') + 'v=' + cfg.version;
-			
+	
 			return process(this);
 	
 		};
 	
 		Resource.prototype = obj_inherit(Resource, Include, {
-			
+	
 			state: null,
 			location: null,
 			includes: null,
 			response: null,
-			
+	
 			url: null,
 			base: null,
 			type: null,
@@ -1847,12 +1848,12 @@
 			parent: null,
 			priority: null,
 			namespace: null,
-			
+	
 			setBase: function(baseUrl){
 				this.base = baseUrl;
 				return this;
 			},
-			
+	
 			childLoaded: function(child) {
 				var resource = this,
 					includes = resource.includes;
@@ -1877,9 +1878,9 @@
 					: 2;
 				this.response = null;
 	
-				if (this.includes == null) 
+				if (this.includes == null)
 					this.includes = [];
-				
+	
 	
 				resource = new Resource(type, route, namespace, xpath, this, id);
 	
@@ -1903,7 +1904,7 @@
 					child = that.create(type, route, namespace, xpath);
 					children.push(child);
 				});
-				
+	
 				var i = -1,
 					imax = children.length;
 				while ( ++i < imax ){
@@ -1912,37 +1913,36 @@
 	
 				return this;
 			},
-			
+	
 			pause: function(){
 				this.state = 2.5;
-				
+	
 				var that = this;
 				return function(exports){
-					
-					if (arguments.length === 1) 
+	
+					if (arguments.length === 1)
 						that.exports = exports;
-					
+	
 					that.readystatechanged(3);
 				};
 			},
-			
+	
 			getNestedOfType: function(type){
 				return resource_getChildren(this.includes, type);
 			}
 		});
-		
+	
 		// private
-		
+	
 		function process(resource) {
 			var type = resource.type,
 				parent = resource.parent,
 				url = resource.url;
-				
+	
 			if (document == null && type === 'css') {
 				resource.state = 4;
 				return resource;
 			}
-	
 			if (CustomLoader.exists(resource) === false) {
 				switch (type) {
 					case 'js':
@@ -1952,6 +1952,7 @@
 					case 'ajax':
 					case 'load':
 					case 'lazy':
+					case 'mask':
 						XHR(resource, onXHRCompleted);
 						break;
 					case 'css':
@@ -1965,11 +1966,11 @@
 						break;
 				}
 			} else {
-				
+	
 				if ('js' === type || 'embed' === type) {
 					ScriptStack.add(resource, resource.parent);
 				}
-				
+	
 				CustomLoader.load(resource, onXHRCompleted);
 			}
 	
@@ -2003,36 +2004,52 @@
 					tag.innerHTML = response;
 					document.getElementsByTagName('head')[0].appendChild(tag);
 					break;
+				case 'mask':
+					if (response) {
+						mask
+							.Module
+							.registerModule(response, { path: resource.url })
+							.done(function(module){
+								resource.exports = module.exports;
+								resource.readystatechanged(4);
+							})
+							.fail(function(error){
+								console.error(error);
+								resource.readystatechanged(4);
+							});
+						return;
+					}
+					break;
 			}
 	
 			resource.readystatechanged(4);
 		}
 	
 		function resource_getChildren(includes, type, out) {
-			if (includes == null) 
+			if (includes == null)
 				return null;
-			
-			if (out == null) 
+	
+			if (out == null)
 				out = [];
-			
+	
 			var imax = includes.length,
 				i = -1,
 				x;
 			while ( ++i < imax ){
 				x = includes[i].resource;
-				
-				if (type === x.type) 
+	
+				if (type === x.type)
 					out.push(x);
-				
-				if (x.includes != null) 
+	
+				if (x.includes != null)
 					resource_getChildren(x.includes, type, out);
 			}
 			return out;
 		}
-		
+	
 	}(Include, Routes, ScriptStack, CustomLoader));
 	// end:source ../src/9.Resource.js
-	
+
 	// source ../src/10.export.js
 	IncludeLib.Routes = RoutesLib;
 	IncludeLib.Resource = Resource;
@@ -2047,7 +2064,7 @@
 	// end:source ../src/10.export.js
 }));
 
-// source ../src/global-vars.js
+// source ../src/eval-browser.js
 
 function __eval(source, include) {
 	"use strict";
@@ -2068,4 +2085,4 @@ function __eval(source, include) {
 	*/
 	
 }
-// end:source ../src/global-vars.js
+// end:source ../src/eval-browser.js

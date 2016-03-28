@@ -12,7 +12,7 @@
 			"class",
 			"include",
 			"mask",
-			"mask-animation/mask.animation",
+			"mask-animation/mask.animation::mask-animation",
 			"ruta",
 			"ruqq/arr",
 			"ruqq/utils",

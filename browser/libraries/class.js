@@ -1,13 +1,13 @@
 // source /src/license.txt
 /*!
- * ClassJS v%VERSION%
+ * ClassJS v1.1.70
  * Part of the Atma.js Project
  * http://atmajs.com/
  *
  * MIT license
  * http://opensource.org/licenses/MIT
  *
- * (c) 2012, %YEAR% Atma.js and other contributors
+ * (c) 2012, 2015 Atma.js and other contributors
  */
 // end:source /src/license.txt
 // source /src/umd.js

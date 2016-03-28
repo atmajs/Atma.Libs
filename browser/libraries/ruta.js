@@ -1,18 +1,26 @@
 (function(root, factory){
 	"use strict";
-	
-	if (root == null) {
-		root = typeof window !== 'undefined' && typeof document !== 'undefined' 
-			? window 
-			: global;
+
+	var isNode = (typeof window === 'undefined' || window.navigator == null);
+	var global_ = isNode ? global : window;
+
+	function construct(){
+		var ruta = factory(global_);
+		if (isNode) {
+			module.exports = ruta;
+			return;
+		}
+		return window.ruta = ruta;
 	}
-	
-	
-	root.ruta = factory(root);
-	
+
+	if (typeof define === 'function' && define.amd) {
+		return define(construct);
+	}
+
+	return construct();
 }(this, function(global){
 	"use strict";
-	
+
 	// source ../src/vars.js
 	
 	var mask = global.mask || (typeof Mask !== 'undefined' ? Mask : null);
@@ -27,7 +35,7 @@
 	var	_cfg_isStrict = true,
 		_Array_slice = Array.prototype.slice;
 	// end:source ../src/vars.js
-	
+
 	// source ../src/utils/obj.js
 	var obj_extend,
 		obj_create;
@@ -414,17 +422,17 @@
 		// source Route.js
 		
 		// source parse.js
-		var route_parseDefinition, // out route, definition 
+		var route_parseDefinition, // out route, definition
 		
-			// path should be already matched by the route 
-			route_parsePath // route, path 
+			// path should be already matched by the route
+			route_parsePath // route, path
 			;
 		
 		(function(){
-				
-			
+		
+		
 			route_parseDefinition = function(route, definition) {
-				
+		
 				var c = definition.charCodeAt(0);
 				switch(c){
 					case 33:
@@ -447,13 +455,13 @@
 							log_error('parser - expect group closing');
 							end ++;
 						}
-						
+		
 						route.match = new RegExp(definition.substring(start, end));
 						return;
 				}
-				
-				
-				
+		
+		
+		
 				var parts = definition.split('/'),
 					search,
 					searchIndex,
@@ -463,8 +471,8 @@
 					c0,
 					index,
 					c1;
-					
-				
+		
+		
 				var last = parts[imax - 1];
 				searchIndex = last.indexOf('?');
 				if (searchIndex > (imax === 1 ? -1 : 0)) {
@@ -472,168 +480,180 @@
 					search = last.substring(searchIndex + 1);
 					parts[imax - 1] = last.substring(0, searchIndex);
 				}
-			
+		
 				var matcher = '',
 					alias = null,
 					strictCount = 0;
-			
+		
 				var gettingMatcher = true,
 					isOptional,
 					isAlias,
 					rgx;
-			
+		
 				var array = route.path = [];
-				
+		
 				for (; i < imax; i++) {
 					x = parts[i];
-					
-					if (x === '') 
+		
+					if (x === '')
 						continue;
-					
-			
+		
+		
 					c0 = x.charCodeAt(0);
 					c1 = x.charCodeAt(1);
-			
+		
 					isOptional = c0 === 63; /* ? */
 					isAlias = (isOptional ? c1 : c0) === 58; /* : */
 					index = 0;
-					
-					if (isOptional) 
+		
+					if (isOptional)
 						index++;
-					
-					if (isAlias) 
+		
+					if (isAlias)
 						index++;
-					
-			
-					if (index !== 0) 
+		
+		
+					if (index !== 0)
 						x = x.substring(index);
-					
-			
+		
+		
 					// if DEBUG
-					if (!isOptional && !gettingMatcher) 
+					if (!isOptional && !gettingMatcher)
 						log_error('Strict part found after optional', definition);
 					// endif
-			
-			
-					if (isOptional) 
+		
+					if (x === '*') {
+						array.push({
+							matcher: new AnyMatcher()
+						});
+						continue;
+					}
+		
+					if (isOptional)
 						gettingMatcher = false;
-					
+		
 					var bracketIndex = x.indexOf('(');
 					if (isAlias && bracketIndex !== -1) {
 						var end = x.length - 1;
-						if (x[end] !== ')') 
+						if (x[end] !== ')')
 							end+= 1;
-						
+		
 						rgx = new RegExp(rgx_aliasMatcher(x.substring(bracketIndex + 1, end)));
 						x = x.substring(0, bracketIndex);
 					}
-					
+		
 					if (!isOptional && !isAlias) {
 						array.push(x);
 						continue;
 					}
-					
+		
 					if (isAlias) {
 						array.push({
 							alias: x,
 							matcher: rgx,
 							optional: isOptional
 						});
+						continue;
 					}
-					
+					if (isOptional) {
+						array.push({
+							matcher: new StrMatcher(x),
+							optional: isOptional
+						});
+					}
 				}
-			
+		
 				if (search) {
 					var query = route.query = {};
-					
+		
 					parts = search.split('&');
-					
+		
 					i = -1;
 					imax = parts.length;
-					
+		
 					var key, value, str, eqIndex;
 					while(++i < imax){
 						str = parts[i];
-						
+		
 						eqIndex = str.indexOf('=');
 						if (eqIndex === -1) {
 							query[str] = ''; // <empty string>
 							continue;
 						}
-						
+		
 						key = str.substring(0, eqIndex);
 						value = str.substring(eqIndex + 1);
-						
+		
 						if (value.charCodeAt(0) === 40) {
 							// (
 							value = new RegExp(rgx_aliasMatcher(value));
 						}
-						
+		
 						query[key] = value;
 					}
-					
+		
 					if (route.path.length === 0) {
 						route.strict = false;
 					}
 				}
 			};
-			
-			
+		
+		
 			route_parsePath = function(route, path) {
-				
+		
 				var queryIndex = path.indexOf('?'),
-					
+		
 					query = queryIndex === -1
 						? null
 						: path.substring(queryIndex + 1),
-					
+		
 					current = {
 						path: path,
 						params: query == null
 							? {}
 							: query_deserialize(query, '&')
 					};
-				
+		
 				if (route.query) {
 					// ensura aliased queries, like ?:debugger(d|debug)
 					for (var key in route.query){
-						
-						if (key[0] === '?') 
+		
+						if (key[0] === '?')
 							key = key.substring(1);
-						
+		
 						if (key[0] === ':') {
 							var alias = rgx_parsePartWithRegExpAlias(key),
 								name = alias.alias;
-							
+		
 							current.params[name] = getAliasedValue(current.params, alias.matcher);
 						}
 					}
 				}
-			
+		
 				if (queryIndex !== -1) {
 					path = path.substring(0, queryIndex);
 				}
-			
+		
 				if (route.path != null) {
-						
+		
 					var pathArr = path_split(path),
 						routePath = route.path,
 						routeLength = routePath.length,
-						
+		
 						imax = pathArr.length,
 						i = 0,
 						part,
 						x;
-				
+		
 					for (; i < imax; i++) {
 						part = pathArr[i];
 						x = i < routeLength ? routePath[i] : null;
-						
+		
 						if (x) {
-							
-							if (typeof x === 'string') 
+		
+							if (typeof x === 'string')
 								continue;
-							
+		
 							if (x.alias) {
 								current.params[x.alias] = part;
 								continue;
@@ -641,166 +661,186 @@
 						}
 					}
 				}
-			
+		
 				return current;
 			};
 		
-			
+		
 			// = private
-			
+		
 			function getAliasedValue(obj, matcher) {
 				for (var key in obj){
-					if (matcher.test(key)) 
+					if (matcher.test(key))
 						return obj[key];
 				}
 			}
+		
+			function StrMatcher(str) {
+				this.str = str;
+			}
+			StrMatcher.prototype = {
+				test: function(x) {
+					return x === this.str;
+				}
+			};
+			function AnyMatcher(str) {
+				this.str = str;
+			}
+			AnyMatcher.prototype = {
+				test: function(x) {
+					return true;
+				}
+			};
 		}());
 		// end:source parse.js
 		// source match.js
 		var route_match,
 			route_isMatch
 			;
-			
+		
 		(function(){
-			
+		
 			route_match = function(url, routes, currentMethod){
-				
+		
 				var parts = parts_deserialize(url);
-				
-				
+		
+		
 				for (var i = 0, route, imax = routes.length; i < imax; i++){
 					route = routes[i];
-					
+		
 					if (route_isMatch(parts, route, currentMethod)) {
-						
+		
 						route.current = route_parsePath(route, url);
 						return route;
 					}
 				}
-				
+		
 				return null;
 			};
-			
+		
 			route_isMatch = function(parts, route, currentMethod) {
-				
+		
 				if (currentMethod != null &&
 					route.method != null &&
 					route.method !== currentMethod) {
 					return false;
 				}
-				
+		
 				if (route.match) {
-					
+		
 					return route.match.test(
 						typeof parts === 'string'
 							? parts
 							: parts_serialize(parts)
 					);
 				}
-				
-				
-				if (typeof parts === 'string') 
+		
+		
+				if (typeof parts === 'string')
 					parts = parts_deserialize(parts);
-			
+		
 				// route defines some query, match these with the current path{parts}
 				if (route.query) {
 					var query = parts.query,
 						key, value;
-					if (query == null) 
+					if (query == null)
 						return false;
-					
+		
 					for(key in route.query){
 						value = route.query[key];
-						
-						
+		
+		
 						var c = key[0];
 						if (c === ':') {
 							// '?:isGlob(g|glob) will match if any is present
 							var alias = rgx_parsePartWithRegExpAlias(key);
 							if (alias == null || hasKey(query, alias.matcher) === false)
 								return false;
-							
+		
 							continue;
 						}
-						
-						if (c === '?') 
+		
+						if (c === '?')
 							continue;
-						
-						
+		
+		
 						if (typeof value === 'string') {
-							
-							if (query[key] == null) 
+		
+							if (query[key] == null)
 								return false;
-							
-							if (value && query[key] !== value) 
+		
+							if (value && query[key] !== value)
 								return false;
-							
+		
 							continue;
 						}
-						
-						if (value.test && !value.test(query[key])) 
+		
+						if (value.test && !value.test(query[key]))
 							return false;
 					}
 				}
-				
-					
+		
+		
 				var routePath = route.path,
 					routeLength = routePath.length;
-				
-				
+		
+		
 				if (routeLength === 0) {
-					if (route.strict) 
+					if (route.strict)
 						return parts.path.length === 0;
-					
+		
 					return true;
 				}
-				
-				
-				
-				for (var i = 0, x, imax = parts.path.length; i < imax; i++){
-					
+		
+		
+				var arr = parts.path;
+				for (var i = 0, x, imax = arr.length; i < imax; i++){
+		
 					x = routePath[i];
-					
-					if (i >= routeLength) 
+		
+					if (i >= routeLength)
 						return route.strict !== true;
-					
+		
 					if (typeof x === 'string') {
-						if (parts.path[i] === x) 
+						if (arr[i] === x)
 							continue;
-						
+		
 						return false;
 					}
-					
-					if (x.matcher && x.matcher.test(parts.path[i]) === false) {
-						return false;
-					}
-					
-					if (x.optional) 
-						return true;
-					
-					if (x.alias) 
+		
+					if (x.matcher) {
+						if (x.matcher.test(arr[i]) === false)
+							return false;
+		
 						continue;
-					
+					}
+					if (x.optional) {
+						return true;
+					}
+					if (x.alias) {
+						continue;
+					}
+		
 					return false;
 				}
-				
-				if (i < routeLength) 
+		
+				if (i < routeLength)
 					return routePath[i].optional === true;
-					
-				
+		
+		
 				return true;
 			};
-			
-			
+		
+		
 			function hasKey(obj, rgx){
-				
+		
 				for(var key in obj){
-					if (rgx.test(key)) 
+					if (rgx.test(key))
 						return true;
 				}
 				return false;
 			}
-			
+		
 		}());
 		
 		// end:source match.js
@@ -808,20 +848,20 @@
 		var regexp_var = '([^\\\\]+)';
 		
 		function Route(definition, value) {
-			
+		
 			this.method = definition.charCodeAt(0) === 36
 				? definition.substring(1, definition.indexOf(' ')).toUpperCase()
 				: null
 				;
-			
+		
 			if (this.method != null) {
 				definition = definition.substring( this.method.length + 2 );
 			}
-			
+		
 			this.strict = _cfg_isStrict;
 			this.value = value;
 			this.definition = definition;
-			
+		
 			route_parseDefinition(this, definition);
 		}
 		
@@ -870,122 +910,163 @@
 	// source ../src/emit/Location.js
 	
 	var Location = (function(){
-		
+	
 		if (typeof window === 'undefined') {
 			return function(){};
 		}
-		
-		// source Hash.js
+	
+		// source Hash.es6
+		"use strict";
+	
+	var _createClass = (function () { function defineProperties(target, props) { for (var key in props) { var prop = props[key]; prop.configurable = true; if (prop.value) prop.writable = true; } Object.defineProperties(target, props); } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; })();
+	
+	var _classCallCheck = function (instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } };
+	
+	var HashEmitter = (function () {
 		function HashEmitter(listener) {
-			if (typeof window === 'undefined' || 'onhashchange' in window === false)
-				return null;
-		
+			_classCallCheck(this, HashEmitter);
+	
 			this.listener = listener;
-			
-			var that = this;
-			window.onhashchange = function() {
-				that.changed(location.hash);
-			};
-			return this;
+			window.onhashchange = this.onhashchange.bind(this);
 		}
-		
-		(function() {
-			
-			function hash_normalize(hash) {
-				return hash.replace(/^[!#/]+/, '/');
-			}
-			
-			HashEmitter.prototype = {
-				navigate: function(hash) {
+	
+		_createClass(HashEmitter, {
+			onhashchange: {
+				value: function onhashchange() {
+					this.changed(location.hash);
+				}
+			},
+			navigate: {
+				value: function navigate(hash) {
 					if (hash == null) {
 						this.changed(location.hash);
 						return;
 					}
-					
+	
 					location.hash = hash;
-				},
-				changed: function(hash) {
-					this
-						.listener
-						.changed(hash_normalize(hash));
-						
-				},
-				current: function() {
-					return hash_normalize(location.hash);
 				}
-			};
-		
-		}());
-		// end:source Hash.js
-		// source History.js
-		function HistoryEmitter(listener){	
-			if (typeof window === 'undefined')
-				return null;
-			
-			if (!(window.history && window.history.pushState))
-				return null;
-		
-			var that = this;
-			that.listener = listener;
-			that.initial = location.pathname;
-			
-			window.onpopstate = function(){
-				if (that.initial === location.pathname) {
-					that.initial = null;
-					return;
-				}
-				that.changed();
-			};
-			
-			return that;
-		}
-		
-		HistoryEmitter.prototype = {
-			navigate: function(mix, opts){
-				if (mix == null) {
-					this.changed();
-					return;
-				}
-				var isQueryObject = typeof mix === 'object',
-					url = null;
-				if (opts != null && opts.extend === true) {
-					var query   = isQueryObject ? mix : path_getQuery(mix),
-						current = path_getQuery(location.search);
-						
-					if (current != null && query != null) {
-						for (var key in current) {
-							// strict compare
-							if (query[key] !== void 0 && query[key] === null) {
-								delete current[key];
-							}
-						}
-						query = obj_extend(current, query);
-						url = path_setQuery(url || '', query);
-					}
-				}
-				if (url == null) {
-					url = isQueryObject ? path_setQuery('', mix) : mix;
-				}
-				
-				
-				history.pushState({}, null, url);
-				this.initial = null;
-				this.changed();
 			},
-			changed: function(){
-				this.listener.changed(location.pathname + location.search);
+			changed: {
+				value: function changed(hash) {
+					this.listener.changed(HashEmitter.normalizeHash(hash));
+				}
 			},
-			current: function(){
-				return location.pathname + location.search;
+			current: {
+				value: function current() {
+					return HashEmitter.normalizeHash(location.hash);
+				}
 			}
-		};
-		
-		// end:source History.js
-		
+		}, {
+			supports: {
+				value: function supports() {
+					if (typeof window === "undefined" || "onhashchange" in window === false) {
+						return false;
+					}return true;
+				}
+			},
+			normalizeHash: {
+				value: function normalizeHash(hash) {
+					return hash.replace(/^[!#/]+/, "/");
+				}
+			}
+		});
+	
+		return HashEmitter;
+	})();
+	//# sourceMappingURL=Hash.es6.map
+		// end:source Hash.es6
+		// source History.es6
+		"use strict";
+	
+	var _createClass = (function () { function defineProperties(target, props) { for (var key in props) { var prop = props[key]; prop.configurable = true; if (prop.value) prop.writable = true; } Object.defineProperties(target, props); } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; })();
+	
+	var _classCallCheck = function (instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } };
+	
+	var HistoryEmitter = (function () {
+		function HistoryEmitter(listener) {
+			_classCallCheck(this, HistoryEmitter);
+	
+			this.listener = listener;
+			this.initial = location.pathname;
+			window.onpopstate = this.onpopstate.bind(this);
+		}
+	
+		_createClass(HistoryEmitter, {
+			onpopstate: {
+				value: function onpopstate() {
+					if (this.initial === location.pathname) {
+						this.initial = null;
+						return;
+					}
+					this.changed();
+				}
+			},
+			navigate: {
+				value: function navigate(mix, opts) {
+					if (mix == null) {
+						this.changed();
+						return;
+					}
+					var isQueryObject = typeof mix === "object",
+					    url = null;
+					if (opts != null && opts.extend === true) {
+						var query = isQueryObject ? mix : path_getQuery(mix),
+						    current = path_getQuery(location.search);
+	
+						if (current != null && query != null) {
+							for (var key in current) {
+								// strict compare
+								if (query[key] !== void 0 && query[key] === null) {
+									delete current[key];
+								}
+							}
+							query = obj_extend(current, query);
+							url = path_setQuery(url || "", query);
+						}
+					}
+					if (url == null) {
+						url = isQueryObject ? path_setQuery("", mix) : mix;
+					}
+	
+					history.pushState({}, null, url);
+					this.initial = null;
+					this.changed();
+				}
+			},
+			changed: {
+				value: function changed() {
+					this.listener.changed(location.pathname + location.search);
+				}
+			},
+			current: {
+				value: function current() {
+					return location.pathname + location.search;
+				}
+			}
+		}, {
+			supports: {
+				value: function supports() {
+					if (typeof window === "undefined") {
+						return false;
+					}if (!(window.history && window.history.pushState)) {
+						return false;
+					}if (window.location.href !== document.baseURI) {
+						return false;
+					}
+					return true;
+				}
+			}
+		});
+	
+		return HistoryEmitter;
+	})();
+	//# sourceMappingURL=History.es6.map
+		// end:source History.es6
+	
 		function Location(collection, type) {
-			
+	
 			this.collection = collection || new Routes();
-			
+	
 			if (type) {
 				var Constructor = type === 'hash'
 					? HashEmitter
@@ -993,25 +1074,25 @@
 					;
 				this.emitter = new Constructor(this);
 			}
-			
-			if (this.emitter == null) 
+	
+			if (this.emitter == null && HistoryEmitter.supports())
 				this.emitter = new HistoryEmitter(this);
-			
-			if (this.emitter == null) 
+	
+			if (this.emitter == null && HashEmitter.supports())
 				this.emitter = new HashEmitter(this);
-			
-			if (this.emitter == null) 
+	
+			if (this.emitter == null)
 				log_error('Router can not be initialized - (nor HistoryAPI / nor hashchange');
 		}
-		
+	
 		Location.prototype = {
-			
+	
 			changed: function(path){
 				var item = this.collection.get(path);
-				
+	
 				if (item)
 					this.action(item);
-				
+	
 			},
 			action: function(route){
 				if (typeof route.value === 'function') {
@@ -1031,11 +1112,11 @@
 				return this.emitter.current();
 			}
 		};
-		
+	
 		return Location;
 	}());
 	// end:source ../src/emit/Location.js
-	
+
 	// source ../src/api/utils.js
 	var ApiUtils = {
 		/*
@@ -1119,26 +1200,26 @@
 	
 	
 	// end:source ../src/ruta.js
-	
+
 	// source ../src/mask/attr/anchor-dynamic.js
 	(function() {
 		if (mask == null) {
 			return;
 		}
-		
+	
 		mask.registerAttrHandler('x-dynamic', function(node, value, model, ctx, tag){
 			tag.onclick = navigate;
 		}, 'client');
-		
+	
 		function navigate(event) {
 			event.preventDefault();
 			event.stopPropagation();
-			
-			Ruta.navigate(this.href);
+	
+			Ruta.navigate(this.getAttribute('href'));
 		}
 	}());
 	
 	// end:source ../src/mask/attr/anchor-dynamic.js
-	
+
 	return Ruta;
 }));
